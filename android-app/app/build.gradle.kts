@@ -3,13 +3,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Dummy task to fix IDE sync issue: Task 'prepareKotlinBuildScriptModel' not found
+tasks.register("prepareKotlinBuildScriptModel") {}
+
 android {
     namespace = "com.example.app"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.app"
@@ -43,7 +42,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.health.connect.client)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)

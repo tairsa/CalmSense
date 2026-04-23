@@ -3,10 +3,13 @@ package com.example.app
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,41 +26,94 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.app.data.FakeVitalsRepository
+import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.VitalsSource
 import com.example.app.ui.theme.AppTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
+import androidx.activity.compose.rememberLauncherForActivityResult
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableIntStateOf(72)
     var currentHrv by mutableDoubleStateOf(45.0)
     var isMoving by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
+    var dataSource by mutableStateOf(VitalsSource.SIMULATED)
+    var healthConnectStatus by mutableStateOf("Not connected")
 
     var triggerNotificationCallback: (() -> Unit)? = null
+    private var pollJob: Job? = null
+
+    private val fakeRepo = FakeVitalsRepository()
+    private var healthConnectRepo: HealthConnectVitalsRepository? = null
+
+    fun attachHealthConnect(context: Context) {
+        if (healthConnectRepo == null) {
+            healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
+        }
+    }
+
+    fun requiredHealthPermissions(): Set<String> =
+        healthConnectRepo?.requiredPermissions().orEmpty()
+
+    fun startPolling() {
+        if (pollJob != null) return
+        pollJob = viewModelScope.launch {
+            while (true) {
+                refreshOnce()
+                delay(1_000)
+            }
+        }
+    }
+
+    suspend fun refreshOnce() {
+        val vitals =
+            when (dataSource) {
+                VitalsSource.SIMULATED -> fakeRepo.readVitals()
+                VitalsSource.HEALTH_CONNECT -> healthConnectRepo?.readVitals() ?: fakeRepo.readVitals()
+            }
+
+        currentHr = vitals.heartRateBpm
+        currentHrv = vitals.hrv
+        isMoving = vitals.isMoving
+
+        if (dataSource == VitalsSource.HEALTH_CONNECT) {
+            healthConnectStatus =
+                if (healthConnectRepo?.isAvailable() == true) "Connected (reading HR)" else "Health Connect not available"
+        } else {
+            healthConnectStatus = "Simulation"
+        }
+
+        checkPanicRisk(currentHr, currentHrv, isMoving)
+    }
 
     fun simulatePanicAttack() {
-        currentHr = 135
-        currentHrv = 12.0
-        isMoving = false
-        checkPanicRisk(currentHr, currentHrv, isMoving)
+        fakeRepo.setMode(FakeVitalsRepository.Mode.STRESS)
+        dataSource = VitalsSource.SIMULATED
     }
 
     fun simulateExercise() {
-        currentHr = 140
-        currentHrv = 48.0
-        isMoving = true
-        checkPanicRisk(currentHr, currentHrv, isMoving)
+        fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
+        dataSource = VitalsSource.SIMULATED
     }
     
     fun resetStats() {
-        currentHr = 72
-        currentHrv = 45.0
-        isMoving = false
+        fakeRepo.setMode(FakeVitalsRepository.Mode.BASELINE)
+        dataSource = VitalsSource.SIMULATED
     }
 
     private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
@@ -68,7 +124,7 @@ class HeartRateViewModel : ViewModel() {
 }
 
 class MainActivity : ComponentActivity() {
-    private val viewModel = HeartRateViewModel()
+    private val viewModel: HeartRateViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,12 +137,36 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
+                val context = LocalContext.current
+                LaunchedEffect(Unit) {
+                    viewModel.attachHealthConnect(context)
+                    viewModel.startPolling()
+                }
+
+                val permissionLauncher =
+                    rememberLauncherForActivityResult(
+                        contract = PermissionController.createRequestPermissionResultContract()
+                    ) { granted ->
+                        viewModel.dataSource =
+                            if (granted.containsAll(viewModel.requiredHealthPermissions())) {
+                                VitalsSource.HEALTH_CONNECT
+                            } else {
+                                VitalsSource.SIMULATED
+                            }
+                    }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        CalmSenseDashboard(viewModel = viewModel)
+                        CalmSenseDashboard(
+                            viewModel = viewModel,
+                            onConnectHealth = {
+                                permissionLauncher.launch(viewModel.requiredHealthPermissions())
+                            },
+                            onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED }
+                        )
                         
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
@@ -117,6 +197,12 @@ class MainActivity : ComponentActivity() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+        }
+
         try {
             NotificationManagerCompat.from(this).notify(1, builder.build())
         } catch (e: SecurityException) {
@@ -126,7 +212,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
+fun CalmSenseDashboard(
+    viewModel: HeartRateViewModel,
+    onConnectHealth: () -> Unit,
+    onUseSimulation: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -150,6 +240,22 @@ fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AssistChip(
+                onClick = {},
+                label = { Text(viewModel.healthConnectStatus) },
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = onUseSimulation) { Text("Use simulation") }
+            Button(onClick = onConnectHealth) { Text("Connect Health") }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Stats Cards
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -157,7 +263,7 @@ fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
         ) {
             StatCard(
                 label = "HRV",
-                value = String.format("%.1f", viewModel.currentHrv),
+                value = String.format(Locale.getDefault(), "%.1f", viewModel.currentHrv),
                 modifier = Modifier.weight(1f)
             )
             StatCard(
@@ -355,6 +461,10 @@ fun BreathingOverlay(onClose: () -> Unit) {
 @Composable
 fun DashboardPreview() {
     AppTheme {
-        CalmSenseDashboard(viewModel = HeartRateViewModel())
+        CalmSenseDashboard(
+            viewModel = HeartRateViewModel(),
+            onConnectHealth = {},
+            onUseSimulation = {}
+        )
     }
 }
