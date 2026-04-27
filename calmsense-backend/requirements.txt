@@ -1,2 +1,10 @@
 fastapi
 uvicorn[standard]
+
+# ML training pipeline (used by ml/generate_data.py and ml/train_model.py).
+# The runtime API does not import these — it only reads ml/model_weights.json,
+# so a deployment that never retrains can skip these. Listed here for the
+# developer-machine setup so `pip install -r requirements.txt` is one command.
+scikit-learn
+pandas
+numpy

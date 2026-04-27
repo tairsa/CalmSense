@@ -21,7 +21,7 @@ BASE_URL = "http://localhost:8000"
 TEST_USER = "smoke-test-user"
 
 
-def _req(method: str, path: str, body: dict | None = None) -> tuple[int, dict | str]:
+def _req(method, path, body=None):
     url = f"{BASE_URL}{path}"
     data = None
     headers = {}
@@ -44,17 +44,17 @@ def _req(method: str, path: str, body: dict | None = None) -> tuple[int, dict | 
             return e.code, raw
 
 
-def check(label: str, condition: bool, detail: str = "") -> None:
+def check(label, condition, detail=""):
     mark = "PASS" if condition else "FAIL"
     print(f"  [{mark}] {label}{(' - ' + detail) if detail else ''}")
     if not condition:
-        check.failed = True  # type: ignore[attr-defined]
+        check.failed = True
 
 
-check.failed = False  # type: ignore[attr-defined]
+check.failed = False
 
 
-def main() -> int:
+def main():
     print(f"Smoke testing {BASE_URL} ...")
 
     # --- 1. health ---
@@ -81,11 +81,7 @@ def main() -> int:
     }
     status, body = _req("POST", "/api/v1/sensor-data", payload)
     check("status 200", status == 200, f"got {status}")
-    check(
-        "success=True",
-        isinstance(body, dict) and body.get("success") is True,
-        repr(body),
-    )
+    check("success=True", isinstance(body, dict) and body.get("success") is True, repr(body))
 
     # --- 3. POST a panic reading ---
     print("\n[3] POST /api/v1/sensor-data (panic)")
@@ -99,11 +95,7 @@ def main() -> int:
     }
     status, body = _req("POST", "/api/v1/sensor-data", payload2)
     check("status 200", status == 200, f"got {status}")
-    check(
-        "success=True",
-        isinstance(body, dict) and body.get("success") is True,
-        repr(body),
-    )
+    check("success=True", isinstance(body, dict) and body.get("success") is True, repr(body))
 
     # --- 4. POST malformed body (should be rejected) ---
     print("\n[4] POST /api/v1/sensor-data (malformed - missing fields)")
@@ -131,9 +123,18 @@ def main() -> int:
         "GET", "/api/v1/sensor-data?user_id=does-not-exist-" + str(int(time.time()))
     )
     check("status 200", status == 200, f"got {status}")
+    # source is 'default' when no model_weights.json is present, and
+    # 'trained_global' once ml/train_model.py has been run. Either is fine.
     check(
-        "source=default for unknown user",
-        isinstance(body, dict) and body.get("source") == "default",
+        "source is default or trained_global",
+        isinstance(body, dict) and body.get("source") in ("default", "trained_global"),
+        repr(body),
+    )
+    check(
+        "weights is a 5-element array",
+        isinstance(body, dict)
+        and isinstance(body.get("weights"), list)
+        and len(body["weights"]) == 5,
         repr(body),
     )
 
@@ -148,7 +149,7 @@ def main() -> int:
 
     # --- summary ---
     print()
-    if check.failed:  # type: ignore[attr-defined]
+    if check.failed:
         print("SMOKE TEST: FAILURES detected. See above.")
         return 1
     print("SMOKE TEST: all checks passed.")

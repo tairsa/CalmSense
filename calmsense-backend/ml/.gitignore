@@ -1,0 +1,7 @@
+# Generated training data — recreate any time with `python generate_data.py`
+training_data.csv
+
+# Trained weights — recreate with `python train_model.py`.
+# We DO commit this so the API can serve a trained model on a fresh clone.
+# Comment out the next line if you'd rather not check in the artifact.
+# model_weights.json
