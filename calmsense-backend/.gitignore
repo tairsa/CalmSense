@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Local data (runtime-generated)
+data/sensor_data.json
+data/*.json
+!data/.gitkeep
+
+# IDE
+.idea/
+.vscode/
