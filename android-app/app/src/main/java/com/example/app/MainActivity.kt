@@ -65,6 +65,9 @@ class HeartRateViewModel : ViewModel() {
 
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
+    // Tracks whether we were in panic state on the previous tick, so we
+    // only fire a notification on the false -> true transition (not every tick).
+    private var wasInPanic: Boolean = false
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
@@ -157,9 +160,11 @@ class HeartRateViewModel : ViewModel() {
             lastPanicProbability = 0.0
             hr > 120 && hrv < 20.0 && !moving
         }
-        if (isPanic) {
+        // Only fire on the transition into panic, not every tick we stay in it.
+        if (isPanic && !wasInPanic) {
             triggerNotificationCallback?.invoke()
         }
+        wasInPanic = isPanic
     }
 }
 
@@ -236,6 +241,7 @@ class MainActivity : ComponentActivity() {
             .setContentTitle("CalmSense: Breathe with me")
             .setContentText("We noticed your heart rate is high. Want to try a 1-minute breathing exercise?")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -245,7 +251,11 @@ class MainActivity : ComponentActivity() {
         }
 
         try {
-            NotificationManagerCompat.from(this).notify(1, builder.build())
+            // Use a unique notification ID per fire so each new panic episode
+            // alerts (sound + vibration) instead of silently updating the
+            // previous notification of ID=1.
+            val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+            NotificationManagerCompat.from(this).notify(notifId, builder.build())
         } catch (e: SecurityException) {
             // Permission missing
         }
