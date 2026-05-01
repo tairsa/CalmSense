@@ -37,8 +37,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.app.data.BackendApi
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicModel
 import com.example.app.data.VitalsSource
 import com.example.app.ui.theme.AppTheme
 import kotlinx.coroutines.Job
@@ -55,15 +57,40 @@ class HeartRateViewModel : ViewModel() {
     var dataSource by mutableStateOf(VitalsSource.SIMULATED)
     var healthConnectStatus by mutableStateOf("Not connected")
 
+    // Backend / ML state
+    var userId by mutableStateOf("demo-user")
+    var panicModel by mutableStateOf<PanicModel?>(null)
+    var modelStatus by mutableStateOf("model not loaded")
+    var lastPanicProbability by mutableDoubleStateOf(0.0)
+
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
+    private val backend = BackendApi()
 
     fun attachHealthConnect(context: Context) {
         if (healthConnectRepo == null) {
             healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
+        }
+    }
+
+    /** Fetch the trained model weights from the server. Safe to call multiple times. */
+    fun loadModelFromBackend() {
+        modelStatus = "loading model..."
+        viewModelScope.launch {
+            try {
+                val model = backend.fetchWeights(userId)
+                panicModel = model
+                modelStatus = if (model.isUntrained())
+                    "server returned defaults (no trained model yet)"
+                else
+                    "model loaded: ${model.source} (acc=${model.testAccuracy?.let { "%.2f".format(it) } ?: "?"})"
+            } catch (e: Exception) {
+                panicModel = null
+                modelStatus = "model load failed: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
     }
 
@@ -110,14 +137,27 @@ class HeartRateViewModel : ViewModel() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
         dataSource = VitalsSource.SIMULATED
     }
-    
+
     fun resetStats() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.BASELINE)
         dataSource = VitalsSource.SIMULATED
     }
 
     private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
-        if (hr > 120 && hrv < 20.0 && !moving) {
+        // Use the trained logistic-regression model when available; fall back
+        // to the simple rule if the model hasn't been fetched yet.
+        val model = panicModel
+        val isPanic: Boolean = if (model != null && !model.isUntrained()) {
+            // Map boolean isMoving to the [0,1] motion intensity the server expects.
+            val motion = if (moving) 0.7 else 0.05
+            val pred = model.predict(hr.toDouble(), hrv, motion)
+            lastPanicProbability = pred.probability
+            pred.isPanic
+        } else {
+            lastPanicProbability = 0.0
+            hr > 120 && hrv < 20.0 && !moving
+        }
+        if (isPanic) {
             triggerNotificationCallback?.invoke()
         }
     }
@@ -140,6 +180,7 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
+                    viewModel.loadModelFromBackend()
                     viewModel.startPolling()
                 }
 
@@ -167,7 +208,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED }
                         )
-                        
+
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
                         }
@@ -254,7 +295,22 @@ fun CalmSenseDashboard(
             Button(onClick = onConnectHealth) { Text("Connect Health") }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Model status row
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = viewModel.modelStatus,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Stats Cards
         Row(
@@ -271,6 +327,11 @@ fun CalmSenseDashboard(
                 value = if (viewModel.isMoving) "Active" else "Resting",
                 modifier = Modifier.weight(1f)
             )
+            StatCard(
+                label = "p(panic)",
+                value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
+                modifier = Modifier.weight(1f)
+            )
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -284,13 +345,13 @@ fun CalmSenseDashboard(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(
             text = "Simulations",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
         )
-        
+
         Row(
             modifier = Modifier.padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -306,7 +367,7 @@ fun CalmSenseDashboard(
 fun HeartRateMonitor(hr: Int) {
     val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
     val duration = if (hr > 120) 400 else 1000
-    
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.2f,
@@ -326,7 +387,7 @@ fun HeartRateMonitor(hr: Int) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
         )
-        
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Favorite,
@@ -435,9 +496,9 @@ fun BreathingOverlay(onClose: () -> Unit) {
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            
+
             Spacer(modifier = Modifier.height(64.dp))
-            
+
             Box(contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
@@ -447,9 +508,9 @@ fun BreathingOverlay(onClose: () -> Unit) {
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(100.dp))
-            
+
             TextButton(onClick = onClose) {
                 Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
             }
