@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,8 +49,8 @@ import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 
 class HeartRateViewModel : ViewModel() {
-    var currentHr by mutableIntStateOf(72)
-    var currentHrv by mutableDoubleStateOf(45.0)
+    var currentHr by mutableStateOf<Int?>(72)
+    var currentHrv by mutableStateOf<Double?>(45.0)
     var isMoving by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
     var dataSource by mutableStateOf(VitalsSource.SIMULATED)
@@ -92,8 +93,11 @@ class HeartRateViewModel : ViewModel() {
         isMoving = vitals.isMoving
 
         if (dataSource == VitalsSource.HEALTH_CONNECT) {
-            healthConnectStatus =
-                if (healthConnectRepo?.isAvailable() == true) "Connected (reading HR)" else "Health Connect not available"
+            healthConnectStatus = when {
+                healthConnectRepo?.isAvailable() != true -> "Health Connect not available"
+                vitals.heartRateBpm == null -> "No watch data"
+                else -> "Connected (reading HR)"
+            }
         } else {
             healthConnectStatus = "Simulation"
         }
@@ -116,8 +120,8 @@ class HeartRateViewModel : ViewModel() {
         dataSource = VitalsSource.SIMULATED
     }
 
-    private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
-        if (hr > 120 && hrv < 20.0 && !moving) {
+    private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
+        if (hr != null && hrv != null && hr > 120 && hrv < 20.0 && !moving) {
             triggerNotificationCallback?.invoke()
         }
     }
@@ -238,6 +242,17 @@ fun CalmSenseDashboard(
         // Heart Rate Visualizer
         HeartRateMonitor(hr = viewModel.currentHr)
 
+        if (viewModel.dataSource == VitalsSource.HEALTH_CONNECT && viewModel.currentHr == null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Can't read heart rate from your watch. Check that Samsung Health is syncing to Health Connect.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
 
         Row(
@@ -263,7 +278,9 @@ fun CalmSenseDashboard(
         ) {
             StatCard(
                 label = "HRV",
-                value = String.format(Locale.getDefault(), "%.1f", viewModel.currentHrv),
+                value = viewModel.currentHrv
+                    ?.let { String.format(Locale.getDefault(), "%.1f", it) }
+                    ?: "--",
                 modifier = Modifier.weight(1f)
             )
             StatCard(
@@ -303,10 +320,11 @@ fun CalmSenseDashboard(
 }
 
 @Composable
-fun HeartRateMonitor(hr: Int) {
+fun HeartRateMonitor(hr: Int?) {
     val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
-    val duration = if (hr > 120) 400 else 1000
-    
+    val highHr = hr != null && hr > 120
+    val duration = if (highHr) 400 else 1000
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.2f,
@@ -326,16 +344,20 @@ fun HeartRateMonitor(hr: Int) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
         )
-        
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
-                tint = if (hr > 120) Color(0xFFEF5350) else MaterialTheme.colorScheme.primary,
+                tint = when {
+                    hr == null -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)
+                    highHr -> Color(0xFFEF5350)
+                    else -> MaterialTheme.colorScheme.primary
+                },
                 modifier = Modifier.size(48.dp).scale(scale)
             )
             Text(
-                text = "$hr",
+                text = hr?.toString() ?: "--",
                 style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground
             )
