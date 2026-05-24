@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +40,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.app.data.BackendApi
+import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
 import com.example.app.data.PanicModel
@@ -45,6 +48,7 @@ import com.example.app.data.VitalsSource
 import com.example.app.ui.theme.AppTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,8 +69,6 @@ class HeartRateViewModel : ViewModel() {
 
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
-    // Tracks whether we were in panic state on the previous tick, so we
-    // only fire a notification on the false -> true transition (not every tick).
     private var wasInPanic: Boolean = false
 
     private val fakeRepo = FakeVitalsRepository()
@@ -79,7 +81,6 @@ class HeartRateViewModel : ViewModel() {
         }
     }
 
-    /** Fetch the trained model weights from the server. Safe to call multiple times. */
     fun loadModelFromBackend() {
         modelStatus = "loading model..."
         viewModelScope.launch {
@@ -147,11 +148,8 @@ class HeartRateViewModel : ViewModel() {
     }
 
     private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
-        // Use the trained logistic-regression model when available; fall back
-        // to the simple rule if the model hasn't been fetched yet.
         val model = panicModel
         val isPanic: Boolean = if (model != null && !model.isUntrained()) {
-            // Map boolean isMoving to the [0,1] motion intensity the server expects.
             val motion = if (moving) 0.7 else 0.05
             val pred = model.predict(hr.toDouble(), hrv, motion)
             lastPanicProbability = pred.probability
@@ -160,7 +158,6 @@ class HeartRateViewModel : ViewModel() {
             lastPanicProbability = 0.0
             hr > 120 && hrv < 20.0 && !moving
         }
-        // Only fire on the transition into panic, not every tick we stay in it.
         if (isPanic && !wasInPanic) {
             triggerNotificationCallback?.invoke()
         }
@@ -251,9 +248,6 @@ class MainActivity : ComponentActivity() {
         }
 
         try {
-            // Use a unique notification ID per fire so each new panic episode
-            // alerts (sound + vibration) instead of silently updating the
-            // previous notification of ID=1.
             val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
             NotificationManagerCompat.from(this).notify(notifId, builder.build())
         } catch (e: SecurityException) {
@@ -286,7 +280,6 @@ fun CalmSenseDashboard(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Heart Rate Visualizer
         HeartRateMonitor(hr = viewModel.currentHr)
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -305,7 +298,6 @@ fun CalmSenseDashboard(
             Button(onClick = onConnectHealth) { Text("Connect Health") }
         }
 
-        // Model status row
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -322,7 +314,6 @@ fun CalmSenseDashboard(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Stats Cards
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -346,7 +337,6 @@ fun CalmSenseDashboard(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Actions
         ActionTile(
             title = "Start Breathing",
             subtitle = "A quick way to center yourself",
@@ -389,7 +379,6 @@ fun HeartRateMonitor(hr: Int) {
     )
 
     Box(contentAlignment = Alignment.Center) {
-        // Pulse circles
         Box(
             modifier = Modifier
                 .size(200.dp)
@@ -471,6 +460,44 @@ fun SmallSimButton(text: String, onClick: () -> Unit) {
 
 @Composable
 fun BreathingOverlay(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val coach = remember { BreathingCoach() }
+    var isMuted by remember { mutableStateOf(false) }
+    var ttsReady by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        coach.init(context) { ttsReady = true }
+        onDispose { coach.shutdown() }
+    }
+
+    // Audio narration loop. Plays an opening line, then for each breathing
+    // cycle says "Breathe in" / "Breathe out" in sync with the 8-second
+    // animation cycle. Every 3 breaths it inserts a reassurance during a
+    // full extra cycle so the animation stays in phase with the voice.
+    LaunchedEffect(ttsReady, isMuted) {
+        if (!ttsReady || isMuted) return@LaunchedEffect
+        coach.speakOpening()
+        delay(8_000) // one full animation cycle of opening + buffer
+        if (!isActive) return@LaunchedEffect
+
+        var cycleCount = 0
+        while (isActive) {
+            coach.speakIn()
+            delay(4_000)
+            if (!isActive) break
+            coach.speakOut()
+            delay(4_000)
+            if (!isActive) break
+            cycleCount++
+            if (cycleCount % 3 == 0) {
+                // Rest beat: one full animation cycle with no breath prompts,
+                // just a reassuring sentence.
+                coach.speakReassurance()
+                delay(8_000)
+            }
+        }
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
     val scale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
@@ -519,10 +546,22 @@ fun BreathingOverlay(onClose: () -> Unit) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(100.dp))
+            Spacer(modifier = Modifier.height(80.dp))
 
-            TextButton(onClick = onClose) {
-                Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { isMuted = !isMuted }) {
+                    Icon(
+                        imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        contentDescription = if (isMuted) "Unmute voice" else "Mute voice",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
+                }
+                TextButton(onClick = onClose) {
+                    Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
             }
         }
     }
