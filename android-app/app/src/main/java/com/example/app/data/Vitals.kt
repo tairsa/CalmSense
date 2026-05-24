@@ -4,4 +4,5 @@ data class Vitals(
     val heartRateBpm: Int?,
     val hrv: Double?,
     val isMoving: Boolean,
+    val hrSampleAgeMinutes: Long? = null,
 )

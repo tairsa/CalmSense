@@ -8,6 +8,7 @@ import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -30,24 +31,33 @@ class HealthConnectVitalsRepository(private val context: Context) {
         val hc = client ?: return Vitals(null, null, false)
 
         val now = Instant.now()
-        val hrWindow = TimeRangeFilter.between(now.minus(5, ChronoUnit.MINUTES), now)
+        // Wide window so we catch long-running HR sessions whose record startTime is older.
+        // We then gate on per-sample timestamp for freshness.
+        val wideWindow = TimeRangeFilter.between(now.minus(24, ChronoUnit.HOURS), now)
         val stepsWindow = TimeRangeFilter.between(now.minus(60, ChronoUnit.SECONDS), now)
 
-        val hr: Int? = runCatching {
-            hc.readRecords(ReadRecordsRequest(HeartRateRecord::class, hrWindow))
-                .records.lastOrNull()?.samples?.lastOrNull()?.beatsPerMinute?.toInt()
+        val latestHrSample = runCatching {
+            hc.readRecords(ReadRecordsRequest(HeartRateRecord::class, wideWindow))
+                .records.flatMap { it.samples }.maxByOrNull { it.time }
         }.getOrNull()
+        val hrAgeMin = latestHrSample?.let { Duration.between(it.time, now).toMinutes() }
+        val hr: Int? = if (latestHrSample != null && hrAgeMin != null && hrAgeMin < 30L) {
+            latestHrSample.beatsPerMinute.toInt()
+        } else null
 
-        val hrv: Double? = runCatching {
-            hc.readRecords(ReadRecordsRequest(HeartRateVariabilityRmssdRecord::class, hrWindow))
-                .records.lastOrNull()?.heartRateVariabilityMillis
+        val latestHrv = runCatching {
+            hc.readRecords(ReadRecordsRequest(HeartRateVariabilityRmssdRecord::class, wideWindow))
+                .records.maxByOrNull { it.time }
         }.getOrNull()
+        val hrv: Double? = latestHrv?.takeIf {
+            Duration.between(it.time, now).toMinutes() < 60L
+        }?.heartRateVariabilityMillis
 
         val moving: Boolean = runCatching {
             hc.readRecords(ReadRecordsRequest(StepsRecord::class, stepsWindow))
                 .records.sumOf { it.count } > 0
         }.getOrDefault(false)
 
-        return Vitals(hr, hrv, moving)
+        return Vitals(hr, hrv, moving, hrAgeMin)
     }
 }

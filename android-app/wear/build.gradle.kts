@@ -3,11 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Dummy task to fix IDE sync issue: Task 'prepareKotlinBuildScriptModel' not found
-tasks.register("prepareKotlinBuildScriptModel") {}
-
 android {
-    namespace = "com.example.app"
+    namespace = "com.example.app.wear"
     compileSdk = 36
 
     defaultConfig {
@@ -16,8 +13,6 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -39,24 +34,19 @@ android {
 }
 
 dependencies {
-    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.health.connect.client)
-    implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    implementation("androidx.health:health-services-client:1.0.0-rc01")
+    implementation("com.google.android.gms:play-services-wearable:18.2.0")
+    implementation("com.google.guava:guava:32.1.3-android")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
 }
