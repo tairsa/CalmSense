@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,12 +39,16 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.app.data.BackendApi
+import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicModel
 import com.example.app.data.VitalsSource
 import com.example.app.ui.theme.AppTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,15 +61,40 @@ class HeartRateViewModel : ViewModel() {
     var dataSource by mutableStateOf(VitalsSource.SIMULATED)
     var healthConnectStatus by mutableStateOf("Not connected")
 
+    // Backend / ML state
+    var userId by mutableStateOf("demo-user")
+    var panicModel by mutableStateOf<PanicModel?>(null)
+    var modelStatus by mutableStateOf("model not loaded")
+    var lastPanicProbability by mutableDoubleStateOf(0.0)
+
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
+    private var wasInPanic: Boolean = false
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
+    private val backend = BackendApi()
 
     fun attachHealthConnect(context: Context) {
         if (healthConnectRepo == null) {
             healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
+        }
+    }
+
+    fun loadModelFromBackend() {
+        modelStatus = "loading model..."
+        viewModelScope.launch {
+            try {
+                val model = backend.fetchWeights(userId)
+                panicModel = model
+                modelStatus = if (model.isUntrained())
+                    "server returned defaults (no trained model yet)"
+                else
+                    "model loaded: ${model.source} (acc=${model.testAccuracy?.let { "%.2f".format(it) } ?: "?"})"
+            } catch (e: Exception) {
+                panicModel = null
+                modelStatus = "model load failed: ${e.message ?: e.javaClass.simpleName}"
+            }
         }
     }
 
@@ -110,16 +141,27 @@ class HeartRateViewModel : ViewModel() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
         dataSource = VitalsSource.SIMULATED
     }
-    
+
     fun resetStats() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.BASELINE)
         dataSource = VitalsSource.SIMULATED
     }
 
     private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
-        if (hr > 120 && hrv < 20.0 && !moving) {
+        val model = panicModel
+        val isPanic: Boolean = if (model != null && !model.isUntrained()) {
+            val motion = if (moving) 0.7 else 0.05
+            val pred = model.predict(hr.toDouble(), hrv, motion)
+            lastPanicProbability = pred.probability
+            pred.isPanic
+        } else {
+            lastPanicProbability = 0.0
+            hr > 120 && hrv < 20.0 && !moving
+        }
+        if (isPanic && !wasInPanic) {
             triggerNotificationCallback?.invoke()
         }
+        wasInPanic = isPanic
     }
 }
 
@@ -140,6 +182,7 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
+                    viewModel.loadModelFromBackend()
                     viewModel.startPolling()
                 }
 
@@ -167,7 +210,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED }
                         )
-                        
+
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
                         }
@@ -195,6 +238,7 @@ class MainActivity : ComponentActivity() {
             .setContentTitle("CalmSense: Breathe with me")
             .setContentText("We noticed your heart rate is high. Want to try a 1-minute breathing exercise?")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -204,7 +248,8 @@ class MainActivity : ComponentActivity() {
         }
 
         try {
-            NotificationManagerCompat.from(this).notify(1, builder.build())
+            val notifId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+            NotificationManagerCompat.from(this).notify(notifId, builder.build())
         } catch (e: SecurityException) {
             // Permission missing
         }
@@ -235,7 +280,6 @@ fun CalmSenseDashboard(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Heart Rate Visualizer
         HeartRateMonitor(hr = viewModel.currentHr)
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -254,9 +298,22 @@ fun CalmSenseDashboard(
             Button(onClick = onConnectHealth) { Text("Connect Health") }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = viewModel.modelStatus,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+        }
 
-        // Stats Cards
+        Spacer(modifier = Modifier.height(8.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -271,11 +328,15 @@ fun CalmSenseDashboard(
                 value = if (viewModel.isMoving) "Active" else "Resting",
                 modifier = Modifier.weight(1f)
             )
+            StatCard(
+                label = "p(panic)",
+                value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
+                modifier = Modifier.weight(1f)
+            )
         }
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // Actions
         ActionTile(
             title = "Start Breathing",
             subtitle = "A quick way to center yourself",
@@ -284,13 +345,13 @@ fun CalmSenseDashboard(
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(
             text = "Simulations",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
         )
-        
+
         Row(
             modifier = Modifier.padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -306,7 +367,7 @@ fun CalmSenseDashboard(
 fun HeartRateMonitor(hr: Int) {
     val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
     val duration = if (hr > 120) 400 else 1000
-    
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.2f,
@@ -318,7 +379,6 @@ fun HeartRateMonitor(hr: Int) {
     )
 
     Box(contentAlignment = Alignment.Center) {
-        // Pulse circles
         Box(
             modifier = Modifier
                 .size(200.dp)
@@ -326,7 +386,7 @@ fun HeartRateMonitor(hr: Int) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
         )
-        
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Favorite,
@@ -400,6 +460,44 @@ fun SmallSimButton(text: String, onClick: () -> Unit) {
 
 @Composable
 fun BreathingOverlay(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val coach = remember { BreathingCoach() }
+    var isMuted by remember { mutableStateOf(false) }
+    var ttsReady by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        coach.init(context) { ttsReady = true }
+        onDispose { coach.shutdown() }
+    }
+
+    // Audio narration loop. Plays an opening line, then for each breathing
+    // cycle says "Breathe in" / "Breathe out" in sync with the 8-second
+    // animation cycle. Every 3 breaths it inserts a reassurance during a
+    // full extra cycle so the animation stays in phase with the voice.
+    LaunchedEffect(ttsReady, isMuted) {
+        if (!ttsReady || isMuted) return@LaunchedEffect
+        coach.speakOpening()
+        delay(8_000) // one full animation cycle of opening + buffer
+        if (!isActive) return@LaunchedEffect
+
+        var cycleCount = 0
+        while (isActive) {
+            coach.speakIn()
+            delay(4_000)
+            if (!isActive) break
+            coach.speakOut()
+            delay(4_000)
+            if (!isActive) break
+            cycleCount++
+            if (cycleCount % 3 == 0) {
+                // Rest beat: one full animation cycle with no breath prompts,
+                // just a reassuring sentence.
+                coach.speakReassurance()
+                delay(8_000)
+            }
+        }
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
     val scale by infiniteTransition.animateFloat(
         initialValue = 0.8f,
@@ -435,9 +533,9 @@ fun BreathingOverlay(onClose: () -> Unit) {
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            
+
             Spacer(modifier = Modifier.height(64.dp))
-            
+
             Box(contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
@@ -447,11 +545,23 @@ fun BreathingOverlay(onClose: () -> Unit) {
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
                 )
             }
-            
-            Spacer(modifier = Modifier.height(100.dp))
-            
-            TextButton(onClick = onClose) {
-                Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+
+            Spacer(modifier = Modifier.height(80.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { isMuted = !isMuted }) {
+                    Icon(
+                        imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        contentDescription = if (isMuted) "Unmute voice" else "Mute voice",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
+                }
+                TextButton(onClick = onClose) {
+                    Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                }
             }
         }
     }
