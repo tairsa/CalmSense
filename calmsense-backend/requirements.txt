@@ -1,6 +1,11 @@
 fastapi
 uvicorn[standard]
 
+# Storage: Supabase (Postgres) is the primary store; the JSON file is a
+# fallback. python-dotenv loads SUPABASE_URL / SUPABASE_KEY from a local .env.
+supabase
+python-dotenv
+
 # ML training pipeline (used by ml/generate_data.py and ml/train_model.py).
 # The runtime API does not import these — it only reads ml/model_weights.json,
 # so a deployment that never retrains can skip these. Listed here for the

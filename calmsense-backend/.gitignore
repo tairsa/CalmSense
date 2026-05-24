@@ -11,6 +11,9 @@ data/sensor_data.json
 data/*.json
 !data/.gitkeep
 
+# Secrets (Supabase credentials) - keep .env.example, ignore the real .env
+.env
+
 # IDE
 .idea/
 .vscode/

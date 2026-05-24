@@ -5,7 +5,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
 from models import SensorData
-from storage import append_record, read_all_records
+from storage import append_record, read_all_records, storage_backend
 
 app = FastAPI(title="CalmSense API", version="1.0.0")
 
@@ -37,7 +37,7 @@ GLOBAL_WEIGHTS, GLOBAL_SOURCE, GLOBAL_META = _load_global_model()
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "storage": storage_backend()}
 
 
 @app.post("/api/v1/sensor-data")
