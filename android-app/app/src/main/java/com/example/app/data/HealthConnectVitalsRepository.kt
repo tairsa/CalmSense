@@ -58,6 +58,6 @@ class HealthConnectVitalsRepository(private val context: Context) {
                 .records.sumOf { it.count } > 0
         }.getOrDefault(false)
 
-        return Vitals(hr, hrv, moving, hrAgeMin)
+        return Vitals(heartRateBpm = hr, hrv = hrv, isMoving = moving, hrSampleAgeMinutes = hrAgeMin)
     }
 }

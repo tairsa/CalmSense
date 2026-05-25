@@ -2,6 +2,7 @@ package com.example.app.wear
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -12,13 +13,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,60 +22,53 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.health.services.client.HealthServices
-import androidx.health.services.client.data.DataType
-import androidx.health.services.client.data.PassiveListenerConfig
-import kotlinx.coroutines.guava.await
-import kotlinx.coroutines.launch
-import androidx.lifecycle.lifecycleScope
 
 class WearMainActivity : ComponentActivity() {
 
-    private val sensorPermissionLauncher = registerForActivityResult(
+    private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        if (results.values.all { it }) registerPassiveListener()
-        else Log.w(TAG, "Sensor permissions not all granted: $results")
+        Log.i(TAG, "Permission result: $results")
+        if (hasPermission(Manifest.permission.BODY_SENSORS)) {
+            HrMonitoringService.start(this)
+        } else {
+            Log.w(TAG, "BODY_SENSORS not granted; monitoring will not start")
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { WearStatusUi() }
 
-        val needed = REQUIRED_PERMISSIONS.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        val needed = buildList {
+            if (!hasPermission(Manifest.permission.BODY_SENSORS)) {
+                add(Manifest.permission.BODY_SENSORS)
+            }
+            if (!hasPermission(HEALTH_READ_HEART_RATE)) {
+                add(HEALTH_READ_HEART_RATE)
+            }
+            if (!hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !hasPermission(Manifest.permission.POST_NOTIFICATIONS)
+            ) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
         if (needed.isEmpty()) {
-            registerPassiveListener()
+            HrMonitoringService.start(this)
         } else {
-            sensorPermissionLauncher.launch(needed.toTypedArray())
+            permissionLauncher.launch(needed.toTypedArray())
         }
     }
 
-    private fun registerPassiveListener() {
-        lifecycleScope.launch {
-            runCatching {
-                val client = HealthServices.getClient(this@WearMainActivity).passiveMonitoringClient
-                val config = PassiveListenerConfig.builder()
-                    .setDataTypes(setOf(DataType.HEART_RATE_BPM))
-                    .build()
-                client.setPassiveListenerServiceAsync(
-                    HrPassiveListenerService::class.java,
-                    config
-                ).await()
-                Log.i(TAG, "Passive HR listener registered")
-            }.onFailure {
-                Log.e(TAG, "Failed to register passive listener", it)
-            }
-        }
-    }
+    private fun hasPermission(name: String): Boolean =
+        ContextCompat.checkSelfPermission(this, name) == PackageManager.PERMISSION_GRANTED
 
     companion object {
         private const val TAG = "WearMainActivity"
-        private val REQUIRED_PERMISSIONS = arrayOf(
-            Manifest.permission.BODY_SENSORS,
-            "android.permission.health.READ_HEART_RATE",
-        )
+        private const val HEALTH_READ_HEART_RATE = "android.permission.health.READ_HEART_RATE"
     }
 }
 

@@ -107,7 +107,7 @@ class MonitorService : Service() {
             panicAttackDetection = panic,
             currentHr = hr.toFloat(),
             currentHrv = (v.hrv ?: 0.0).toFloat(),
-            currentMotionIntensity = if (v.isMoving) 1.0f else 0.0f,
+            currentMotionIntensity = v.motionIntensity ?: if (v.isMoving) 1.0f else 0.0f,
         )
         scope.launch {
             when (val r = backend.postSensorData(payload)) {
