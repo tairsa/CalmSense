@@ -3,10 +3,18 @@ package com.example.app
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,57 +31,149 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.app.data.BackendClient
+import com.example.app.data.FakeVitalsRepository
+import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PingResult
+import com.example.app.data.VitalsSource
+import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.theme.AppTheme
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
+import androidx.activity.compose.rememberLauncherForActivityResult
+
+// TODO: replace with your PC's LAN IP from `ipconfig`. Phone and PC must be on same Wi-Fi.
+const val BACKEND_URL = "http://192.168.1.72:8000"
+const val USER_ID = "tairsa-dev"
 
 class HeartRateViewModel : ViewModel() {
-    var currentHr by mutableIntStateOf(72)
-    var currentHrv by mutableDoubleStateOf(45.0)
+    var currentHr by mutableStateOf<Int?>(72)
+    var currentHrv by mutableStateOf<Double?>(45.0)
+    var hrSampleAgeMin by mutableStateOf<Long?>(null)
     var isMoving by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
+    var dataSource by mutableStateOf(VitalsSource.SIMULATED)
+    var healthConnectStatus by mutableStateOf("Not connected")
+
+    var serverStatus by mutableStateOf("Server: …")
 
     var triggerNotificationCallback: (() -> Unit)? = null
+    private var pollJob: Job? = null
+    private var pingJob: Job? = null
+
+    private val fakeRepo = FakeVitalsRepository()
+    private var healthConnectRepo: HealthConnectVitalsRepository? = null
+    private val backend = BackendClient(BACKEND_URL)
+
+    fun attachHealthConnect(context: Context) {
+        if (healthConnectRepo == null) {
+            healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
+        }
+    }
+
+    fun requiredHealthPermissions(): Set<String> =
+        healthConnectRepo?.requiredPermissions().orEmpty()
+
+    fun startPolling() {
+        if (pollJob != null) return
+        pollJob = viewModelScope.launch {
+            while (true) {
+                refreshOnce()
+                delay(1_000)
+            }
+        }
+    }
+
+    fun startPinging() {
+        if (pingJob != null) return
+        pingJob = viewModelScope.launch {
+            while (true) {
+                serverStatus = when (val r = backend.ping()) {
+                    PingResult.Connected -> "Server: connected"
+                    is PingResult.HttpError -> "Server: HTTP ${r.code}"
+                    is PingResult.NetworkError -> "Server: offline"
+                }
+                delay(5_000)
+            }
+        }
+    }
+
+    suspend fun refreshOnce() {
+        val vitals =
+            when (dataSource) {
+                VitalsSource.SIMULATED -> fakeRepo.readVitals()
+                VitalsSource.HEALTH_CONNECT -> healthConnectRepo?.readVitals() ?: fakeRepo.readVitals()
+                VitalsSource.WATCH -> WatchVitalsRepository.readVitals()
+            }
+
+        currentHr = vitals.heartRateBpm
+        currentHrv = vitals.hrv
+        hrSampleAgeMin = vitals.hrSampleAgeMinutes
+        isMoving = vitals.isMoving
+
+        healthConnectStatus = when (dataSource) {
+            VitalsSource.SIMULATED -> "Simulation"
+            VitalsSource.HEALTH_CONNECT -> when {
+                healthConnectRepo?.isAvailable() != true -> "Health Connect not available"
+                vitals.heartRateBpm == null -> "No watch data"
+                else -> "Connected (reading HR)"
+            }
+            VitalsSource.WATCH -> when {
+                vitals.heartRateBpm != null -> "Watch (live)"
+                vitals.hrSampleAgeMinutes != null -> "Watch — last reading ${vitals.hrSampleAgeMinutes}m ago"
+                else -> "Watch — waiting for samples"
+            }
+        }
+
+        checkPanicRisk(currentHr, currentHrv, isMoving)
+    }
 
     fun simulatePanicAttack() {
-        currentHr = 135
-        currentHrv = 12.0
-        isMoving = false
-        checkPanicRisk(currentHr, currentHrv, isMoving)
+        fakeRepo.setMode(FakeVitalsRepository.Mode.STRESS)
+        dataSource = VitalsSource.SIMULATED
     }
 
     fun simulateExercise() {
-        currentHr = 140
-        currentHrv = 48.0
-        isMoving = true
-        checkPanicRisk(currentHr, currentHrv, isMoving)
+        fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
+        dataSource = VitalsSource.SIMULATED
     }
     
     fun resetStats() {
-        currentHr = 72
-        currentHrv = 45.0
-        isMoving = false
+        fakeRepo.setMode(FakeVitalsRepository.Mode.BASELINE)
+        dataSource = VitalsSource.SIMULATED
     }
 
-    private fun checkPanicRisk(hr: Int, hrv: Double, moving: Boolean) {
-        if (hr > 120 && hrv < 20.0 && !moving) {
+    private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
+        if (hr != null && hrv != null && hr > 120 && hrv < 20.0 && !moving) {
             triggerNotificationCallback?.invoke()
         }
     }
 }
 
 class MainActivity : ComponentActivity() {
-    private val viewModel = HeartRateViewModel()
+    private val viewModel: HeartRateViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         createNotificationChannel()
+        requestNotificationPermissionIfNeeded()
+        requestBatteryOptimizationExemptionIfNeeded()
+        startMonitorService()
 
         viewModel.triggerNotificationCallback = {
             sendPanicNotification()
@@ -81,12 +181,38 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
+                val context = LocalContext.current
+                LaunchedEffect(Unit) {
+                    viewModel.attachHealthConnect(context)
+                    viewModel.startPolling()
+                    viewModel.startPinging()
+                }
+
+                val permissionLauncher =
+                    rememberLauncherForActivityResult(
+                        contract = PermissionController.createRequestPermissionResultContract()
+                    ) { granted ->
+                        viewModel.dataSource =
+                            if (granted.containsAll(viewModel.requiredHealthPermissions())) {
+                                VitalsSource.HEALTH_CONNECT
+                            } else {
+                                VitalsSource.SIMULATED
+                            }
+                    }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        CalmSenseDashboard(viewModel = viewModel)
+                        CalmSenseDashboard(
+                            viewModel = viewModel,
+                            onConnectHealth = {
+                                permissionLauncher.launch(viewModel.requiredHealthPermissions())
+                            },
+                            onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED },
+                            onConnectWatch = { viewModel.dataSource = VitalsSource.WATCH }
+                        )
                         
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
@@ -109,6 +235,39 @@ class MainActivity : ComponentActivity() {
         notificationManager.createNotificationChannel(channel)
     }
 
+    private fun startMonitorService() {
+        val intent = Intent(this, MonitorService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    100
+                )
+            }
+        }
+    }
+
+    private fun requestBatteryOptimizationExemptionIfNeeded() {
+        val pm = getSystemService(PowerManager::class.java) ?: return
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+            runCatching {
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(Uri.parse("package:$packageName"))
+                )
+            }
+        }
+    }
+
     private fun sendPanicNotification() {
         val builder = NotificationCompat.Builder(this, "PANIC_CHANNEL_ID")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
@@ -116,6 +275,12 @@ class MainActivity : ComponentActivity() {
             .setContentText("We noticed your heart rate is high. Want to try a 1-minute breathing exercise?")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                return
+            }
+        }
 
         try {
             NotificationManagerCompat.from(this).notify(1, builder.build())
@@ -126,7 +291,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
+fun CalmSenseDashboard(
+    viewModel: HeartRateViewModel,
+    onConnectHealth: () -> Unit,
+    onUseSimulation: () -> Unit,
+    onConnectWatch: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -148,7 +318,55 @@ fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
         // Heart Rate Visualizer
         HeartRateMonitor(hr = viewModel.currentHr)
 
+        if (viewModel.dataSource == VitalsSource.HEALTH_CONNECT) {
+            Spacer(modifier = Modifier.height(8.dp))
+            val age = viewModel.hrSampleAgeMin
+            val hr = viewModel.currentHr
+            val (msg, isErr) = when {
+                hr != null && age != null -> "Last reading: ${ageLabel(age)}" to false
+                hr == null && age != null -> "Latest reading is ${ageLabel(age)} old. Watch may be off-wrist or sync is stalled." to true
+                else -> "No heart rate data found in Health Connect." to true
+            }
+            Text(
+                text = msg,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isErr) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AssistChip(
+                onClick = {},
+                label = { Text(viewModel.healthConnectStatus) },
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            TextButton(onClick = onUseSimulation) { Text("Sim") }
+            TextButton(onClick = onConnectHealth) { Text("HC") }
+            Button(onClick = onConnectWatch) { Text("Watch") }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AssistChip(
+                onClick = {},
+                label = { Text(viewModel.serverStatus) },
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Stats Cards
         Row(
@@ -157,7 +375,9 @@ fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
         ) {
             StatCard(
                 label = "HRV",
-                value = String.format("%.1f", viewModel.currentHrv),
+                value = viewModel.currentHrv
+                    ?.let { String.format(Locale.getDefault(), "%.1f", it) }
+                    ?: "--",
                 modifier = Modifier.weight(1f)
             )
             StatCard(
@@ -196,11 +416,19 @@ fun CalmSenseDashboard(viewModel: HeartRateViewModel) {
     }
 }
 
+private fun ageLabel(min: Long): String = when {
+    min < 1L -> "just now"
+    min == 1L -> "1 min ago"
+    min < 60L -> "$min min ago"
+    else -> "${min / 60} h ${min % 60} min ago"
+}
+
 @Composable
-fun HeartRateMonitor(hr: Int) {
+fun HeartRateMonitor(hr: Int?) {
     val infiniteTransition = rememberInfiniteTransition(label = "heartbeat")
-    val duration = if (hr > 120) 400 else 1000
-    
+    val highHr = hr != null && hr > 120
+    val duration = if (highHr) 400 else 1000
+
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
         targetValue = 1.2f,
@@ -220,16 +448,20 @@ fun HeartRateMonitor(hr: Int) {
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
         )
-        
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
-                tint = if (hr > 120) Color(0xFFEF5350) else MaterialTheme.colorScheme.primary,
+                tint = when {
+                    hr == null -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)
+                    highHr -> Color(0xFFEF5350)
+                    else -> MaterialTheme.colorScheme.primary
+                },
                 modifier = Modifier.size(48.dp).scale(scale)
             )
             Text(
-                text = "$hr",
+                text = hr?.toString() ?: "--",
                 style = MaterialTheme.typography.displayLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground
             )
@@ -355,6 +587,11 @@ fun BreathingOverlay(onClose: () -> Unit) {
 @Composable
 fun DashboardPreview() {
     AppTheme {
-        CalmSenseDashboard(viewModel = HeartRateViewModel())
+        CalmSenseDashboard(
+            viewModel = HeartRateViewModel(),
+            onConnectHealth = {},
+            onUseSimulation = {},
+            onConnectWatch = {}
+        )
     }
 }
