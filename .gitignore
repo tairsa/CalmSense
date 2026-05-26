@@ -32,3 +32,14 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Backend runtime data
+calmsense-backend/data/
+
+# Local gradle daemon config
+gradle-daemon-jvm.properties
