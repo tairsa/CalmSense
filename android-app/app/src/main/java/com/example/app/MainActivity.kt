@@ -18,13 +18,19 @@ import androidx.activity.viewModels
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,9 +56,11 @@ import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicFeedbackPayload
 import com.example.app.data.PanicModel
 import com.example.app.data.PanicModelCache
 import com.example.app.data.PingResult
+import com.example.app.data.PostResult
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.theme.AppTheme
@@ -99,6 +107,16 @@ class HeartRateViewModel : ViewModel() {
     var panicModel by mutableStateOf<PanicModel?>(null)
     var modelStatus by mutableStateOf("model not loaded")
     var lastPanicProbability by mutableDoubleStateOf(0.0)
+
+    // Panic feedback flow (training labels from the user).
+    var showPanicConfirm by mutableStateOf(false)
+    var showSeveritySheet by mutableStateOf(false)
+    var feedbackStatus by mutableStateOf<String?>(null)
+    private var pendingDetectedByModel: Boolean = false
+    private var pendingHr: Int? = null
+    private var pendingHrv: Double? = null
+    private var pendingMotion: Boolean = false
+    private var pendingProbability: Double = 0.0
 
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
@@ -217,16 +235,36 @@ class HeartRateViewModel : ViewModel() {
     fun simulatePanicAttack() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.STRESS)
         dataSource = VitalsSource.SIMULATED
+        // Clear the edge-trigger debounce so the next detection actually fires
+        // a fresh notification (otherwise a leftover wasInPanic=true from a
+        // previous demo silently swallows it).
+        wasInPanic = false
+    }
+
+    /** Fires the full panic UX (notification + breathing overlay) without
+     *  touching the live data source — so you can see what a panic feels
+     *  like in the app while still monitoring real watch data underneath.
+     *  The severity prompt surfaces after the breathing overlay closes. */
+    fun triggerPanicDemo() {
+        lastPanicProbability = 0.95
+        wasInPanic = true
+        captureFeedbackContext(detectedByModel = false)
+        triggerNotificationCallback?.invoke()
+        showBreathingExercise = true
+        showSeveritySheet = true
     }
 
     fun simulateExercise() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
         dataSource = VitalsSource.SIMULATED
+        wasInPanic = false
     }
 
     fun resetStats() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.BASELINE)
         dataSource = VitalsSource.SIMULATED
+        wasInPanic = false
+        lastPanicProbability = 0.0
     }
 
     private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
@@ -247,8 +285,73 @@ class HeartRateViewModel : ViewModel() {
         }
         if (isPanic && !wasInPanic) {
             triggerNotificationCallback?.invoke()
+            captureFeedbackContext(detectedByModel = true)
+            // In simulation mode, also open the breathing overlay so the demo
+            // is visibly self-evident — users miss notifications when they're
+            // already inside the app.
+            if (dataSource == VitalsSource.SIMULATED) {
+                showBreathingExercise = true
+            }
+            // Ask the user to label this detection once they can answer.
+            // Surfaces after the breathing overlay is dismissed (see UI layer).
+            showPanicConfirm = true
         }
         wasInPanic = isPanic
+    }
+
+    /** Manual entry: user logs a panic the model missed. Skips the
+     *  "was it a panic?" question and goes straight to severity. */
+    fun logManualPanic() {
+        captureFeedbackContext(detectedByModel = false)
+        showSeveritySheet = true
+    }
+
+    fun onConfirmPanic(yes: Boolean) {
+        showPanicConfirm = false
+        if (yes) {
+            showSeveritySheet = true
+        } else {
+            // False positive — submit immediately with was_panic=false.
+            submitFeedback(wasPanic = false, severity = null)
+        }
+    }
+
+    fun onSeveritySelected(severity: Int) {
+        showSeveritySheet = false
+        submitFeedback(wasPanic = true, severity = severity)
+    }
+
+    fun dismissSeverity() {
+        showSeveritySheet = false
+    }
+
+    private fun captureFeedbackContext(detectedByModel: Boolean) {
+        pendingDetectedByModel = detectedByModel
+        pendingHr = currentHr
+        pendingHrv = currentHrv
+        pendingMotion = isMoving
+        pendingProbability = lastPanicProbability
+    }
+
+    private fun submitFeedback(wasPanic: Boolean, severity: Int?) {
+        val payload = PanicFeedbackPayload(
+            userId = userId,
+            wasPanic = wasPanic,
+            severity = severity,
+            detectedByModel = pendingDetectedByModel,
+            currentHr = pendingHr?.toFloat(),
+            currentHrv = pendingHrv?.toFloat(),
+            currentMotionIntensity = if (pendingMotion) 1.0f else 0.0f,
+            modelProbability = if (pendingDetectedByModel) pendingProbability else null,
+        )
+        feedbackStatus = "sending…"
+        viewModelScope.launch {
+            feedbackStatus = when (val r = pingBackend.submitPanicFeedback(payload)) {
+                PostResult.Success -> "Feedback saved — thanks!"
+                is PostResult.HttpError -> "Feedback failed (HTTP ${r.code})"
+                is PostResult.NetworkError -> "Feedback failed: offline"
+            }
+        }
     }
 }
 
@@ -305,6 +408,32 @@ class MainActivity : ComponentActivity() {
 
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
+                        }
+
+                        // Dialog asking the user to confirm a model detection.
+                        // Hidden while the breathing overlay is up so it surfaces
+                        // after the user finishes breathing.
+                        if (viewModel.showPanicConfirm && !viewModel.showBreathingExercise) {
+                            ConfirmPanicDialog(
+                                onYes = { viewModel.onConfirmPanic(true) },
+                                onNo = { viewModel.onConfirmPanic(false) },
+                            )
+                        }
+
+                        // Defer severity prompt until the breathing overlay
+                        // is closed, so the user finishes calming down first.
+                        if (viewModel.showSeveritySheet && !viewModel.showBreathingExercise) {
+                            SeveritySheet(
+                                onDismiss = { viewModel.dismissSeverity() },
+                                onSubmit = { viewModel.onSeveritySelected(it) },
+                            )
+                        }
+
+                        viewModel.feedbackStatus?.let { status ->
+                            FeedbackToast(
+                                text = status,
+                                onDismiss = { viewModel.feedbackStatus = null },
+                            )
                         }
                     }
                 }
@@ -391,6 +520,7 @@ fun CalmSenseDashboard(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -404,7 +534,7 @@ fun CalmSenseDashboard(
             modifier = Modifier.padding(top = 16.dp)
         )
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         HeartRateMonitor(hr = viewModel.currentHr)
 
@@ -495,7 +625,7 @@ fun CalmSenseDashboard(
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         ActionTile(
             title = "Start Breathing",
@@ -504,21 +634,32 @@ fun CalmSenseDashboard(
             onClick = { viewModel.showBreathingExercise = true }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "Simulations",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+        ActionTile(
+            title = "I'm having a panic attack",
+            subtitle = "Log a panic the app didn't catch — helps train the model.",
+            icon = Icons.Default.Warning,
+            onClick = { viewModel.logManualPanic() }
         )
 
-        Row(
-            modifier = Modifier.padding(vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SmallSimButton("Stress", onClick = { viewModel.simulatePanicAttack() })
-            SmallSimButton("Exercise", onClick = { viewModel.simulateExercise() })
-            SmallSimButton("Reset", onClick = { viewModel.resetStats() })
+        Spacer(modifier = Modifier.height(12.dp))
+
+        var showSimSheet by remember { mutableStateOf(false) }
+        OutlinedButton(
+            onClick = { showSimSheet = true },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Run a simulation") }
+
+        if (showSimSheet) {
+            SimulationSheet(
+                onDismiss = { showSimSheet = false },
+                onPanicNow = { viewModel.triggerPanicDemo(); showSimSheet = false },
+                onStressVitals = { viewModel.simulatePanicAttack(); showSimSheet = false },
+                onExercise = { viewModel.simulateExercise(); showSimSheet = false },
+                onReset = { viewModel.resetStats(); showSimSheet = false },
+            )
         }
     }
 }
@@ -627,6 +768,208 @@ fun SmallSimButton(text: String, onClick: () -> Unit) {
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
     ) {
         Text(text, fontSize = 12.sp)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SimulationSheet(
+    onDismiss: () -> Unit,
+    onPanicNow: () -> Unit,
+    onStressVitals: () -> Unit,
+    onExercise: () -> Unit,
+    onReset: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            Text(
+                "Run a simulation",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "See what the app does for different physiological scenarios. Live watch data resumes after Reset.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+            )
+
+            SimulationRow(
+                icon = Icons.Default.Warning,
+                tint = Color(0xFFEF5350),
+                title = "Panic now",
+                subtitle = "Immediately fire the panic notification and open the breathing exercise. Doesn't change your data source.",
+                onClick = onPanicNow,
+            )
+            SimulationRow(
+                icon = Icons.Default.MonitorHeart,
+                tint = MaterialTheme.colorScheme.primary,
+                title = "Stress vitals",
+                subtitle = "Feed the model HR ≈ 135, HRV ≈ 15, no motion. The classifier should detect a panic on its own.",
+                onClick = onStressVitals,
+            )
+            SimulationRow(
+                icon = Icons.Default.DirectionsRun,
+                tint = MaterialTheme.colorScheme.secondary,
+                title = "Exercise",
+                subtitle = "High HR but moving — the model should NOT flag a panic.",
+                onClick = onExercise,
+            )
+            SimulationRow(
+                icon = Icons.Default.Refresh,
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                title = "Reset to baseline",
+                subtitle = "Calm vitals; ends the simulation. Switch back to Watch to resume live data.",
+                onClick = onReset,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SimulationRow(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ConfirmPanicDialog(onYes: () -> Unit, onNo: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onNo,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = Color(0xFFEF5350),
+            )
+        },
+        title = { Text("Was that a panic attack?") },
+        text = {
+            Text("Your answer trains the model. \"No\" marks this as a false alarm; \"Yes\" lets you rate the severity 1–10.")
+        },
+        confirmButton = {
+            TextButton(onClick = onYes) { Text("Yes, it was") }
+        },
+        dismissButton = {
+            TextButton(onClick = onNo) { Text("No, false alarm") }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var severity by remember { mutableIntStateOf(5) }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            Text(
+                "How severe was it?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "1 = barely noticeable · 10 = the worst you've experienced.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+            )
+            Text(
+                text = severity.toString(),
+                style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Slider(
+                value = severity.toFloat(),
+                onValueChange = { severity = it.toInt().coerceIn(1, 10) },
+                valueRange = 1f..10f,
+                steps = 8,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Cancel") }
+                Button(
+                    onClick = { onSubmit(severity) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Submit") }
+            }
+        }
+    }
+}
+
+@Composable
+fun FeedbackToast(text: String, onDismiss: () -> Unit) {
+    // Auto-dismiss after 3 s so the model status returns to its resting state.
+    LaunchedEffect(text) {
+        delay(3_000)
+        onDismiss()
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 80.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.inverseSurface,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
+            Text(
+                text,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
+        }
     }
 }
 

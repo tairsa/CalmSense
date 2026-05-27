@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from models import SensorData
-from storage import append_record, read_all_records, storage_backend
+from models import PanicFeedback, SensorData
+from storage import append_feedback, append_record, read_all_records, storage_backend
 
 app = FastAPI(title="CalmSense API", version="1.0.0")
 
@@ -55,6 +55,28 @@ def receive_sensor_data(data: SensorData):
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": f"Failed to save data: {e}"},
+        )
+
+
+@app.post("/api/v1/panic-feedback")
+def receive_panic_feedback(data: PanicFeedback):
+    """Record a labeled training signal from the user.
+
+    Used to retrain the panic classifier and to keep a model hit/miss log.
+    `was_panic=true` with severity (1-10) is a positive label; `was_panic=false`
+    is a labeled false positive. `detected_by_model=false` means the user
+    logged it manually because the model missed it.
+    """
+    record = data.model_dump()
+    if record["timestamp"] is None:
+        record["timestamp"] = datetime.now(timezone.utc).isoformat()
+    try:
+        append_feedback(record)
+        return {"success": True, "message": "Feedback saved."}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Failed to save feedback: {e}"},
         )
 
 

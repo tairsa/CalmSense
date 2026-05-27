@@ -4,7 +4,9 @@ import tempfile
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
+FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
 TABLE_NAME = "sensor_data"
+FEEDBACK_TABLE_NAME = "panic_feedback"
 
 # ---------------------------------------------------------------------------
 # Storage backend selection
@@ -61,11 +63,11 @@ def storage_backend() -> str:
 
 # --- JSON fallback (original atomic-write implementation) ------------------
 
-def _json_append(record: dict) -> None:
+def _json_append_to(path: str, record: dict) -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
 
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
             records = json.load(f)
     else:
         records = []
@@ -77,17 +79,25 @@ def _json_append(record: dict) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(records, f, indent=2)
-        os.replace(tmp_path, DATA_FILE)
+        os.replace(tmp_path, path)
     except Exception:
         os.unlink(tmp_path)
         raise
 
 
-def _json_read_all() -> list:
-    if not os.path.exists(DATA_FILE):
+def _json_read_from(path: str) -> list:
+    if not os.path.exists(path):
         return []
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _json_append(record: dict) -> None:
+    _json_append_to(DATA_FILE, record)
+
+
+def _json_read_all() -> list:
+    return _json_read_from(DATA_FILE)
 
 
 # --- Public API ------------------------------------------------------------
@@ -123,3 +133,34 @@ def read_all_records() -> list:
             print(f"[storage] Supabase read failed ({e}); reading JSON fallback")
 
     return _json_read_all()
+
+
+def append_feedback(record: dict) -> None:
+    """Append a labeled panic-feedback record (training signal).
+
+    Same Supabase-with-JSON-fallback semantics as append_record.
+    """
+    if _supabase is not None:
+        try:
+            _supabase.table(FEEDBACK_TABLE_NAME).insert(record).execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase feedback insert failed ({e}); writing JSON fallback")
+
+    _json_append_to(FEEDBACK_FILE, record)
+
+
+def read_all_feedback() -> list:
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(FEEDBACK_TABLE_NAME)
+                .select("*")
+                .order("id")
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase feedback read failed ({e}); reading JSON fallback")
+
+    return _json_read_from(FEEDBACK_FILE)
