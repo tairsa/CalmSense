@@ -46,6 +46,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.health.connect.client)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.play.services.location)
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
