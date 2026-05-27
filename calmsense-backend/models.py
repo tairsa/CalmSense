@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 
 
 class SensorData(BaseModel):
@@ -29,3 +29,35 @@ class PanicFeedback(BaseModel):
     current_motion_intensity: Optional[float] = None
     model_probability: Optional[float] = None    # p(panic) the on-device model emitted
     timestamp: Optional[str] = None             # ISO 8601; auto-filled server-side if omitted
+
+
+class PanicReport(BaseModel):
+    """Journaled panic-attack entry.
+
+    Captured at event start: GPS, timestamp, severity. Free-text fields and
+    symptom list are filled in by the user via the post-event questionnaire
+    and can all be skipped. Used by the user to track patterns over time and
+    review them with a therapist; mirrored to backend for cross-device sync.
+    """
+
+    user_id: str
+    timestamp: Optional[str] = None             # ISO 8601 of event start
+    severity: int = Field(..., ge=1, le=10)
+    detected_by_model: bool
+
+    # Optional questionnaire fields — null when the user skipped them.
+    feeling: Optional[str] = None
+    symptoms: List[str] = Field(default_factory=list)
+    activity_before: Optional[str] = None
+    what_helped: Optional[str] = None
+    duration_minutes: Optional[int] = Field(None, ge=0, le=1440)
+
+    # Captured from FusedLocationProviderClient on the phone; null if perm denied.
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    location_accuracy_m: Optional[float] = None
+
+    # Vitals at event start for therapist context.
+    current_hr: Optional[float] = None
+    current_hrv: Optional[float] = None
+    current_motion_intensity: Optional[float] = None

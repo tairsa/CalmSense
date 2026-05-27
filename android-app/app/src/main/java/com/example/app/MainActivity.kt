@@ -56,14 +56,29 @@ import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.LocationProvider
+import com.example.app.data.PanicEventContext
 import com.example.app.data.PanicFeedbackPayload
 import com.example.app.data.PanicModel
 import com.example.app.data.PanicModelCache
+import com.example.app.data.PanicReportEntity
+import com.example.app.data.PanicReportRepository
 import com.example.app.data.PingResult
 import com.example.app.data.PostResult
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
+import com.example.app.ui.QuestionnaireAnswers
+import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.ReportDetailScreen
+import com.example.app.ui.ReportsScreen
 import com.example.app.ui.theme.AppTheme
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -90,6 +105,13 @@ private val isEmulator: Boolean by lazy {
 
 val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEND_LAN_URL
 const val USER_ID = "tairsa-dev"
+
+// Navigation routes — kept as compile-time constants so the NavHost and the
+// auto-navigation LaunchedEffect agree on names.
+private const val ROUTE_MONITOR = "monitor"
+private const val ROUTE_REPORTS = "reports"
+private const val ROUTE_REPORT_DETAIL = "report"
+private const val ROUTE_QUESTIONNAIRE = "questionnaire"
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
@@ -118,6 +140,15 @@ class HeartRateViewModel : ViewModel() {
     private var pendingMotion: Boolean = false
     private var pendingProbability: Double = 0.0
 
+    // Journal (panic reports).
+    private var reportRepo: PanicReportRepository? = null
+    var reports by mutableStateOf<List<PanicReportEntity>>(emptyList())
+        private set
+    /** When non-null, the dashboard should navigate to /questionnaire/<id>. */
+    var pendingQuestionnaireId by mutableStateOf<Long?>(null)
+    /** Set by MainActivity once it has a Context — drives async GPS capture. */
+    private var appContext: Context? = null
+
     var triggerNotificationCallback: (() -> Unit)? = null
     private var pollJob: Job? = null
     private var pingJob: Job? = null
@@ -142,6 +173,15 @@ class HeartRateViewModel : ViewModel() {
                 panicModel = it
                 modelStatus = "cached model loaded (${it.source}, trained ${it.trainedAt ?: "?"})"
             }
+        }
+        if (reportRepo == null) {
+            val repo = PanicReportRepository.get(context.applicationContext)
+            reportRepo = repo
+            appContext = context.applicationContext
+            viewModelScope.launch {
+                repo.observeAll().collectLatest { rows -> reports = rows }
+            }
+            viewModelScope.launch { repo.syncPending() }
         }
     }
 
@@ -318,7 +358,75 @@ class HeartRateViewModel : ViewModel() {
 
     fun onSeveritySelected(severity: Int) {
         showSeveritySheet = false
+
+        // Severity 0 = the user decided after the fact that it wasn't a real
+        // panic attack. Log it as a miss (false positive for the model when
+        // detected, or a noise event when manually triggered) and skip the
+        // report/questionnaire entirely — there's nothing meaningful to
+        // journal.
+        if (severity == 0) {
+            submitFeedback(wasPanic = false, severity = null)
+            PanicEventContext.take()
+            return
+        }
+
         submitFeedback(wasPanic = true, severity = severity)
+        // Persist a panic-report row immediately so the questionnaire screen
+        // can fill it in. We snapshot location from PanicEventContext (which
+        // may still be filling in asynchronously — that's OK; we update the
+        // row again from any later GPS that arrives before save).
+        val repo = reportRepo ?: return
+        val snap = PanicEventContext.peek()
+        viewModelScope.launch {
+            val id = repo.insertAndSync(
+                PanicReportEntity(
+                    timestampMs = snap?.timestampMs ?: System.currentTimeMillis(),
+                    severity = severity,
+                    detectedByModel = snap?.detectedByModel ?: pendingDetectedByModel,
+                    latitude = snap?.latitude,
+                    longitude = snap?.longitude,
+                    locationAccuracyM = snap?.locationAccuracyM,
+                    currentHr = snap?.hr ?: pendingHr,
+                    currentHrv = snap?.hrv ?: pendingHrv,
+                    currentMotionIntensity = snap?.motionIntensity,
+                )
+            )
+            pendingQuestionnaireId = id
+        }
+    }
+
+    fun saveQuestionnaire(reportId: Long, answers: QuestionnaireAnswers) {
+        val repo = reportRepo ?: return
+        viewModelScope.launch {
+            val existing = repo.findById(reportId) ?: return@launch
+            // Late-arriving GPS: if a fix landed after the row was inserted,
+            // merge it now.
+            val late = PanicEventContext.peek()
+            val updated = existing.copy(
+                feeling = answers.feeling,
+                symptoms = answers.symptoms,
+                activityBefore = answers.activityBefore,
+                whatHelped = answers.whatHelped,
+                durationMinutes = answers.durationMinutes,
+                latitude = existing.latitude ?: late?.latitude,
+                longitude = existing.longitude ?: late?.longitude,
+                locationAccuracyM = existing.locationAccuracyM ?: late?.locationAccuracyM,
+            )
+            repo.updateAndSync(updated)
+            PanicEventContext.take()  // clear once we've consumed it
+            pendingQuestionnaireId = null
+        }
+    }
+
+    fun skipQuestionnaire() {
+        // Row is already written; nothing to do besides clearing nav signal.
+        PanicEventContext.take()
+        pendingQuestionnaireId = null
+    }
+
+    fun deleteReport(id: Long) {
+        val repo = reportRepo ?: return
+        viewModelScope.launch { repo.delete(id) }
     }
 
     fun dismissSeverity() {
@@ -331,6 +439,24 @@ class HeartRateViewModel : ViewModel() {
         pendingHrv = currentHrv
         pendingMotion = isMoving
         pendingProbability = lastPanicProbability
+
+        // Snapshot for the journal entry and kick off a GPS fix.
+        PanicEventContext.set(
+            PanicEventContext.Snapshot(
+                timestampMs = System.currentTimeMillis(),
+                detectedByModel = detectedByModel,
+                hr = currentHr,
+                hrv = currentHrv,
+                motionIntensity = if (isMoving) 1.0f else 0.0f,
+            )
+        )
+        val ctx = appContext ?: return
+        viewModelScope.launch {
+            val loc = LocationProvider.getCurrentLocation(ctx)
+            if (loc != null) {
+                PanicEventContext.mergeLocation(loc.latitude, loc.longitude, loc.accuracy)
+            }
+        }
     }
 
     private fun submitFeedback(wasPanic: Boolean, severity: Int?) {
@@ -363,6 +489,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
+        requestLocationPermissionIfNeeded()
         requestBatteryOptimizationExemptionIfNeeded()
         startMonitorService()
 
@@ -392,19 +519,75 @@ class MainActivity : ComponentActivity() {
                             }
                     }
 
+                val navController = rememberNavController()
+                // Hide bottom nav on the questionnaire and report-detail
+                // pushed screens (they have their own TopAppBar with back/skip).
+                val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                val showBottomNav = currentRoute == ROUTE_MONITOR || currentRoute == ROUTE_REPORTS
+
+                // Auto-navigate to the questionnaire when a report row was
+                // just inserted post-severity.
+                LaunchedEffect(viewModel.pendingQuestionnaireId) {
+                    viewModel.pendingQuestionnaireId?.let { id ->
+                        navController.navigate("$ROUTE_QUESTIONNAIRE/$id")
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    bottomBar = {
+                        if (showBottomNav) {
+                            CalmSenseBottomNav(navController, currentRoute)
+                        }
+                    },
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
-                        CalmSenseDashboard(
-                            viewModel = viewModel,
-                            onConnectHealth = {
-                                permissionLauncher.launch(viewModel.requiredHealthPermissions())
-                            },
-                            onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED },
-                            onConnectWatch = { viewModel.dataSource = VitalsSource.WATCH }
-                        )
+                        NavHost(
+                            navController = navController,
+                            startDestination = ROUTE_MONITOR,
+                        ) {
+                            composable(ROUTE_MONITOR) {
+                                CalmSenseDashboard(
+                                    viewModel = viewModel,
+                                    onConnectHealth = {
+                                        permissionLauncher.launch(viewModel.requiredHealthPermissions())
+                                    },
+                                    onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED },
+                                    onConnectWatch = { viewModel.dataSource = VitalsSource.WATCH }
+                                )
+                            }
+                            composable(ROUTE_REPORTS) {
+                                ReportsScreen(
+                                    reports = viewModel.reports,
+                                    onReportClick = { id ->
+                                        navController.navigate("$ROUTE_REPORT_DETAIL/$id")
+                                    },
+                                    onReportDelete = { id -> viewModel.deleteReport(id) },
+                                )
+                            }
+                            composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
+                                val id = backStack.arguments?.getString("id")?.toLongOrNull()
+                                val report = id?.let { viewModel.reports.firstOrNull { r -> r.id == it } }
+                                ReportDetailScreen(
+                                    report = report,
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                            composable("$ROUTE_QUESTIONNAIRE/{id}") { backStack ->
+                                val id = backStack.arguments?.getString("id")?.toLongOrNull() ?: -1L
+                                QuestionnaireScreen(
+                                    onSkip = {
+                                        viewModel.skipQuestionnaire()
+                                        navController.popBackStack(ROUTE_MONITOR, inclusive = false)
+                                    },
+                                    onSave = { answers ->
+                                        viewModel.saveQuestionnaire(id, answers)
+                                        navController.popBackStack(ROUTE_MONITOR, inclusive = false)
+                                    },
+                                )
+                            }
+                        }
 
                         if (viewModel.showBreathingExercise) {
                             BreathingOverlay(onClose = { viewModel.showBreathingExercise = false })
@@ -438,6 +621,55 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun CalmSenseBottomNav(navController: NavHostController, currentRoute: String?) {
+        NavigationBar {
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_MONITOR,
+                onClick = {
+                    if (currentRoute != ROUTE_MONITOR) {
+                        navController.navigate(ROUTE_MONITOR) {
+                            popUpTo(ROUTE_MONITOR) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.Default.MonitorHeart, contentDescription = null) },
+                label = { Text("Monitor") },
+            )
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_REPORTS,
+                onClick = {
+                    if (currentRoute != ROUTE_REPORTS) {
+                        navController.navigate(ROUTE_REPORTS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
+                label = { Text("Reports") },
+            )
+        }
+    }
+
+    private fun requestLocationPermissionIfNeeded() {
+        val fine = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fine) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+                101,
+            )
         }
     }
 
@@ -570,7 +802,6 @@ fun CalmSenseDashboard(
             )
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = onUseSimulation) { Text("Sim") }
-            TextButton(onClick = onConnectHealth) { Text("HC") }
             Button(onClick = onConnectWatch) { Text("Watch") }
         }
 
@@ -900,6 +1131,7 @@ fun ConfirmPanicDialog(onYes: () -> Unit, onNo: () -> Unit) {
 fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var severity by remember { mutableIntStateOf(5) }
+    val isMiss = severity == 0
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
             Text(
@@ -908,23 +1140,24 @@ fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "1 = barely noticeable · 10 = the worst you've experienced.",
+                "0 = not actually a panic attack (logged as a miss) · 1 = barely noticeable · 10 = the worst you've experienced.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
             )
             Text(
-                text = severity.toString(),
+                text = if (isMiss) "Not a panic" else severity.toString(),
                 style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary,
+                color = if (isMiss) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
             Slider(
                 value = severity.toFloat(),
-                onValueChange = { severity = it.toInt().coerceIn(1, 10) },
-                valueRange = 1f..10f,
-                steps = 8,
+                onValueChange = { severity = it.toInt().coerceIn(0, 10) },
+                valueRange = 0f..10f,
+                steps = 9,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             Row(
@@ -940,7 +1173,7 @@ fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
                 Button(
                     onClick = { onSubmit(severity) },
                     modifier = Modifier.weight(1f),
-                ) { Text("Submit") }
+                ) { Text(if (isMiss) "Log miss" else "Submit") }
             }
         }
     }

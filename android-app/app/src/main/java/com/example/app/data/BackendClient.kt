@@ -2,6 +2,7 @@ package com.example.app.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -39,6 +40,24 @@ data class PanicFeedbackPayload(
     val timestamp: String? = null,
 )
 
+data class PanicReportPayload(
+    val userId: String,
+    val timestamp: String?,
+    val severity: Int,
+    val detectedByModel: Boolean,
+    val feeling: String?,
+    val symptoms: List<String>,
+    val activityBefore: String?,
+    val whatHelped: String?,
+    val durationMinutes: Int?,
+    val latitude: Double?,
+    val longitude: Double?,
+    val locationAccuracyM: Float?,
+    val currentHr: Float?,
+    val currentHrv: Double?,
+    val currentMotionIntensity: Float?,
+)
+
 class BackendClient(private val baseUrl: String) {
 
     suspend fun ping(): PingResult = withContext(Dispatchers.IO) {
@@ -72,6 +91,48 @@ class BackendClient(private val baseUrl: String) {
                 put("current_hrv", payload.currentHrv.toDouble())
                 put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
                 if (payload.timestamp != null) put("timestamp", payload.timestamp)
+            }.toString()
+
+            try {
+                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                if (code in 200..299) PostResult.Success else PostResult.HttpError(code)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrElse { e -> PostResult.NetworkError(e.javaClass.simpleName) }
+    }
+
+    suspend fun submitPanicReport(payload: PanicReportPayload): PostResult = withContext(Dispatchers.IO) {
+        runCatching {
+            val conn = URL("$baseUrl/api/v1/panic-reports").openConnection() as HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+
+            val symptomsArr = JSONArray()
+            payload.symptoms.forEach { symptomsArr.put(it) }
+
+            val body = JSONObject().apply {
+                put("user_id", payload.userId)
+                if (payload.timestamp != null) put("timestamp", payload.timestamp)
+                put("severity", payload.severity)
+                put("detected_by_model", payload.detectedByModel)
+                if (payload.feeling != null) put("feeling", payload.feeling)
+                put("symptoms", symptomsArr)
+                if (payload.activityBefore != null) put("activity_before", payload.activityBefore)
+                if (payload.whatHelped != null) put("what_helped", payload.whatHelped)
+                if (payload.durationMinutes != null) put("duration_minutes", payload.durationMinutes)
+                if (payload.latitude != null) put("latitude", payload.latitude)
+                if (payload.longitude != null) put("longitude", payload.longitude)
+                if (payload.locationAccuracyM != null)
+                    put("location_accuracy_m", payload.locationAccuracyM.toDouble())
+                if (payload.currentHr != null) put("current_hr", payload.currentHr.toDouble())
+                if (payload.currentHrv != null) put("current_hrv", payload.currentHrv)
+                if (payload.currentMotionIntensity != null)
+                    put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
             }.toString()
 
             try {

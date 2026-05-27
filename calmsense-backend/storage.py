@@ -5,8 +5,10 @@ import tempfile
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
+REPORTS_FILE = os.path.join(DATA_DIR, "panic_reports.json")
 TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
+REPORTS_TABLE_NAME = "panic_reports"
 
 # ---------------------------------------------------------------------------
 # Storage backend selection
@@ -164,3 +166,31 @@ def read_all_feedback() -> list:
             print(f"[storage] Supabase feedback read failed ({e}); reading JSON fallback")
 
     return _json_read_from(FEEDBACK_FILE)
+
+
+def append_report(record: dict) -> None:
+    """Append a journaled panic report. Same Supabase-with-JSON-fallback."""
+    if _supabase is not None:
+        try:
+            _supabase.table(REPORTS_TABLE_NAME).insert(record).execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase report insert failed ({e}); writing JSON fallback")
+
+    _json_append_to(REPORTS_FILE, record)
+
+
+def read_all_reports() -> list:
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(REPORTS_TABLE_NAME)
+                .select("*")
+                .order("id")
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase report read failed ({e}); reading JSON fallback")
+
+    return _json_read_from(REPORTS_FILE)

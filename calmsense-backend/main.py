@@ -4,8 +4,14 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from models import PanicFeedback, SensorData
-from storage import append_feedback, append_record, read_all_records, storage_backend
+from models import PanicFeedback, PanicReport, SensorData
+from storage import (
+    append_feedback,
+    append_record,
+    append_report,
+    read_all_records,
+    storage_backend,
+)
 
 app = FastAPI(title="CalmSense API", version="1.0.0")
 
@@ -77,6 +83,27 @@ def receive_panic_feedback(data: PanicFeedback):
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": f"Failed to save feedback: {e}"},
+        )
+
+
+@app.post("/api/v1/panic-reports")
+def receive_panic_report(data: PanicReport):
+    """Mirror a journaled panic-attack report to the server.
+
+    Phone is the source of truth (Room DB) — the server copy enables future
+    cross-device sync and bulk export for a therapist. Free-text fields and
+    GPS are sensitive; consider that before exposing this data widely.
+    """
+    record = data.model_dump()
+    if record["timestamp"] is None:
+        record["timestamp"] = datetime.now(timezone.utc).isoformat()
+    try:
+        append_report(record)
+        return {"success": True, "message": "Report saved."}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Failed to save report: {e}"},
         )
 
 
