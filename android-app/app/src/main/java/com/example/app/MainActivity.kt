@@ -51,6 +51,7 @@ import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
 import com.example.app.data.PanicModel
+import com.example.app.data.PanicModelCache
 import com.example.app.data.PingResult
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
@@ -62,8 +63,24 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 
-// TODO: replace with your PC's LAN IP from `ipconfig`. Phone and PC must be on same Wi-Fi.
-const val BACKEND_URL = "http://192.168.1.72:8000"
+// The Android emulator can't reach the host at the host's LAN IP — it sees the
+// host only as 10.0.2.2 on its internal NAT. A real phone on the same Wi-Fi
+// sees the host at its LAN IP. We pick whichever fits the current device.
+private const val BACKEND_LAN_URL = "http://192.168.1.72:8000"
+private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
+
+private val isEmulator: Boolean by lazy {
+    val fp = Build.FINGERPRINT.orEmpty()
+    val model = Build.MODEL.orEmpty()
+    val product = Build.PRODUCT.orEmpty()
+    val hardware = Build.HARDWARE.orEmpty()
+    fp.startsWith("generic") || fp.startsWith("unknown") ||
+        model.contains("google_sdk") || model.contains("Emulator") || model.contains("Android SDK built for") ||
+        product.contains("sdk_gphone") || product.contains("emulator") || product.contains("sdk") ||
+        hardware.contains("goldfish") || hardware.contains("ranchu")
+}
+
+val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEND_LAN_URL
 const val USER_ID = "tairsa-dev"
 
 class HeartRateViewModel : ViewModel() {
@@ -72,13 +89,13 @@ class HeartRateViewModel : ViewModel() {
     var hrSampleAgeMin by mutableStateOf<Long?>(null)
     var isMoving by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
-    var dataSource by mutableStateOf(VitalsSource.SIMULATED)
+    var dataSource by mutableStateOf(VitalsSource.WATCH)
     var healthConnectStatus by mutableStateOf("Not connected")
 
     var serverStatus by mutableStateOf("Server: …")
 
     // Backend / ML state
-    var userId by mutableStateOf("demo-user")
+    var userId by mutableStateOf(USER_ID)
     var panicModel by mutableStateOf<PanicModel?>(null)
     var modelStatus by mutableStateOf("model not loaded")
     var lastPanicProbability by mutableDoubleStateOf(0.0)
@@ -90,28 +107,52 @@ class HeartRateViewModel : ViewModel() {
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
-    private val backend = BackendApi()
+    private var modelCache: PanicModelCache? = null
+    private val backend = BackendApi(BACKEND_URL)
     private val pingBackend = BackendClient(BACKEND_URL)
 
     fun attachHealthConnect(context: Context) {
         if (healthConnectRepo == null) {
             healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
         }
+        if (modelCache == null) {
+            val cache = PanicModelCache(context.applicationContext)
+            modelCache = cache
+            // Hydrate from disk before any network call so the on-device model
+            // works offline (panic attacks happen in places without signal).
+            cache.load()?.let {
+                panicModel = it
+                modelStatus = "cached model loaded (${it.source}, trained ${it.trainedAt ?: "?"})"
+            }
+        }
     }
 
     fun loadModelFromBackend() {
-        modelStatus = "loading model..."
+        val priorStatus = modelStatus
+        modelStatus = if (panicModel == null) "loading model..." else "refreshing model..."
         viewModelScope.launch {
             try {
                 val model = backend.fetchWeights(userId)
-                panicModel = model
-                modelStatus = if (model.isUntrained())
-                    "server returned defaults (no trained model yet)"
-                else
-                    "model loaded: ${model.source} (acc=${model.testAccuracy?.let { "%.2f".format(it) } ?: "?"})"
+                if (model.isUntrained()) {
+                    // Don't overwrite a cached trained model with a default response.
+                    if (panicModel != null && !panicModel!!.isUntrained()) {
+                        modelStatus = "server has no newer weights — using cached model"
+                    } else {
+                        panicModel = model
+                        modelStatus = "server returned defaults (no trained model yet)"
+                    }
+                } else {
+                    panicModel = model
+                    modelCache?.save(model)
+                    modelStatus = "model loaded: ${model.source} (acc=${model.testAccuracy?.let { "%.2f".format(it) } ?: "?"})"
+                }
             } catch (e: Exception) {
-                panicModel = null
-                modelStatus = "model load failed: ${e.message ?: e.javaClass.simpleName}"
+                // Offline / server down — keep the cached model if we have one.
+                modelStatus = if (panicModel != null && !panicModel!!.isUntrained()) {
+                    "offline — using cached model"
+                } else {
+                    "model load failed: ${e.message ?: e.javaClass.simpleName}"
+                }
             }
         }
     }
