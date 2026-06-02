@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="800" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="80" y="80" font-size="38" font-weight="700" fill="#000000">The Decision Curve</text>
+  <text x="80" y="115" font-size="19" fill="#000000" opacity="0.65">σ maps weighted inputs to a probability of panic</text>
+  <rect x="80" y="132" width="160" height="5" fill="#aad7d4"/>
+
+  <!-- Plot card -->
+  <g filter="url(#soft)">
+    <rect x="80" y="170" width="1040" height="560" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+
+  <!-- Axes (plot area: x 180→1060, y 230→680) -->
+  <line x1="180" y1="680" x2="1080" y2="680" stroke="#000000" stroke-width="2"/>
+  <line x1="180" y1="230" x2="180" y2="680" stroke="#000000" stroke-width="2"/>
+
+  <!-- Y-axis labels and gridlines -->
+  <text x="165" y="237" font-size="14" text-anchor="end" fill="#000000">1.0</text>
+  <line x1="180" y1="230" x2="1080" y2="230" stroke="#000000" stroke-width="0.5" opacity="0.15"/>
+
+  <text x="165" y="345" font-size="14" text-anchor="end" fill="#000000">0.75</text>
+  <line x1="180" y1="340" x2="1080" y2="340" stroke="#000000" stroke-width="0.5" opacity="0.15"/>
+
+  <text x="165" y="460" font-size="14" text-anchor="end" fill="#000000">0.5</text>
+  <line x1="180" y1="455" x2="1080" y2="455" stroke="#000000" stroke-width="0.5" opacity="0.15"/>
+
+  <text x="165" y="575" font-size="14" text-anchor="end" fill="#000000">0.25</text>
+  <line x1="180" y1="570" x2="1080" y2="570" stroke="#000000" stroke-width="0.5" opacity="0.15"/>
+
+  <text x="165" y="687" font-size="14" text-anchor="end" fill="#000000">0.0</text>
+
+  <!-- X-axis label -->
+  <text x="630" y="717" font-size="15" text-anchor="middle" fill="#000000">weighted input  →  (w₁·ΔHR + w₂·HRV + w₃·motion + b)</text>
+
+  <!-- Y-axis label (rotated) -->
+  <text x="115" y="455" font-size="15" text-anchor="middle" fill="#000000" transform="rotate(-90, 115, 455)">p( panic )</text>
+
+  <!-- Threshold dashed line at p=0.7 → y = 680 - 0.7*450 = 365 -->
+  <line x1="180" y1="365" x2="1080" y2="365" stroke="#000000" stroke-width="2" stroke-dasharray="8,6" opacity="0.55"/>
+  <text x="1090" y="370" font-size="14" fill="#000000" opacity="0.75">threshold p = 0.7</text>
+
+  <!-- Shaded "fires alert" region above threshold from where curve crosses -->
+  <!-- Curve crosses 0.7 at sigmoid input ≈ 0.847. With math x range -6..6 mapped to plot x 180..1080: plot_x = 180 + (math_x+6)*75. So 0.847 → plot x ≈ 180 + 6.847*75 ≈ 693.5 -->
+  <path d="M 693.5,365 Q 740,300 800,267 Q 900,237 1080,233 L 1080,365 Z" fill="#aad7d4" opacity="0.55"/>
+
+  <!-- Sigmoid curve -->
+  <!-- Points: math_x range -6 to 6 mapped to plot_x 180..1080 (scale 75), math_y σ(x) mapped to plot_y 680 - σ*450 -->
+  <polyline points="
+    180,679 217.5,678.5 255,677.0 292.5,673.8 330,668.6 367.5,661.7
+    405,651.5 442.5,635.9 480,613.0 517.5,580.9 555,545.0 592.5,505.4
+    630,455.0 667.5,402.3 705,353.4 742.5,313.5 780,283.4 817.5,262.0
+    855,247.4 892.5,238.5 930,234.0 967.5,231.5 1005,230.8 1042.5,230.4 1080,230.2
+  " fill="none" stroke="#000000" stroke-width="3.5"/>
+
+  <!-- Annotation: fires alert -->
+  <line x1="900" y1="430" x2="845" y2="285" stroke="#000000" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="905" y="455" font-size="16" font-weight="700" fill="#000000">fires alert</text>
+  <text x="905" y="476" font-size="13" fill="#000000" opacity="0.7">p ≥ threshold → notify user</text>
+
+  <!-- Annotation: stays quiet -->
+  <line x1="350" y1="600" x2="310" y2="660" stroke="#000000" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="200" y="590" font-size="16" font-weight="700" fill="#000000">stays quiet</text>
+  <text x="200" y="611" font-size="13" fill="#000000" opacity="0.7">low p → no alert</text>
+
+  <!-- Caption -->
+  <text x="80" y="765" font-size="14" fill="#000000" opacity="0.7">σ(x) = 1 / (1 + e⁻ˣ).  Inputs are pushed through the curve; only large positive sums clear the threshold.</text>
+</svg>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#000000"/>
+    </marker>
+    <marker id="arrTeal" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#1a1a1a"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- ============ TITLE ============ -->
+  <text x="80" y="80" font-size="44" font-weight="700" fill="#000000">The Machine-Learning Model</text>
+  <text x="80" y="115" font-size="20" fill="#000000" opacity="0.65">How CalmSense decides "this is a panic attack"</text>
+  <rect x="80" y="132" width="180" height="5" fill="#aad7d4"/>
+
+  <!-- ============ FORMULA STRIP ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="160" width="1440" height="80" rx="14" fill="#c6f3f0"/>
+  </g>
+  <text x="800" y="200" font-size="26" font-weight="600" text-anchor="middle" fill="#000000" font-family="Consolas, Courier New, monospace">p(panic) = σ( w₁·ΔHR  +  w₂·HRV  +  w₃·motion  +  b )</text>
+  <text x="800" y="225" font-size="14" text-anchor="middle" fill="#000000" opacity="0.7">Logistic regression  ·  3 weights + 1 bias  ·  on-device inference</text>
+
+  <!-- ============ LEFT PANEL: PANIC vs EXERCISE COMPARISON ============ -->
+  <text x="80" y="280" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">READING THE SIGNAL</text>
+  <text x="80" y="310" font-size="22" font-weight="600" fill="#000000">Why a fast heart rate alone isn't enough</text>
+
+  <!-- PANIC scenario card -->
+  <g filter="url(#soft)">
+    <rect x="80" y="335" width="720" height="135" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="80" y="335" width="6" height="135" fill="#aad7d4"/>
+  <text x="105" y="365" font-size="18" font-weight="700" fill="#000000">PANIC ATTACK</text>
+
+  <!-- mini HR curve - sharp rise -->
+  <text x="105" y="395" font-size="13" fill="#000000" opacity="0.7">ΔHR</text>
+  <polyline points="145,410 165,408 185,405 205,402 225,398 245,390 265,375 285,355 305,335 325,328 345,325" fill="none" stroke="#000000" stroke-width="2.5"/>
+  <text x="355" y="338" font-size="13" fill="#000000" font-weight="600">sharp spike</text>
+
+  <!-- mini motion bars - low -->
+  <text x="105" y="445" font-size="13" fill="#000000" opacity="0.7">motion</text>
+  <rect x="145" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="165" y="448" width="10" height="5" fill="#000000" opacity="0.5"/>
+  <rect x="185" y="447" width="10" height="7" fill="#000000" opacity="0.5"/>
+  <rect x="205" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="225" y="447" width="10" height="7" fill="#000000" opacity="0.5"/>
+  <rect x="245" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="265" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="285" y="447" width="10" height="7" fill="#000000" opacity="0.5"/>
+  <rect x="305" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="325" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <rect x="345" y="448" width="10" height="6" fill="#000000" opacity="0.5"/>
+  <text x="365" y="455" font-size="13" fill="#000000" font-weight="600">body is still</text>
+
+  <!-- verdict -->
+  <line x1="555" y1="345" x2="555" y2="460" stroke="#000000" stroke-width="1" opacity="0.2"/>
+  <circle cx="595" cy="402" r="18" fill="#000000"/>
+  <path d="M 585 402 L 593 410 L 605 394" stroke="#aad7d4" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="625" y="395" font-size="20" font-weight="700" fill="#000000">DETECTED</text>
+  <text x="625" y="418" font-size="13" fill="#000000" opacity="0.7">p ≥ threshold</text>
+
+  <!-- EXERCISE scenario card -->
+  <g filter="url(#soft)">
+    <rect x="80" y="485" width="720" height="135" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="80" y="485" width="6" height="135" fill="#000000" opacity="0.25"/>
+  <text x="105" y="515" font-size="18" font-weight="700" fill="#000000">EXERCISE</text>
+
+  <!-- mini HR curve - slow rise -->
+  <text x="105" y="545" font-size="13" fill="#000000" opacity="0.7">ΔHR</text>
+  <polyline points="145,560 165,557 185,553 205,549 225,545 245,540 265,535 285,530 305,525 325,521 345,517" fill="none" stroke="#000000" stroke-width="2.5"/>
+  <text x="355" y="525" font-size="13" fill="#000000" font-weight="600">gradual climb</text>
+
+  <!-- mini motion bars - high -->
+  <text x="105" y="595" font-size="13" fill="#000000" opacity="0.7">motion</text>
+  <rect x="145" y="572" width="10" height="32" fill="#000000" opacity="0.6"/>
+  <rect x="165" y="568" width="10" height="36" fill="#000000" opacity="0.6"/>
+  <rect x="185" y="575" width="10" height="29" fill="#000000" opacity="0.6"/>
+  <rect x="205" y="570" width="10" height="34" fill="#000000" opacity="0.6"/>
+  <rect x="225" y="573" width="10" height="31" fill="#000000" opacity="0.6"/>
+  <rect x="245" y="569" width="10" height="35" fill="#000000" opacity="0.6"/>
+  <rect x="265" y="572" width="10" height="32" fill="#000000" opacity="0.6"/>
+  <rect x="285" y="567" width="10" height="37" fill="#000000" opacity="0.6"/>
+  <rect x="305" y="571" width="10" height="33" fill="#000000" opacity="0.6"/>
+  <rect x="325" y="569" width="10" height="35" fill="#000000" opacity="0.6"/>
+  <rect x="345" y="572" width="10" height="32" fill="#000000" opacity="0.6"/>
+  <text x="365" y="595" font-size="13" fill="#000000" font-weight="600">sustained activity</text>
+
+  <!-- verdict -->
+  <line x1="555" y1="495" x2="555" y2="610" stroke="#000000" stroke-width="1" opacity="0.2"/>
+  <circle cx="595" cy="552" r="18" fill="none" stroke="#000000" stroke-width="2.5"/>
+  <text x="595" y="559" font-size="22" font-weight="700" text-anchor="middle" fill="#000000">—</text>
+  <text x="625" y="545" font-size="20" font-weight="700" fill="#000000">IGNORED</text>
+  <text x="625" y="568" font-size="13" fill="#000000" opacity="0.7">no false alarm</text>
+
+  <!-- ============ RIGHT PANEL: SIGMOID CURVE ============ -->
+  <text x="830" y="280" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">THE DECISION CURVE</text>
+  <text x="830" y="310" font-size="22" font-weight="600" fill="#000000">σ maps weighted inputs to a probability</text>
+
+  <g filter="url(#soft)">
+    <rect x="830" y="335" width="690" height="285" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+
+  <!-- axes -->
+  <line x1="890" y1="585" x2="1490" y2="585" stroke="#000000" stroke-width="1.5"/>
+  <line x1="890" y1="370" x2="890" y2="585" stroke="#000000" stroke-width="1.5"/>
+
+  <!-- axis labels -->
+  <text x="880" y="378" font-size="12" text-anchor="end" fill="#000000">1.0</text>
+  <text x="880" y="479" font-size="12" text-anchor="end" fill="#000000">0.5</text>
+  <text x="880" y="589" font-size="12" text-anchor="end" fill="#000000">0.0</text>
+  <text x="1190" y="608" font-size="12" text-anchor="middle" fill="#000000">weighted input  →  (w₁·ΔHR + w₂·HRV + w₃·motion + b)</text>
+  <text x="855" y="478" font-size="12" text-anchor="middle" fill="#000000" transform="rotate(-90, 855, 478)">p(panic)</text>
+
+  <!-- threshold line (dashed) -->
+  <line x1="890" y1="413" x2="1490" y2="413" stroke="#000000" stroke-width="1.5" stroke-dasharray="6,5" opacity="0.5"/>
+  <text x="1495" y="417" font-size="12" fill="#000000" opacity="0.6">threshold</text>
+
+  <!-- sigmoid curve -->
+  <path d="M 890,583 Q 1050,581 1130,560 Q 1170,545 1190,478 Q 1210,410 1250,395 Q 1330,378 1490,376" fill="none" stroke="#000000" stroke-width="3"/>
+
+  <!-- fill area for the "trigger" region (above threshold + right side) -->
+  <path d="M 1190,478 Q 1210,410 1250,395 Q 1330,378 1490,376 L 1490,413 L 1198,413 Z" fill="#aad7d4" opacity="0.55"/>
+
+  <!-- annotation: trigger arrow -->
+  <line x1="1380" y1="450" x2="1350" y2="395" stroke="#000000" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="1375" y="475" font-size="13" font-weight="700" fill="#000000">fires alert</text>
+  <text x="1375" y="492" font-size="12" fill="#000000" opacity="0.7">p ≥ 0.7</text>
+
+  <!-- annotation: ignore -->
+  <line x1="980" y1="540" x2="1010" y2="568" stroke="#000000" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="905" y="538" font-size="13" font-weight="700" fill="#000000">stays quiet</text>
+  <text x="905" y="555" font-size="12" fill="#000000" opacity="0.7">low p</text>
+
+  <!-- ============ VALIDATION STRIP ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="650" width="1440" height="200" rx="14" fill="#c6f3f0"/>
+  </g>
+  <text x="110" y="685" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">VALIDATION</text>
+
+  <!-- Synthetic baseline -->
+  <text x="110" y="725" font-size="22" font-weight="700" fill="#000000">Synthetic baseline: 0.992 accuracy*</text>
+  <text x="110" y="750" font-size="15" fill="#000000" opacity="0.75">Trained on 5,000 simulated samples. A starting point — not the real validation.</text>
+
+  <!-- Feedback loop arrows -->
+  <text x="110" y="800" font-size="14" font-weight="700" fill="#000000" letter-spacing="1">REAL VALIDATION  →  closed feedback loop in the live app</text>
+
+  <g font-size="13" fill="#000000">
+    <!-- step 1 -->
+    <rect x="110" y="810" width="195" height="32" rx="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="207" y="831" text-anchor="middle" font-weight="600">model fires alert</text>
+    <line x1="310" y1="826" x2="345" y2="826" stroke="#000000" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 2 -->
+    <rect x="350" y="810" width="240" height="32" rx="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="470" y="831" text-anchor="middle" font-weight="600">user confirms hit or miss</text>
+    <line x1="595" y1="826" x2="630" y2="826" stroke="#000000" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 3 -->
+    <rect x="635" y="810" width="240" height="32" rx="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="755" y="831" text-anchor="middle" font-weight="600">labeled sample stored</text>
+    <line x1="880" y1="826" x2="915" y2="826" stroke="#000000" stroke-width="2" marker-end="url(#arr)"/>
+
+    <!-- step 4 -->
+    <rect x="920" y="810" width="220" height="32" rx="16" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+    <text x="1030" y="831" text-anchor="middle" font-weight="600">weights retrained</text>
+
+    <!-- loop back arrow -->
+    <path d="M 1140 826 Q 1180 826 1180 798 Q 1180 770 1140 770 L 230 770 Q 207 770 207 798 L 207 808" fill="none" stroke="#000000" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arr)"/>
+    <text x="1190" y="796" font-size="12" font-style="italic" fill="#000000" opacity="0.7">smarter next time</text>
+  </g>
+
+  <!-- footnote -->
+  <text x="1510" y="868" font-size="11" text-anchor="end" fill="#000000" opacity="0.55">*Live user-labeled data will replace the synthetic baseline.</text>
+</svg>
