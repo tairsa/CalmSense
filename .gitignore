@@ -44,5 +44,8 @@ calmsense-backend/data/
 # Local gradle daemon config
 gradle-daemon-jvm.properties
 
+# Office documents (kept out of the repo)
+*.docx
+
 # Office temporary lockfiles
 ~$*
