@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- ============ TITLE ============ -->
+  <text x="80" y="80" font-size="44" font-weight="700" fill="#000000">The CalmSense API</text>
+  <text x="80" y="115" font-size="20" fill="#000000" opacity="0.65">A small, well-defined REST contract between phone and model</text>
+  <rect x="80" y="132" width="180" height="5" fill="#aad7d4"/>
+
+  <!-- ============ CARD 1 : POST sensor-data ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="180" width="700" height="300" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="116" y="212" width="86" height="38" rx="8" fill="#000000"/>
+  <text x="159" y="238" font-size="19" font-weight="700" text-anchor="middle" fill="#ffffff">POST</text>
+  <text x="222" y="240" font-size="25" font-weight="700" fill="#000000" font-family="Consolas, monospace">/api/v1/sensor-data</text>
+  <line x1="116" y1="272" x2="744" y2="272" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="116" y="328" font-size="24" font-weight="700" fill="#000000">Vitals in  →</text>
+  <text x="116" y="364" font-size="17" fill="#000000" opacity="0.7">Per-sample heart rate, HRV and motion, streamed</text>
+  <text x="116" y="390" font-size="17" fill="#000000" opacity="0.7">from the phone every few seconds.</text>
+
+  <!-- ============ CARD 2 : GET sensor-data ============ -->
+  <g filter="url(#soft)">
+    <rect x="820" y="180" width="700" height="300" rx="14" fill="#c6f3f0"/>
+  </g>
+  <rect x="856" y="212" width="78" height="38" rx="8" fill="#aad7d4"/>
+  <text x="895" y="238" font-size="19" font-weight="700" text-anchor="middle" fill="#000000">GET</text>
+  <text x="952" y="240" font-size="25" font-weight="700" fill="#000000" font-family="Consolas, monospace">/api/v1/sensor-data</text>
+  <line x1="856" y1="272" x2="1484" y2="272" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="856" y="328" font-size="24" font-weight="700" fill="#000000">←  Model out</text>
+  <text x="856" y="364" font-size="17" fill="#000000" opacity="0.7">Returns the trained classifier weights the phone</text>
+  <text x="856" y="390" font-size="17" fill="#000000" opacity="0.7">runs offline. Keyed on user_id for per-user models.</text>
+
+  <!-- ============ CARD 3 : POST panic-feedback ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="520" width="700" height="300" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="116" y="552" width="86" height="38" rx="8" fill="#000000"/>
+  <text x="159" y="578" font-size="19" font-weight="700" text-anchor="middle" fill="#ffffff">POST</text>
+  <text x="222" y="580" font-size="25" font-weight="700" fill="#000000" font-family="Consolas, monospace">/api/v1/panic-feedback</text>
+  <line x1="116" y1="612" x2="744" y2="612" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="116" y="668" font-size="24" font-weight="700" fill="#000000">Hit / miss labels  →</text>
+  <text x="116" y="704" font-size="17" fill="#000000" opacity="0.7">Was it really panic? Severity 0–10 becomes a</text>
+  <text x="116" y="730" font-size="17" fill="#000000" opacity="0.7">labeled training sample — this closes the loop.</text>
+
+  <!-- ============ CARD 4 : POST panic-reports ============ -->
+  <g filter="url(#soft)">
+    <rect x="820" y="520" width="700" height="300" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="856" y="552" width="86" height="38" rx="8" fill="#000000"/>
+  <text x="899" y="578" font-size="19" font-weight="700" text-anchor="middle" fill="#ffffff">POST</text>
+  <text x="962" y="580" font-size="25" font-weight="700" fill="#000000" font-family="Consolas, monospace">/api/v1/panic-reports</text>
+  <line x1="856" y1="612" x2="1484" y2="612" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="856" y="668" font-size="24" font-weight="700" fill="#000000">Journaled entry  →</text>
+  <text x="856" y="704" font-size="17" fill="#000000" opacity="0.7">Severity, questionnaire, GPS and a vitals snapshot</text>
+  <text x="856" y="730" font-size="17" fill="#000000" opacity="0.7">for the user's own history.</text>
+
+  <!-- ============ FOOTER ============ -->
+  <text x="800" y="865" font-size="15" text-anchor="middle" fill="#000000" opacity="0.7">Plain JSON over HTTPS  ·  also exposes  GET /health  for the app's server-status check</text>
+</svg>
