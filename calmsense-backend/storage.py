@@ -1,14 +1,25 @@
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
 REPORTS_FILE = os.path.join(DATA_DIR, "panic_reports.json")
+ADMIN_USERS_FILE = os.path.join(DATA_DIR, "admin_users.json")
+MODEL_WEIGHTS_FILE = os.path.join(DATA_DIR, "model_weights.json")
+USER_MODEL_STATE_FILE = os.path.join(DATA_DIR, "user_model_state.json")
 TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
 REPORTS_TABLE_NAME = "panic_reports"
+ADMIN_USERS_TABLE_NAME = "admin_users"
+MODEL_WEIGHTS_TABLE_NAME = "model_weights"
+USER_MODEL_STATE_TABLE_NAME = "user_model_state"
 
 # ---------------------------------------------------------------------------
 # Storage backend selection
@@ -92,6 +103,24 @@ def _json_read_from(path: str) -> list:
         return []
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _json_write_all(path: str, records: list) -> None:
+    """Atomically replace the whole file contents with `records`."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(records, f, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+
+
+def _json_next_id(records: list) -> int:
+    """Next surrogate id for JSON-mode rows (Supabase assigns ids itself)."""
+    return (max((r.get("id", 0) for r in records), default=0) or 0) + 1
 
 
 def _json_append(record: dict) -> None:
@@ -194,3 +223,184 @@ def read_all_reports() -> list:
             print(f"[storage] Supabase report read failed ({e}); reading JSON fallback")
 
     return _json_read_from(REPORTS_FILE)
+
+
+# --- Admin users -----------------------------------------------------------
+
+def get_admin_by_email(email: str) -> dict | None:
+    """Return the admin row for this email, or None."""
+    email = email.strip().lower()
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(ADMIN_USERS_TABLE_NAME)
+                .select("*")
+                .eq("email", email)
+                .limit(1)
+                .execute()
+            )
+            rows = resp.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            print(f"[storage] Supabase admin read failed ({e}); reading JSON fallback")
+
+    for row in _json_read_from(ADMIN_USERS_FILE):
+        if row.get("email") == email:
+            return row
+    return None
+
+
+def list_admins() -> list:
+    """All admin accounts (without password hashes)."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(ADMIN_USERS_TABLE_NAME)
+                .select("id, email, name, is_active, created_at")
+                .order("id")
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase admin list failed ({e}); reading JSON fallback")
+
+    rows = _json_read_from(ADMIN_USERS_FILE)
+    return [
+        {k: r.get(k) for k in ("id", "email", "name", "is_active", "created_at")}
+        for r in rows
+    ]
+
+
+def create_admin(email: str, password_hash: str, name: str | None) -> dict:
+    """Insert a new admin and return the stored row."""
+    email = email.strip().lower()
+    record = {
+        "email": email,
+        "name": name,
+        "password_hash": password_hash,
+        "is_active": True,
+    }
+    if _supabase is not None:
+        try:
+            resp = _supabase.table(ADMIN_USERS_TABLE_NAME).insert(record).execute()
+            return (resp.data or [record])[0]
+        except Exception as e:
+            print(f"[storage] Supabase admin insert failed ({e}); writing JSON fallback")
+
+    rows = _json_read_from(ADMIN_USERS_FILE)
+    record["id"] = _json_next_id(rows)
+    record["created_at"] = _now_iso()
+    rows.append(record)
+    _json_write_all(ADMIN_USERS_FILE, rows)
+    return record
+
+
+# --- Versioned model weights ----------------------------------------------
+
+def insert_model_snapshot(record: dict) -> dict:
+    """Insert a model-weights snapshot and return the stored row (with id)."""
+    if _supabase is not None:
+        try:
+            resp = _supabase.table(MODEL_WEIGHTS_TABLE_NAME).insert(record).execute()
+            return (resp.data or [record])[0]
+        except Exception as e:
+            print(f"[storage] Supabase snapshot insert failed ({e}); writing JSON fallback")
+
+    rows = _json_read_from(MODEL_WEIGHTS_FILE)
+    stored = dict(record)
+    stored["id"] = _json_next_id(rows)
+    stored.setdefault("created_at", _now_iso())
+    rows.append(stored)
+    _json_write_all(MODEL_WEIGHTS_FILE, rows)
+    return stored
+
+
+def list_model_snapshots(user_id: str) -> list:
+    """All snapshots for a user, newest first."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(MODEL_WEIGHTS_TABLE_NAME)
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase snapshot list failed ({e}); reading JSON fallback")
+
+    rows = [r for r in _json_read_from(MODEL_WEIGHTS_FILE) if r.get("user_id") == user_id]
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows
+
+
+def get_model_snapshot(snapshot_id: int) -> dict | None:
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(MODEL_WEIGHTS_TABLE_NAME)
+                .select("*")
+                .eq("id", snapshot_id)
+                .limit(1)
+                .execute()
+            )
+            rows = resp.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            print(f"[storage] Supabase snapshot get failed ({e}); reading JSON fallback")
+
+    for row in _json_read_from(MODEL_WEIGHTS_FILE):
+        if row.get("id") == snapshot_id:
+            return row
+    return None
+
+
+# --- Per-user model state (active snapshot + training cutoff) --------------
+
+def get_user_model_state(user_id: str) -> dict | None:
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(USER_MODEL_STATE_TABLE_NAME)
+                .select("*")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            rows = resp.data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            print(f"[storage] Supabase state get failed ({e}); reading JSON fallback")
+
+    for row in _json_read_from(USER_MODEL_STATE_FILE):
+        if row.get("user_id") == user_id:
+            return row
+    return None
+
+
+def upsert_user_model_state(user_id: str, active_weights_id: int | None,
+                            training_cutoff: str | None) -> dict:
+    """Create or update a user's model state row."""
+    record = {
+        "user_id": user_id,
+        "active_weights_id": active_weights_id,
+        "training_cutoff": training_cutoff,
+        "updated_at": _now_iso(),
+    }
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(USER_MODEL_STATE_TABLE_NAME)
+                .upsert(record, on_conflict="user_id")
+                .execute()
+            )
+            return (resp.data or [record])[0]
+        except Exception as e:
+            print(f"[storage] Supabase state upsert failed ({e}); writing JSON fallback")
+
+    rows = _json_read_from(USER_MODEL_STATE_FILE)
+    rows = [r for r in rows if r.get("user_id") != user_id]
+    rows.append(record)
+    _json_write_all(USER_MODEL_STATE_FILE, rows)
+    return record

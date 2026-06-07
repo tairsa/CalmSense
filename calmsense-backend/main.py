@@ -1,9 +1,11 @@
-import json
 import os
 from datetime import datetime, timezone
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import model_service
+from admin_routes import router as admin_router
 from models import PanicFeedback, PanicReport, SensorData
 from storage import (
     append_feedback,
@@ -15,30 +17,19 @@ from storage import (
 
 app = FastAPI(title="CalmSense API", version="1.0.0")
 
-# Try to load trained model weights at startup. If the file is missing
-# (e.g. ml/train_model.py hasn't been run yet), fall back to zeros so the
-# API still works and existing clients keep their behavior.
-DEFAULT_WEIGHTS = [0.0, 0.0, 0.0, 0.0, 0.0]  # [w_hr, w_hrv, w_motion, w_reserved, bias]
-MODEL_WEIGHTS_FILE = os.path.join(os.path.dirname(__file__), "ml", "model_weights.json")
+# CORS for the admin web app (Vite dev server + any configured origins).
+# Set ADMIN_CORS_ORIGINS in .env as a comma-separated list for production.
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173"
+_origins = [o.strip() for o in os.environ.get("ADMIN_CORS_ORIGINS", _default_origins).split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-def _load_global_model():
-    """Returns (weights_list, source_label, metadata_dict_or_None)."""
-    try:
-        with open(MODEL_WEIGHTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        weights = data.get("weights")
-        if not isinstance(weights, list) or len(weights) != 5:
-            return DEFAULT_WEIGHTS, "default", None
-        meta = {k: data.get(k) for k in ("model_type", "trained_at", "test_accuracy", "training_samples")}
-        return [float(w) for w in weights], "trained_global", meta
-    except FileNotFoundError:
-        return DEFAULT_WEIGHTS, "default", None
-    except (json.JSONDecodeError, ValueError, KeyError):
-        return DEFAULT_WEIGHTS, "default", None
-
-
-GLOBAL_WEIGHTS, GLOBAL_SOURCE, GLOBAL_META = _load_global_model()
+app.include_router(admin_router)
 
 
 @app.get("/health")
@@ -109,18 +100,18 @@ def receive_panic_report(data: PanicReport):
 
 @app.get("/api/v1/sensor-data")
 def get_weights_for_user(user_id: str = Query(..., description="The user whose weights to retrieve")):
-    """Return the model weights for the given user_id.
+    """Return the active model weights for the given user_id.
 
-    Currently returns the global model trained by ml/train_model.py
-    (or zeros if the model file does not exist). Per-user retraining on
-    stored sensor records is the next step; the user_id query is preserved
-    so the API contract does not change when that lands.
+    Serves the user's active snapshot (from retrain / rollback / reset via the
+    admin app). Falls back to the shipped synthetic baseline when the user has
+    no snapshot yet, so the phone contract is unchanged for new users.
     """
+    active = model_service.get_active_weights(user_id)
     response = {
         "user_id": user_id,
-        "weights": GLOBAL_WEIGHTS,
-        "source": GLOBAL_SOURCE,
+        "weights": active["weights"],
+        "source": active["source"],
     }
-    if GLOBAL_META:
-        response["model_meta"] = GLOBAL_META
+    if active.get("model_meta"):
+        response["model_meta"] = active["model_meta"]
     return response
