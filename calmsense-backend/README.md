@@ -31,6 +31,62 @@ device on the same Wi-Fi to reach the server. From the emulator, the host
 machine is at `http://10.0.2.2:8000`. From a real phone on the same Wi-Fi,
 use the host machine's LAN IP (e.g. `http://192.168.x.x:8000`).
 
+## Run with Docker
+
+The image runs on both `linux/amd64` (GCP/AWS/Azure) and `linux/arm64`
+(Raspberry Pi 5). All deps, including scikit-learn, ship prebuilt wheels, so no
+compiler is needed.
+
+```bash
+# Optional: configure Supabase creds + a stable JWT secret (else JSON fallback
+# + a per-restart secret are used). At minimum set ADMIN_JWT_SECRET.
+cp .env.example .env   # then edit
+
+# Build + run (compose handles the data volume and env file):
+docker compose up -d --build
+docker compose logs -f
+
+# Create your first admin (one-time):
+docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
+```
+
+The API is then on `http://<host>:8000` (Swagger at `/docs`). The JSON fallback
+store persists in the `calmsense-data` Docker volume.
+
+Without compose:
+
+```bash
+docker build -t calmsense-backend .
+docker run -d -p 8000:8000 -v calmsense-data:/app/data \
+  -e ADMIN_JWT_SECRET=$(python -c "import secrets;print(secrets.token_urlsafe(48))") \
+  --name calmsense-backend calmsense-backend
+```
+
+### On the Raspberry Pi 5
+
+Build natively on the Pi (simplest):
+
+```bash
+git clone https://github.com/tairsa/CalmSense.git
+cd CalmSense/calmsense-backend
+docker compose up -d --build
+```
+
+Or cross-build from an x86 machine and push to a registry:
+
+```bash
+docker buildx build --platform linux/arm64 -t <registry>/calmsense-backend:arm64 --push .
+```
+
+### Reaching it remotely (Tailscale)
+
+Because the container binds `0.0.0.0`, the server is reachable on the Pi's
+**Tailscale** IP (`100.x.y.z`) or MagicDNS name (e.g. `http://pi5:8000`) from
+**any device that's also on your tailnet** — including the phone, if it has the
+Tailscale app installed and signed in. No port forwarding needed. To expose it
+to the public internet instead, use Tailscale Funnel (opt-in, adds HTTPS), and
+add that origin to `ADMIN_CORS_ORIGINS`.
+
 ## Endpoints (current)
 
 | Method | Path                       | Purpose                                     |

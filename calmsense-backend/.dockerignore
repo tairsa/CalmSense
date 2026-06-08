@@ -1,0 +1,23 @@
+# Keep the build context small and avoid baking local/dev state into the image.
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Local runtime data (JSON fallback store) — mounted as a volume instead.
+data/
+
+# Secrets / local env — pass these at runtime, never bake them in.
+.env
+
+# Dev tooling
+.git/
+.gitignore
+.pytest_cache/
+*.bat
+
+# Docs not needed at runtime
+README.md
+DATABASE.md
+*.sql

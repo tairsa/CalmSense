@@ -1,0 +1,25 @@
+# Convenience launcher for the CalmSense backend.
+#
+#   docker compose up -d --build      # build + start in the background
+#   docker compose logs -f            # follow logs
+#   docker compose down               # stop
+#
+# Seed the first admin once the container is up:
+#   docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
+
+services:
+  backend:
+    build: .
+    image: calmsense-backend
+    container_name: calmsense-backend
+    ports:
+      - "8000:8000"          # reachable on the host (and over Tailscale) at :8000
+    env_file:
+      - path: .env           # optional: Supabase creds + ADMIN_JWT_SECRET, etc.
+        required: false      # needs Docker Compose v2.24+; if older, create an empty .env
+    volumes:
+      - calmsense-data:/app/data   # persist the JSON fallback store
+    restart: unless-stopped
+
+volumes:
+  calmsense-data:
