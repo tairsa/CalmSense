@@ -124,9 +124,13 @@ input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px
 .row-active { background: var(--ok-bg) !important; }
 
 /* tabs */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px;
+  overflow-x: auto; scrollbar-width: none;   /* scroll instead of overflow on narrow screens */
+}
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
-  border: none; background: none; padding: 10px 16px; cursor: pointer;
+  border: none; background: none; padding: 10px 16px; cursor: pointer; white-space: nowrap;
   color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; font-size: 14px;
 }
 .tab.active { color: var(--primary-dark); border-bottom-color: var(--primary); }
@@ -178,3 +182,43 @@ tr.clickable:hover { background: #fafcfd; }
 .sev-low { background: var(--ok-bg); color: var(--ok); }
 .sev-med { background: #fdf3e9; color: var(--warn); }
 .sev-high { background: var(--error-bg); color: var(--error); }
+
+/* -------------------------------------------------------------------------
+   Mobile / small screens (phones). The admin app is opened on a phone over
+   Tailscale, so make the nav wrap, wide tables scroll, headers stack, and
+   tap targets comfortable. Visual language is unchanged.
+   ------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .content { padding: 16px 14px; }
+  h1 { font-size: 20px; }
+
+  /* Top bar wraps: brand + log out on row 1, nav scrolls on its own row. */
+  .topbar { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 10px 14px; }
+  .topbar-right { gap: 8px; }
+  .topbar-right .muted { display: none; }   /* hide the email to save width */
+  .topnav { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .topnav::-webkit-scrollbar { display: none; }
+  .topnav a { white-space: nowrap; }
+
+  /* Page header stacks; search goes full-width. */
+  .page-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .search { width: 100%; }
+
+  /* Wide data tables scroll horizontally inside their card. */
+  .card.no-pad { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table th, .data-table td { padding: 9px 10px; white-space: nowrap; }
+
+  /* Tighter confusion matrix + single-column report fields. */
+  .confusion th, .confusion td { padding: 9px 6px; font-size: 13px; }
+  .report-grid { grid-template-columns: 1fr; }
+
+  /* Comfortable tap targets; 16px inputs prevent iOS focus-zoom. */
+  .btn { min-height: 40px; }
+  .btn-sm { min-height: 34px; }
+  input, .search { font-size: 16px; }
+}
+
+/* Very narrow phones: one stat per row reads better than a cramped 2-up. */
+@media (max-width: 380px) {
+  .stat-grid { grid-template-columns: 1fr; }
+}
