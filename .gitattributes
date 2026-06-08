@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings so they run on the Pi/Linux regardless of
+# the platform they were committed from (Windows would otherwise add CRLF and
+# break the shebang).
+*.sh text eol=lf
