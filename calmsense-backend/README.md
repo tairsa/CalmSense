@@ -37,12 +37,16 @@ The image runs on both `linux/amd64` (GCP/AWS/Azure) and `linux/arm64`
 (Raspberry Pi 5). All deps, including scikit-learn, ship prebuilt wheels, so no
 compiler is needed.
 
+Compose brings up **two** services: the backend API and the admin dashboard
+(nginx serving the built React app from `../admin-app`, proxying `/api` to the
+backend).
+
 ```bash
 # Optional: configure Supabase creds + a stable JWT secret (else JSON fallback
 # + a per-restart secret are used). At minimum set ADMIN_JWT_SECRET.
 cp .env.example .env   # then edit
 
-# Build + run (compose handles the data volume and env file):
+# Build + run both services (compose handles the data volume and env file):
 docker compose up -d --build
 docker compose logs -f
 
@@ -50,8 +54,14 @@ docker compose logs -f
 docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
 ```
 
-The API is then on `http://<host>:8000` (Swagger at `/docs`). The JSON fallback
-store persists in the `calmsense-data` Docker volume.
+Then:
+
+- **Dashboard:** `http://<host>` (port 80) — e.g. `http://100.76.34.20` over Tailscale.
+- **API:** `http://<host>:8000` (Swagger at `/docs`), also proxied at `http://<host>/api`.
+
+The JSON fallback store persists in the `calmsense-data` Docker volume. The
+dashboard talks to the backend over the compose network, so no CORS config is
+needed for that path.
 
 Without compose:
 

@@ -1,10 +1,14 @@
-# Convenience launcher for the CalmSense backend.
+# Convenience launcher for the CalmSense stack (backend API + admin dashboard).
 #
-#   docker compose up -d --build      # build + start in the background
+#   docker compose up -d --build      # build + start both in the background
 #   docker compose logs -f            # follow logs
 #   docker compose down               # stop
 #
-# Seed the first admin once the container is up:
+# After it's up:
+#   Dashboard : http://<host>          (port 80, e.g. http://100.76.34.20)
+#   API       : http://<host>:8000     (also proxied at <host>/api by the dashboard)
+#
+# Seed the first admin once the backend is up:
 #   docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
 
 services:
@@ -19,6 +23,16 @@ services:
         required: false      # needs Docker Compose v2.24+; if older, create an empty .env
     volumes:
       - calmsense-data:/app/data   # persist the JSON fallback store
+    restart: unless-stopped
+
+  dashboard:
+    build: ../admin-app      # sibling folder; nginx serves the built React app
+    image: calmsense-admin
+    container_name: calmsense-admin
+    ports:
+      - "80:80"              # dashboard at http://<host> (and over Tailscale)
+    depends_on:
+      - backend              # nginx proxies /api -> backend on the compose network
     restart: unless-stopped
 
 volumes:
