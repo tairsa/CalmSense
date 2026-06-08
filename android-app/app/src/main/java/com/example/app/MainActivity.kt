@@ -87,9 +87,11 @@ import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 
 // The Android emulator can't reach the host at the host's LAN IP — it sees the
-// host only as 10.0.2.2 on its internal NAT. A real phone on the same Wi-Fi
-// sees the host at its LAN IP. We pick whichever fits the current device.
-private const val BACKEND_LAN_URL = "http://192.168.1.72:8000"
+// host only as 10.0.2.2 on its internal NAT. A real phone reaches the backend
+// over Tailscale, so we use the Pi's tailnet IP (pi5-home-server-ts). This works
+// from anywhere the phone has Tailscale connected — home Wi-Fi or cellular.
+// (Pi LAN IP was http://192.168.1.227:8000 — Wi-Fi only; Tailscale supersedes it.)
+private const val BACKEND_LAN_URL = "http://100.76.34.20:8000"
 private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
 
 private val isEmulator: Boolean by lazy {
