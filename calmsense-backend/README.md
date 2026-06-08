@@ -56,8 +56,9 @@ docker compose exec backend python seed_admin.py --email you@example.com --name 
 
 Then:
 
-- **Dashboard:** `http://<host>` (port 80) — e.g. `http://100.76.34.20` over Tailscale.
-- **API:** `http://<host>:8000` (Swagger at `/docs`), also proxied at `http://<host>/api`.
+- **Dashboard:** `http://<host>:8080` — e.g. `http://100.76.34.20:8080` over Tailscale.
+  (Port 8080, since 80 is commonly taken — e.g. by Pi-hole on this Pi.)
+- **API:** `http://<host>:8000` (Swagger at `/docs`), also proxied at `http://<host>:8080/api`.
 
 The JSON fallback store persists in the `calmsense-data` Docker volume. The
 dashboard talks to the backend over the compose network, so no CORS config is

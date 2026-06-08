@@ -5,8 +5,8 @@
 #   docker compose down               # stop
 #
 # After it's up:
-#   Dashboard : http://<host>          (port 80, e.g. http://100.76.34.20)
-#   API       : http://<host>:8000     (also proxied at <host>/api by the dashboard)
+#   Dashboard : http://<host>:8080     (e.g. http://100.76.34.20:8080)
+#   API       : http://<host>:8000     (also proxied at <host>:8080/api by the dashboard)
 #
 # Seed the first admin once the backend is up:
 #   docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
@@ -30,7 +30,7 @@ services:
     image: calmsense-admin
     container_name: calmsense-admin
     ports:
-      - "80:80"              # dashboard at http://<host> (and over Tailscale)
+      - "8080:80"            # dashboard at http://<host>:8080 (port 80 is taken by Pi-hole)
     depends_on:
       - backend              # nginx proxies /api -> backend on the compose network
     restart: unless-stopped
