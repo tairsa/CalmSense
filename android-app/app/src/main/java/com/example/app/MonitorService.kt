@@ -16,8 +16,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.app.data.BackendClient
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicModelCache
 import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
+import com.example.app.data.SettingsStore
+import com.example.app.data.SleepDetector
 import com.example.app.data.Vitals
 import com.example.app.data.WatchVitalsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -34,12 +37,15 @@ class MonitorService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var pollJob: Job? = null
     private lateinit var repo: HealthConnectVitalsRepository
+    private lateinit var modelCache: PanicModelCache
     private val backend = BackendClient(BACKEND_URL)
 
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        SettingsStore.init(applicationContext)
         repo = HealthConnectVitalsRepository(applicationContext)
+        modelCache = PanicModelCache(applicationContext)
         startInForeground(buildMonitorNotification("Starting…"))
         startPolling()
     }
@@ -74,6 +80,9 @@ class MonitorService : Service() {
         // Prefer the watch when it has a fresh sample — bypasses Samsung Health/HC sync delay.
         val fromWatch = WatchVitalsRepository.readVitals()
         if (fromWatch.heartRateBpm != null) return fromWatch
+        // Watch explicitly off-wrist: anything in Health Connect is from before
+        // it came off, so don't fall back to it.
+        if (fromWatch.watchOnBody == false) return fromWatch
         return runCatching { repo.readVitals() }.getOrNull()
             ?: Vitals(null, null, false)
     }
@@ -86,18 +95,38 @@ class MonitorService : Service() {
 
     private fun handleVitals(v: Vitals) {
         val statusText = when {
+            v.watchOnBody == false -> "Paused — watch is off your wrist"
+            v.heartRateBpm != null && SleepDetector.isAsleep ->
+                "Monitoring (sleeping) — ${v.heartRateBpm} bpm"
             v.heartRateBpm != null -> "Monitoring — ${v.heartRateBpm} bpm"
             v.hrSampleAgeMinutes != null -> "Monitoring — last reading ${v.hrSampleAgeMinutes} min ago"
             else -> "Monitoring — waiting for watch data"
         }
         updateMonitorNotification(statusText)
 
-        val hr = v.heartRateBpm
-        val hrv = v.hrv
-        val panic = hr != null && hrv != null && hr > 120 && hrv < 20.0 && !v.isMoving
+        val panic = isPanic(v)
         if (panic) firePanicNotification()
 
         uploadIfFresh(v, panic)
+    }
+
+    /** Same decision the in-app classifier makes: trained model at the user's
+     *  sensitivity threshold, falling back to the fixed rule when no trained
+     *  model is cached yet. Reloading the cache each poll (every 5–30 s) keeps
+     *  this in sync with weights the app fetches while we run. */
+    private fun isPanic(v: Vitals): Boolean {
+        val hr = v.heartRateBpm ?: return false
+        val hrv = v.hrv ?: return false
+        val model = modelCache.load()
+        return if (model != null && !model.isUntrained()) {
+            // Mirror HeartRateViewModel.checkPanicRisk's motion encoding so
+            // foreground and background detections always agree.
+            val motion = if (v.isMoving) 0.7 else 0.05
+            val threshold = SettingsStore.detectionThreshold.value.toDouble()
+            model.predict(hr.toDouble(), hrv, motion, threshold).isPanic
+        } else {
+            hr > 120 && hrv < 20.0 && !v.isMoving
+        }
     }
 
     private fun uploadIfFresh(v: Vitals, panic: Boolean) {
@@ -119,10 +148,19 @@ class MonitorService : Service() {
     }
 
     private fun startInForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
-        } else {
-            startForeground(MONITOR_NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+            } else {
+                startForeground(MONITOR_NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // On a fresh install the health FGS type is rejected until a
+            // qualifying runtime permission (e.g. Health Connect heart rate)
+            // is granted — without this the whole app crashes on first run.
+            // In-app monitoring still works; we retry on next app launch.
+            Log.w(TAG, "Foreground start rejected — stopping monitor service", e)
+            stopSelf()
         }
     }
 

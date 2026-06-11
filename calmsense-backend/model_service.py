@@ -128,12 +128,10 @@ def _parse_iso(value: str):
         return None
 
 
-def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
-    """Retrain logistic regression from the user's labeled feedback.
-
-    Uses feedback rows that have vitals and a `was_panic` label. If `cutoff` is
-    set, rows after it are ignored. Raises ValueError when there isn't enough
-    usable, two-class data to fit a model.
+def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
+    """The user's feedback rows that can train a model, as
+    (hr, hrv, motion, label, event_time) tuples. Rows missing vitals or a
+    `was_panic` label are dropped; rows after `cutoff` (if set) are ignored.
     """
     cutoff_dt = _parse_iso(cutoff) if cutoff else None
 
@@ -151,6 +149,43 @@ def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
             if t is not None and t > cutoff_dt:
                 continue
         samples.append((float(hr), float(hrv or 0.0), float(motion), int(bool(label)), _event_time(r)))
+    return samples
+
+
+def _synthetic_anchor(label: int, n: int, seed: int = 42) -> list[tuple]:
+    """`n` synthetic samples of one class, drawn from the same physiological
+    priors the shipped baseline was trained on (ml/generate_data.py). Used to
+    stand in for a class the user's real feedback doesn't have yet.
+    """
+    import random
+
+    from ml.generate_data import PROFILES, sample as synth_sample
+
+    rng = random.Random(seed)
+    profiles = [p for p in PROFILES if p.label == label]
+    out = []
+    i = 0
+    while len(out) < n:
+        hr, hrv, motion, lab = synth_sample(profiles[i % len(profiles)], rng)
+        out.append((hr, hrv, motion, lab, ""))  # synthetic rows carry no event time
+        i += 1
+    return out
+
+
+def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
+    """Retrain logistic regression from the user's labeled feedback.
+
+    Uses feedback rows that have vitals and a `was_panic` label. If `cutoff` is
+    set, rows after it are ignored. Raises ValueError when there isn't enough
+    usable data to fit a model.
+
+    When the feedback is single-class (the common early case: only false
+    positives), the missing class is anchored with synthetic samples from the
+    baseline's priors at half weight — the user's real rows reshape the
+    boundary on their side while the synthetic side keeps the model knowing
+    what a canonical panic (or non-panic) looks like.
+    """
+    samples = usable_samples(user_id, cutoff)
 
     if len(samples) < MIN_TRAIN_SAMPLES:
         raise ValueError(
@@ -158,23 +193,32 @@ def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
             f"need at least {MIN_TRAIN_SAMPLES}."
         )
     labels = {s[3] for s in samples}
+    synthetic: list[tuple] = []
     if len(labels) < 2:
-        raise ValueError("Feedback has only one class; need both panic and non-panic labels.")
+        missing_label = 1 if 0 in labels else 0
+        synthetic = _synthetic_anchor(missing_label, max(len(samples), 20))
 
     # Lazy import so the base API runs without sklearn installed.
     import numpy as np
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score
 
-    X = np.array([[s[0], s[1], s[2]] for s in samples], dtype=float)
-    y = np.array([s[3] for s in samples], dtype=int)
+    rows = samples + synthetic
+    X = np.array([[s[0], s[1], s[2]] for s in rows], dtype=float)
+    y = np.array([s[3] for s in rows], dtype=int)
+    sample_weight = np.array([1.0] * len(samples) + [0.5] * len(synthetic))
     model = LogisticRegression(solver="liblinear", C=1.0, max_iter=1000)
-    model.fit(X, y)
+    model.fit(X, y, sample_weight=sample_weight)
     acc = float(accuracy_score(y, model.predict(X)))  # in-sample; data is tiny
 
     coefs = model.coef_[0]
     weights = [float(coefs[0]), float(coefs[1]), float(coefs[2]), 0.0, float(model.intercept_[0])]
     trained_through = max((s[4] for s in samples), default=None)
+
+    note = f"Retrained from {len(samples)} labeled feedback rows."
+    if synthetic:
+        cls = "panic" if synthetic[0][3] == 1 else "non-panic"
+        note += f" Single-class feedback: anchored with {len(synthetic)} synthetic {cls} samples (half weight)."
 
     snap = storage.insert_model_snapshot({
         "user_id": user_id,
@@ -185,7 +229,7 @@ def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
         "test_accuracy": acc,
         "training_samples": len(samples),
         "trained_through": trained_through,
-        "note": f"Retrained from {len(samples)} labeled feedback rows.",
+        "note": note,
     })
     # Retraining keeps any existing cutoff so it stays consistent with a prior rollback.
     state = storage.get_user_model_state(user_id)

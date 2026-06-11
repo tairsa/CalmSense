@@ -1,9 +1,11 @@
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+import auto_retrain
 import model_service
 from admin_routes import router as admin_router
 from models import PanicFeedback, PanicReport, SensorData
@@ -15,7 +17,15 @@ from storage import (
     storage_backend,
 )
 
-app = FastAPI(title="CalmSense API", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    retrain_task = auto_retrain.start()
+    yield
+    auto_retrain.stop(retrain_task)
+
+
+app = FastAPI(title="CalmSense API", version="1.0.0", lifespan=lifespan)
 
 # CORS for the admin web app (Vite dev server + any configured origins).
 # Set ADMIN_CORS_ORIGINS in .env as a comma-separated list for production.

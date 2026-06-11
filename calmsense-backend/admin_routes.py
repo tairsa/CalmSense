@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+import auto_retrain
 import model_service
 import storage
 from auth import (
@@ -199,6 +200,20 @@ def model_reset(user_id: str, admin: dict = Depends(get_current_admin)):
     snap = model_service.reset_user_model(user_id)
     return {"success": True, "snapshot": snap,
             "model": model_service.get_model_state_view(user_id)}
+
+
+# --- Auto-retraining ---------------------------------------------------------
+
+@router.get("/auto-retrain/status")
+def auto_retrain_status(admin: dict = Depends(get_current_admin)):
+    """Loop configuration + the outcome of the most recent pass."""
+    return auto_retrain.status()
+
+
+@router.post("/auto-retrain/run")
+def auto_retrain_run(admin: dict = Depends(get_current_admin)):
+    """Run one retraining pass over all users right now."""
+    return auto_retrain.run_pass()
 
 
 # --- Global dashboard ------------------------------------------------------

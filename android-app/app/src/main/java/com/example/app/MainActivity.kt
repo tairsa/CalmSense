@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
@@ -65,12 +66,15 @@ import com.example.app.data.PanicReportEntity
 import com.example.app.data.PanicReportRepository
 import com.example.app.data.PingResult
 import com.example.app.data.PostResult
+import com.example.app.data.SettingsStore
+import com.example.app.data.SleepDetector
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.QuestionnaireScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
+import com.example.app.ui.SettingsScreen
 import com.example.app.ui.theme.AppTheme
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.navigation.NavHostController
@@ -112,6 +116,7 @@ const val USER_ID = "tairsa-dev"
 // auto-navigation LaunchedEffect agree on names.
 private const val ROUTE_MONITOR = "monitor"
 private const val ROUTE_REPORTS = "reports"
+private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
 
@@ -119,7 +124,10 @@ class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
     var currentHrv by mutableStateOf<Double?>(45.0)
     var hrSampleAgeMin by mutableStateOf<Long?>(null)
+    var sampleDelaySec by mutableStateOf<Long?>(null)
     var isMoving by mutableStateOf(false)
+    var motionIntensity by mutableStateOf<Float?>(null)
+    var isSleeping by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
     var dataSource by mutableStateOf(VitalsSource.WATCH)
     var healthConnectStatus by mutableStateOf("Not connected")
@@ -163,6 +171,7 @@ class HeartRateViewModel : ViewModel() {
     private val pingBackend = BackendClient(BACKEND_URL)
 
     fun attachHealthConnect(context: Context) {
+        SettingsStore.init(context)
         if (healthConnectRepo == null) {
             healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
         }
@@ -255,7 +264,12 @@ class HeartRateViewModel : ViewModel() {
         currentHr = vitals.heartRateBpm
         currentHrv = vitals.hrv
         hrSampleAgeMin = vitals.hrSampleAgeMinutes
+        sampleDelaySec = vitals.hrSampleAgeSeconds
         isMoving = vitals.isMoving
+        motionIntensity = vitals.motionIntensity
+        // Sleep state is inferred from the watch stream only — simulated and
+        // Health Connect sources don't feed the detector.
+        isSleeping = dataSource == VitalsSource.WATCH && SleepDetector.isAsleep
 
         healthConnectStatus = when (dataSource) {
             VitalsSource.SIMULATED -> "Simulation"
@@ -265,7 +279,9 @@ class HeartRateViewModel : ViewModel() {
                 else -> "Connected (reading HR)"
             }
             VitalsSource.WATCH -> when {
+                vitals.watchOnBody == false -> "Watch — off wrist"
                 vitals.heartRateBpm != null -> "Watch (live)"
+                vitals.watchOnBody == true -> "Watch — reading heart rate…"
                 vitals.hrSampleAgeMinutes != null -> "Watch — last reading ${vitals.hrSampleAgeMinutes}m ago"
                 else -> "Watch — waiting for samples"
             }
@@ -318,7 +334,8 @@ class HeartRateViewModel : ViewModel() {
         val model = panicModel
         val isPanic: Boolean = if (model != null && !model.isUntrained()) {
             val motion = if (moving) 0.7 else 0.05
-            val pred = model.predict(hr.toDouble(), hrv, motion)
+            val threshold = SettingsStore.detectionThreshold.value.toDouble()
+            val pred = model.predict(hr.toDouble(), hrv, motion, threshold)
             lastPanicProbability = pred.probability
             pred.isPanic
         } else {
@@ -391,6 +408,7 @@ class HeartRateViewModel : ViewModel() {
                     currentHr = snap?.hr ?: pendingHr,
                     currentHrv = snap?.hrv ?: pendingHrv,
                     currentMotionIntensity = snap?.motionIntensity,
+                    duringSleep = snap?.duringSleep,
                 )
             )
             pendingQuestionnaireId = id
@@ -450,6 +468,7 @@ class HeartRateViewModel : ViewModel() {
                 hr = currentHr,
                 hrv = currentHrv,
                 motionIntensity = if (isMoving) 1.0f else 0.0f,
+                duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
             )
         )
         val ctx = appContext ?: return
@@ -489,6 +508,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Before setContent: the dashboard reads SettingsStore on first compose.
+        SettingsStore.init(this)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()
@@ -525,7 +546,9 @@ class MainActivity : ComponentActivity() {
                 // Hide bottom nav on the questionnaire and report-detail
                 // pushed screens (they have their own TopAppBar with back/skip).
                 val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-                val showBottomNav = currentRoute == ROUTE_MONITOR || currentRoute == ROUTE_REPORTS
+                val showBottomNav = currentRoute == ROUTE_MONITOR ||
+                    currentRoute == ROUTE_REPORTS ||
+                    currentRoute == ROUTE_SETTINGS
 
                 // Auto-navigate to the questionnaire when a report row was
                 // just inserted post-severity.
@@ -558,6 +581,9 @@ class MainActivity : ComponentActivity() {
                                     onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED },
                                     onConnectWatch = { viewModel.dataSource = VitalsSource.WATCH }
                                 )
+                            }
+                            composable(ROUTE_SETTINGS) {
+                                SettingsScreen()
                             }
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
@@ -656,6 +682,20 @@ class MainActivity : ComponentActivity() {
                 icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
                 label = { Text("Reports") },
             )
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_SETTINGS,
+                onClick = {
+                    if (currentRoute != ROUTE_SETTINGS) {
+                        navController.navigate(ROUTE_SETTINGS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                label = { Text("Settings") },
+            )
         }
     }
 
@@ -751,6 +791,11 @@ fun CalmSenseDashboard(
     onUseSimulation: () -> Unit,
     onConnectWatch: () -> Unit,
 ) {
+    // Advanced mode = developer view (simulation tools, server/model status,
+    // p(panic), motion, threshold, delay). Off = clean end-user dashboard.
+    val advanced by SettingsStore.advancedMode.collectAsState()
+    val threshold by SettingsStore.detectionThreshold.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -803,34 +848,38 @@ fun CalmSenseDashboard(
                 label = { Text(viewModel.healthConnectStatus) },
             )
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onUseSimulation) { Text("Sim") }
-            Button(onClick = onConnectWatch) { Text("Watch") }
+            if (advanced) {
+                TextButton(onClick = onUseSimulation) { Text("Sim") }
+                Button(onClick = onConnectWatch) { Text("Watch") }
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        if (advanced) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AssistChip(
-                onClick = {},
-                label = { Text(viewModel.serverStatus) },
-            )
-        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text(viewModel.serverStatus) },
+                )
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = viewModel.modelStatus,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = viewModel.modelStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -846,16 +895,49 @@ fun CalmSenseDashboard(
                     ?: "--",
                 modifier = Modifier.weight(1f)
             )
-            StatCard(
-                label = "Status",
-                value = if (viewModel.isMoving) "Active" else "Resting",
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                label = "p(panic)",
-                value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
-                modifier = Modifier.weight(1f)
-            )
+            if (advanced) {
+                StatCard(
+                    label = "Status",
+                    value = when {
+                        viewModel.isSleeping -> "Sleeping"
+                        viewModel.isMoving -> "Active"
+                        else -> "Resting"
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "p(panic)",
+                    value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (advanced) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                StatCard(
+                    label = "Threshold",
+                    value = String.format(Locale.getDefault(), "%.2f", threshold),
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "Motion",
+                    value = viewModel.motionIntensity
+                        ?.let { String.format(Locale.getDefault(), "%.2f", it) }
+                        ?: "--",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "Delay",
+                    value = viewModel.sampleDelaySec?.let { "${it}s" } ?: "--",
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -876,23 +958,25 @@ fun CalmSenseDashboard(
             onClick = { viewModel.logManualPanic() }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (advanced) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-        var showSimSheet by remember { mutableStateOf(false) }
-        OutlinedButton(
-            onClick = { showSimSheet = true },
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Run a simulation") }
+            var showSimSheet by remember { mutableStateOf(false) }
+            OutlinedButton(
+                onClick = { showSimSheet = true },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Run a simulation") }
 
-        if (showSimSheet) {
-            SimulationSheet(
-                onDismiss = { showSimSheet = false },
-                onPanicNow = { viewModel.triggerPanicDemo(); showSimSheet = false },
-                onStressVitals = { viewModel.simulatePanicAttack(); showSimSheet = false },
-                onExercise = { viewModel.simulateExercise(); showSimSheet = false },
-                onReset = { viewModel.resetStats(); showSimSheet = false },
-            )
+            if (showSimSheet) {
+                SimulationSheet(
+                    onDismiss = { showSimSheet = false },
+                    onPanicNow = { viewModel.triggerPanicDemo(); showSimSheet = false },
+                    onStressVitals = { viewModel.simulatePanicAttack(); showSimSheet = false },
+                    onExercise = { viewModel.simulateExercise(); showSimSheet = false },
+                    onReset = { viewModel.resetStats(); showSimSheet = false },
+                )
+            }
         }
     }
 }

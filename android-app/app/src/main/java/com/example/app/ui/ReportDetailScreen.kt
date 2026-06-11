@@ -162,6 +162,7 @@ fun ReportDetailScreen(
             if (report.currentHr != null) FieldRow("Heart rate", "${report.currentHr} bpm", topPad = 8)
             if (report.currentHrv != null) FieldRow("HRV", "%.1f ms".format(report.currentHrv), topPad = 8)
             if (report.currentMotionIntensity != null) FieldRow("Motion", "%.2f".format(report.currentMotionIntensity), topPad = 8)
+            if (report.duringSleep == true) FieldRow("Started during sleep", "Yes", topPad = 8)
 
             Spacer(modifier = Modifier.padding(top = 32.dp))
         }

@@ -99,6 +99,7 @@ class PanicReportStore private constructor(context: Context) {
         if (r.currentHrv != null) o.put("current_hrv", r.currentHrv)
         if (r.currentMotionIntensity != null)
             o.put("current_motion_intensity", r.currentMotionIntensity.toDouble())
+        if (r.duringSleep != null) o.put("during_sleep", r.duringSleep)
         o.put("synced_to_backend", r.syncedToBackend)
         return o
     }
@@ -127,6 +128,8 @@ class PanicReportStore private constructor(context: Context) {
             currentHrv = if (o.has("current_hrv") && !o.isNull("current_hrv")) o.getDouble("current_hrv") else null,
             currentMotionIntensity = if (o.has("current_motion_intensity") && !o.isNull("current_motion_intensity"))
                 o.getDouble("current_motion_intensity").toFloat() else null,
+            duringSleep = if (o.has("during_sleep") && !o.isNull("during_sleep"))
+                o.getBoolean("during_sleep") else null,
             syncedToBackend = o.optBoolean("synced_to_backend", false),
         )
     }
