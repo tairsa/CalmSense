@@ -13,6 +13,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,6 +26,13 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val sendExecutor = Executors.newSingleThreadExecutor()
+
+    // Without a wake lock the SoC suspends a few minutes after the screen
+    // goes off, and non-wakeup sensor listeners silently stop delivering —
+    // the phone then sees nothing until the user touches the watch. Held
+    // only while on-wrist; the off-body detector is a wake-up sensor, so
+    // re-wearing the watch always reaches onBodyStateChanged to re-acquire.
+    private var wakeLock: PowerManager.WakeLock? = null
     private var hrSensor: Sensor? = null
     private var accelSensor: Sensor? = null
     private var offBodySensor: Sensor? = null
@@ -60,7 +68,15 @@ class HrMonitoringService : Service(), SensorEventListener {
         ensureChannel(this)
         startInForeground(buildNotification("Starting…"))
 
-        hrSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+        wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:HrMonitor")
+            .apply { setReferenceCounted(false) }
+        if (isOnBody) wakeLock?.acquire() // indefinite by design: released off-wrist/onDestroy
+
+        // Prefer the wake-up variant when the hardware has one — belt and
+        // braces alongside the wake lock.
+        hrSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE, true)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
         if (hrSensor != null) {
             sensorManager.registerListener(this, hrSensor, SensorManager.SENSOR_DELAY_NORMAL)
             Log.i(TAG, "HR sensor listener registered (${hrSensor!!.name})")
@@ -99,6 +115,7 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
+        wakeLock?.takeIf { it.isHeld }?.release()
         sendExecutor.shutdown()
         super.onDestroy()
     }
@@ -184,10 +201,14 @@ class HrMonitoringService : Service(), SensorEventListener {
         isOnBody = onBody
         Log.i(TAG, if (onBody) "Watch back on wrist" else "Watch off wrist")
         if (onBody) {
+            wakeLock?.acquire()
             hrSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
             updateNotification("On wrist — waiting for heart rate…")
         } else {
             hrSensor?.let { sensorManager.unregisterListener(this, it) }
+            // Let the watch sleep while it's off the wrist; the wake-up
+            // off-body sensor brings us back when it's worn again.
+            wakeLock?.takeIf { it.isHeld }?.release()
             latestBpm = null
             latestHrvMs = null
             lastIbiMs = null
