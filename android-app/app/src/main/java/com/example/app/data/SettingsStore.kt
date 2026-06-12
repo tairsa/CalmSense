@@ -39,6 +39,7 @@ object SettingsStore {
     private const val KEY_ADVANCED_MODE = "advanced_mode"
     private const val KEY_COOLDOWN_MINUTES = "panic_cooldown_minutes"
     private const val KEY_MONITORING_ENABLED = "monitoring_enabled"
+    private const val KEY_MONITORING_OFF_UNTIL = "monitoring_off_until"
 
     private var prefs: SharedPreferences? = null
 
@@ -56,9 +57,15 @@ object SettingsStore {
     val panicCooldownMinutes: StateFlow<Int> = _panicCooldownMinutes
 
     // Master switch: false stops the foreground MonitorService and disables
-    // in-app detection until the user turns it back on from Settings.
+    // in-app detection until the user turns it back on from Settings (or a
+    // timed snooze expires).
     private val _monitoringEnabled = MutableStateFlow(true)
     val monitoringEnabled: StateFlow<Boolean> = _monitoringEnabled
+
+    // Epoch millis when a timed snooze ends and monitoring resumes on its
+    // own; 0 means off-until-manually-turned-on (or not off at all).
+    private val _monitoringOffUntil = MutableStateFlow(0L)
+    val monitoringOffUntil: StateFlow<Long> = _monitoringOffUntil
 
     /** Idempotent. Call from every process entry point (activity + services). */
     fun init(context: Context) {
@@ -76,6 +83,14 @@ object SettingsStore {
         _panicCooldownMinutes.value =
             p.getInt(KEY_COOLDOWN_MINUTES, DEFAULT_COOLDOWN_MINUTES).coerceAtLeast(0)
         _monitoringEnabled.value = p.getBoolean(KEY_MONITORING_ENABLED, true)
+        _monitoringOffUntil.value = p.getLong(KEY_MONITORING_OFF_UNTIL, 0L)
+        // A timed snooze that lapsed while nothing was running (alarm lost to
+        // a reboot, say) resumes here as a backstop.
+        if (!_monitoringEnabled.value &&
+            _monitoringOffUntil.value in 1..System.currentTimeMillis()
+        ) {
+            setMonitoringEnabled(true)
+        }
     }
 
     fun setPanicCooldownMinutes(minutes: Int) {
@@ -84,9 +99,16 @@ object SettingsStore {
         prefs?.edit()?.putInt(KEY_COOLDOWN_MINUTES, v)?.apply()
     }
 
-    fun setMonitoringEnabled(enabled: Boolean) {
+    /** [offUntilMs] only applies when disabling: epoch millis a timed snooze
+     *  ends, or 0 to stay off until manually re-enabled. */
+    fun setMonitoringEnabled(enabled: Boolean, offUntilMs: Long = 0L) {
+        val until = if (enabled) 0L else offUntilMs
         _monitoringEnabled.value = enabled
-        prefs?.edit()?.putBoolean(KEY_MONITORING_ENABLED, enabled)?.apply()
+        _monitoringOffUntil.value = until
+        prefs?.edit()
+            ?.putBoolean(KEY_MONITORING_ENABLED, enabled)
+            ?.putLong(KEY_MONITORING_OFF_UNTIL, until)
+            ?.apply()
     }
 
     fun setDetectionThreshold(value: Float) {

@@ -1,7 +1,7 @@
 package com.example.app.ui
 
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +18,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -37,9 +39,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import com.example.app.MonitorService
+import com.example.app.MonitoringSnooze
 import com.example.app.data.SettingsStore
+import java.text.DateFormat
+import java.util.Date
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -142,10 +145,22 @@ private fun CooldownCard() {
     }
 }
 
+// Label → snooze duration; null = off until turned back on manually.
+private val SNOOZE_OPTIONS: List<Pair<String, Long?>> = listOf(
+    "For 30 minutes" to 30L * 60_000L,
+    "For 1 hour" to 60L * 60_000L,
+    "For 2 hours" to 2L * 60L * 60_000L,
+    "For 8 hours" to 8L * 60L * 60_000L,
+    "For 24 hours" to 24L * 60L * 60_000L,
+    "Until I turn it back on" to null,
+)
+
 @Composable
 private fun MonitoringCard() {
     val enabled by SettingsStore.monitoringEnabled.collectAsState()
+    val offUntil by SettingsStore.monitoringOffUntil.collectAsState()
     val context = LocalContext.current
+    var menuOpen by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -159,44 +174,60 @@ private fun MonitoringCard() {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                if (enabled) {
-                    "Turning it off stops panic detection and the background " +
-                        "monitoring service until you turn it back on here."
-                } else {
-                    "Detection is stopped and nothing runs in the background. " +
-                        "Turn it back on to resume monitoring."
+                when {
+                    enabled ->
+                        "Turning it off stops panic detection and the background " +
+                            "monitoring service — for a set time, or until you " +
+                            "turn it back on here."
+                    offUntil > 0L ->
+                        "Detection is stopped and nothing runs in the background. " +
+                            "Monitoring turns back on by itself at ${formatOffUntil(offUntil)}."
+                    else ->
+                        "Detection is stopped and nothing runs in the background. " +
+                            "Turn it back on to resume monitoring."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 4.dp),
             )
-            Button(
-                onClick = {
-                    if (enabled) {
-                        SettingsStore.setMonitoringEnabled(false)
-                        context.stopService(Intent(context, MonitorService::class.java))
-                    } else {
-                        SettingsStore.setMonitoringEnabled(true)
-                        ContextCompat.startForegroundService(
-                            context, Intent(context, MonitorService::class.java),
-                        )
+            if (enabled) {
+                Box(modifier = Modifier.padding(top = 12.dp)) {
+                    Button(
+                        onClick = { menuOpen = true },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                    ) {
+                        Text("Turn off CalmSense…")
                     }
-                },
-                colors = if (enabled) {
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    )
-                } else {
-                    ButtonDefaults.buttonColors()
-                },
-                modifier = Modifier.padding(top = 12.dp),
-            ) {
-                Text(if (enabled) "Turn off CalmSense" else "Turn monitoring back on")
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        SNOOZE_OPTIONS.forEach { (label, duration) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    menuOpen = false
+                                    MonitoringSnooze.turnOff(context, duration)
+                                },
+                            )
+                        }
+                    }
+                }
+            } else {
+                Button(
+                    onClick = { MonitoringSnooze.turnOn(context) },
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    Text("Turn monitoring back on")
+                }
             }
         }
     }
 }
+
+private fun formatOffUntil(epochMs: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        .format(Date(epochMs))
 
 @Composable
 private fun AdvancedModeCard() {

@@ -48,6 +48,10 @@
             android:exported="false"
             android:foregroundServiceType="health|location" />
 
+        <receiver
+            android:name=".MonitoringResumeReceiver"
+            android:exported="false" />
+
         <service
             android:name=".data.WatchListenerService"
             android:exported="true">
