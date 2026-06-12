@@ -22,6 +22,7 @@ import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
+import com.example.app.data.UploadQueue
 import com.example.app.data.Vitals
 import com.example.app.data.WatchVitalsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +46,7 @@ class MonitorService : Service() {
         super.onCreate()
         createChannels()
         SettingsStore.init(applicationContext)
+        UploadQueue.init(applicationContext)
         repo = HealthConnectVitalsRepository(applicationContext)
         modelCache = PanicModelCache(applicationContext)
         startInForeground(buildMonitorNotification("Starting…"))
@@ -142,10 +144,12 @@ class MonitorService : Service() {
             currentMotionIntensity = v.motionIntensity ?: if (v.isMoving) 1.0f else 0.0f,
         )
         scope.launch {
-            when (val r = backend.postSensorData(payload)) {
+            // Queued on network failure and re-sent (oldest first) once the
+            // server answers again — see UploadQueue.
+            when (val r = UploadQueue.postSensor(backend, payload)) {
                 PostResult.Success -> Log.d(TAG, "POST ok: hr=$hr panic=$panic")
                 is PostResult.HttpError -> Log.w(TAG, "POST failed: HTTP ${r.code}")
-                is PostResult.NetworkError -> Log.w(TAG, "POST failed: ${r.reason}")
+                is PostResult.NetworkError -> Log.w(TAG, "POST queued: ${r.reason}")
             }
         }
     }
@@ -220,10 +224,15 @@ class MonitorService : Service() {
 
     private fun firePanicNotification() {
         if (!hasPostPermission()) return
+        // ACTION_PANIC_ALERT makes MainActivity surface the "was it a panic?"
+        // prompt when the user opens the app through this notification.
         val openApp = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
+            this, 2,
+            Intent(this, MainActivity::class.java).apply {
+                action = ACTION_PANIC_ALERT
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = NotificationCompat.Builder(this, PANIC_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)

@@ -2,6 +2,7 @@ package com.example.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -69,6 +70,7 @@ import com.example.app.data.PingResult
 import com.example.app.data.PostResult
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
+import com.example.app.data.UploadQueue
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.QuestionnaireAnswers
@@ -112,6 +114,10 @@ private val isEmulator: Boolean by lazy {
 
 val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEND_LAN_URL
 const val USER_ID = "tairsa-dev"
+
+// Intent action carried by panic-alert notifications: opening the app
+// through one should surface the "was it a panic?" confirm prompt.
+const val ACTION_PANIC_ALERT = "com.example.app.action.PANIC_ALERT"
 
 // Navigation routes — kept as compile-time constants so the NavHost and the
 // auto-navigation LaunchedEffect agree on names.
@@ -243,11 +249,21 @@ class HeartRateViewModel : ViewModel() {
     fun startPinging() {
         if (pingJob != null) return
         pingJob = viewModelScope.launch {
+            var wasOffline = false
             while (true) {
-                serverStatus = when (val r = pingBackend.ping()) {
+                val r = pingBackend.ping()
+                serverStatus = when (r) {
                     PingResult.Connected -> "Server: connected"
                     is PingResult.HttpError -> "Server: HTTP ${r.code}"
                     is PingResult.NetworkError -> "Server: offline"
+                }
+                // Connection came back: push everything held while offline.
+                if (r == PingResult.Connected) {
+                    if (UploadQueue.pendingCount.value > 0) UploadQueue.flush(pingBackend)
+                    if (wasOffline) reportRepo?.syncPending()
+                    wasOffline = false
+                } else {
+                    wasOffline = true
                 }
                 delay(5_000)
             }
@@ -359,6 +375,17 @@ class HeartRateViewModel : ViewModel() {
             showPanicConfirm = true
         }
         wasInPanic = isPanic
+    }
+
+    /** A panic-alert notification was tapped: surface the "was it a panic?"
+     *  prompt. In-app detections captured their feedback context when they
+     *  fired; a background (MonitorService) detection hasn't, so capture one
+     *  now rather than clobber an existing snapshot. */
+    fun onPanicNotificationOpened() {
+        if (PanicEventContext.peek() == null) {
+            captureFeedbackContext(detectedByModel = true)
+        }
+        showPanicConfirm = true
     }
 
     /** Manual entry: user logs a panic the model missed. Skips the
@@ -496,10 +523,10 @@ class HeartRateViewModel : ViewModel() {
         )
         feedbackStatus = "sending…"
         viewModelScope.launch {
-            feedbackStatus = when (val r = pingBackend.submitPanicFeedback(payload)) {
+            feedbackStatus = when (val r = UploadQueue.postFeedback(pingBackend, payload)) {
                 PostResult.Success -> "Feedback saved — thanks!"
                 is PostResult.HttpError -> "Feedback failed (HTTP ${r.code})"
-                is PostResult.NetworkError -> "Feedback failed: offline"
+                is PostResult.NetworkError -> "Saved on this phone — sends when the server is back"
             }
         }
     }
@@ -513,6 +540,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Before setContent: the dashboard reads SettingsStore on first compose.
         SettingsStore.init(this)
+        UploadQueue.init(this)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()
@@ -522,6 +550,7 @@ class MainActivity : ComponentActivity() {
         viewModel.triggerNotificationCallback = {
             sendPanicNotification()
         }
+        handlePanicIntent(intent)
 
         setContent {
             AppTheme {
@@ -765,7 +794,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Notifications arrive here while the activity is alive (singleTop via
+     *  the panic PendingIntent); cold starts go through onCreate instead. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handlePanicIntent(intent)
+    }
+
+    private fun handlePanicIntent(intent: Intent?) {
+        if (intent?.action == ACTION_PANIC_ALERT) {
+            viewModel.onPanicNotificationOpened()
+        }
+    }
+
     private fun sendPanicNotification() {
+        val openPrompt = PendingIntent.getActivity(
+            this, 2,
+            Intent(this, MainActivity::class.java).apply {
+                action = ACTION_PANIC_ALERT
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val builder = NotificationCompat.Builder(this, "PANIC_CHANNEL_ID")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("CalmSense: Breathe with me")
@@ -773,6 +823,7 @@ class MainActivity : ComponentActivity() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
+            .setContentIntent(openPrompt)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
