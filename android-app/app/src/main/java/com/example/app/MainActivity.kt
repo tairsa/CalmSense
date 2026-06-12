@@ -58,6 +58,7 @@ import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
 import com.example.app.data.LocationProvider
+import com.example.app.data.PanicAlertGate
 import com.example.app.data.PanicEventContext
 import com.example.app.data.PanicFeedbackPayload
 import com.example.app.data.PanicModel
@@ -326,7 +327,7 @@ class HeartRateViewModel : ViewModel() {
     }
 
     private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
-        if (hr == null || hrv == null) {
+        if (!SettingsStore.monitoringEnabled.value || hr == null || hrv == null) {
             lastPanicProbability = 0.0
             wasInPanic = false
             return
@@ -342,7 +343,9 @@ class HeartRateViewModel : ViewModel() {
             lastPanicProbability = 0.0
             hr > 120 && hrv < 20.0 && !moving
         }
-        if (isPanic && !wasInPanic) {
+        // The cooldown gate is shared with MonitorService, so the two paths
+        // together raise at most one alert per cooldown window.
+        if (isPanic && !wasInPanic && PanicAlertGate.tryFire()) {
             triggerNotificationCallback?.invoke()
             captureFeedbackContext(detectedByModel = true)
             // In simulation mode, also open the breathing overlay so the demo
@@ -728,6 +731,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startMonitorService() {
+        // Respect the Settings off switch: don't bring monitoring back on launch.
+        if (!SettingsStore.monitoringEnabled.value) return
         val intent = Intent(this, MonitorService::class.java)
         ContextCompat.startForegroundService(this, intent)
     }

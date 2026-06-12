@@ -30,9 +30,15 @@ object SettingsStore {
     fun defaultThresholdFor(advanced: Boolean) =
         if (advanced) DEFAULT_THRESHOLD_ADVANCED else DEFAULT_THRESHOLD_USER
 
+    // Minimum minutes between panic alerts, so a sustained episode doesn't
+    // re-notify on every poll. 0 disables the cooldown.
+    const val DEFAULT_COOLDOWN_MINUTES = 3
+
     private const val PREFS_NAME = "calmsense_settings"
     private const val KEY_THRESHOLD = "detection_threshold"
     private const val KEY_ADVANCED_MODE = "advanced_mode"
+    private const val KEY_COOLDOWN_MINUTES = "panic_cooldown_minutes"
+    private const val KEY_MONITORING_ENABLED = "monitoring_enabled"
 
     private var prefs: SharedPreferences? = null
 
@@ -45,6 +51,14 @@ object SettingsStore {
     // Defaults on so existing installs keep the dashboard they had.
     private val _advancedMode = MutableStateFlow(true)
     val advancedMode: StateFlow<Boolean> = _advancedMode
+
+    private val _panicCooldownMinutes = MutableStateFlow(DEFAULT_COOLDOWN_MINUTES)
+    val panicCooldownMinutes: StateFlow<Int> = _panicCooldownMinutes
+
+    // Master switch: false stops the foreground MonitorService and disables
+    // in-app detection until the user turns it back on from Settings.
+    private val _monitoringEnabled = MutableStateFlow(true)
+    val monitoringEnabled: StateFlow<Boolean> = _monitoringEnabled
 
     /** Idempotent. Call from every process entry point (activity + services). */
     fun init(context: Context) {
@@ -59,6 +73,20 @@ object SettingsStore {
         } else {
             defaultThresholdFor(_advancedMode.value)
         }
+        _panicCooldownMinutes.value =
+            p.getInt(KEY_COOLDOWN_MINUTES, DEFAULT_COOLDOWN_MINUTES).coerceAtLeast(0)
+        _monitoringEnabled.value = p.getBoolean(KEY_MONITORING_ENABLED, true)
+    }
+
+    fun setPanicCooldownMinutes(minutes: Int) {
+        val v = minutes.coerceAtLeast(0)
+        _panicCooldownMinutes.value = v
+        prefs?.edit()?.putInt(KEY_COOLDOWN_MINUTES, v)?.apply()
+    }
+
+    fun setMonitoringEnabled(enabled: Boolean) {
+        _monitoringEnabled.value = enabled
+        prefs?.edit()?.putBoolean(KEY_MONITORING_ENABLED, enabled)?.apply()
     }
 
     fun setDetectionThreshold(value: Float) {

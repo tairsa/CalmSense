@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.app.data.BackendClient
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicAlertGate
 import com.example.app.data.PanicModelCache
 import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
@@ -105,7 +106,9 @@ class MonitorService : Service() {
         updateMonitorNotification(statusText)
 
         val panic = isPanic(v)
-        if (panic) firePanicNotification()
+        // The cooldown gate keeps a sustained episode from re-notifying on
+        // every poll (every 5 s when elevated).
+        if (panic && PanicAlertGate.tryFire()) firePanicNotification()
 
         uploadIfFresh(v, panic)
     }
