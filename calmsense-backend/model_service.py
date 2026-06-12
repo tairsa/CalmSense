@@ -152,6 +152,36 @@ def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
     return samples
 
 
+def _as_utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def annotate_training_usage(user_id: str, rows: list[dict]) -> list[dict]:
+    """Mark each feedback row with `used_in_training`: whether it has been part
+    of at least one retrain. A row counts as used when it is trainable (has
+    vitals + a `was_panic` label) and its event time is at or before the
+    latest `trained_through` among the user's trained snapshots.
+    """
+    horizons = [
+        _parse_iso(s.get("trained_through") or "")
+        for s in storage.list_model_snapshots(user_id)
+        if s.get("source") == "trained"
+    ]
+    latest = max((_as_utc(h) for h in horizons if h is not None), default=None)
+
+    for r in rows:
+        trainable = (
+            r.get("current_hr") is not None
+            and r.get("current_motion_intensity") is not None
+            and r.get("was_panic") is not None
+        )
+        t = _parse_iso(_event_time(r))
+        r["used_in_training"] = bool(
+            trainable and latest is not None and t is not None and _as_utc(t) <= latest
+        )
+    return rows
+
+
 def _synthetic_anchor(label: int, n: int, seed: int = 42) -> list[tuple]:
     """`n` synthetic samples of one class, drawn from the same physiological
     priors the shipped baseline was trained on (ml/generate_data.py). Used to

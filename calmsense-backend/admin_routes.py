@@ -132,7 +132,7 @@ def user_reports(user_id: str, admin: dict = Depends(get_current_admin)):
 def user_feedback(user_id: str, admin: dict = Depends(get_current_admin)):
     rows = [r for r in storage.read_all_feedback() if r.get("user_id") == user_id]
     rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
-    return {"feedback": rows}
+    return {"feedback": model_service.annotate_training_usage(user_id, rows)}
 
 
 @router.get("/users/{user_id}/sensor-data")

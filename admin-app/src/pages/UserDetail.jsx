@@ -270,6 +270,12 @@ function Feedback({ userId }) {
   return (
     <div>
       <ErrorBox error={error} />
+      {rows.length > 0 && (
+        <p className="muted small legend">
+          <span className="legend-swatch swatch-untrained" /> not yet used for training
+          <span className="legend-swatch swatch-trained" /> used in at least one retrain
+        </p>
+      )}
       <div className="card no-pad">
         <table className="data-table">
           <thead>
@@ -285,7 +291,7 @@ function Feedback({ userId }) {
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.id ?? i}>
+              <tr key={r.id ?? i} className={r.used_in_training ? "" : "row-untrained"}>
                 <td>{fmt(r.timestamp)}</td>
                 <td>{r.was_panic ? "yes" : "no"}</td>
                 <td>{r.detected_by_model ? "yes" : "manual"}</td>
