@@ -97,7 +97,61 @@ fun SettingsScreen() {
 
         MonitoringCard()
 
+        Text(
+            "Privacy",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
+        )
+
+        ConsentCard()
+
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ConsentCard() {
+    val consent by SettingsStore.consentGranted.collectAsState()
+    val context = LocalContext.current
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Heart-rate data consent",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "CalmSense reads heart rate and HRV from your watch to detect " +
+                        "panic attacks. Turning this off revokes consent and stops " +
+                        "all monitoring.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 4.dp, end = 12.dp),
+                )
+            }
+            Switch(
+                checked = consent,
+                onCheckedChange = { granted ->
+                    if (granted) {
+                        SettingsStore.setConsent(true)
+                        MonitoringSnooze.turnOn(context)
+                    } else {
+                        SettingsStore.setConsent(false)
+                        MonitoringSnooze.turnOff(context, null)
+                    }
+                },
+            )
+        }
     }
 }
 

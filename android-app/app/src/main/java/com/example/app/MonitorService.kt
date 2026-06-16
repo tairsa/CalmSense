@@ -17,6 +17,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.app.data.BackendClient
 import com.example.app.data.HealthConnectVitalsRepository
 import com.example.app.data.PanicAlertGate
+import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicModelCache
 import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
@@ -24,6 +25,7 @@ import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
 import com.example.app.data.UploadQueue
 import com.example.app.data.Vitals
+import com.example.app.data.motionFeature
 import com.example.app.data.WatchVitalsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,7 @@ class MonitorService : Service() {
     private lateinit var repo: HealthConnectVitalsRepository
     private lateinit var modelCache: PanicModelCache
     private val backend = BackendClient(BACKEND_URL)
+    private val panicDebouncer = PanicDebouncer()
 
     override fun onCreate() {
         super.onCreate()
@@ -97,6 +100,12 @@ class MonitorService : Service() {
     }
 
     private fun handleVitals(v: Vitals) {
+        // No detection or upload of health data without the user's consent. If a
+        // system restart revived the service without it, stop ourselves.
+        if (!SettingsStore.consentGranted.value) {
+            stopSelf()
+            return
+        }
         val statusText = when {
             v.watchOnBody == false -> "Paused — watch is off your wrist"
             v.heartRateBpm != null && SleepDetector.isAsleep ->
@@ -107,9 +116,10 @@ class MonitorService : Service() {
         }
         updateMonitorNotification(statusText)
 
-        val panic = isPanic(v)
-        // The cooldown gate keeps a sustained episode from re-notifying on
-        // every poll (every 5 s when elevated).
+        // Require the detection to persist before acting (filters single-sample
+        // spikes); the cooldown gate then keeps a sustained episode from
+        // re-notifying on every poll (every 5 s when elevated).
+        val panic = panicDebouncer.confirm(isPanic(v))
         if (panic && PanicAlertGate.tryFire()) firePanicNotification()
 
         uploadIfFresh(v, panic)
@@ -126,7 +136,7 @@ class MonitorService : Service() {
         return if (model != null && !model.isUntrained()) {
             // Mirror HeartRateViewModel.checkPanicRisk's motion encoding so
             // foreground and background detections always agree.
-            val motion = if (v.isMoving) 0.7 else 0.05
+            val motion = v.motionFeature()
             val threshold = SettingsStore.detectionThreshold.value.toDouble()
             model.predict(hr.toDouble(), hrv, motion, threshold).isPanic
         } else {

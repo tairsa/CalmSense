@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4 portrait; margin: 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; color: #1F2933; }
+  .title { color: #143D59; font-size: 24px; font-weight: 700; }
+  .sub { color: #5B6B7B; font-size: 13px; margin: 4px 0 22px; }
+  .flow { display: flex; flex-direction: column; align-items: center; }
+  .box {
+    width: 78%; border: 2px solid #143D59; border-radius: 10px;
+    padding: 12px 16px; background: #F5F8FB;
+  }
+  .box .h { color: #143D59; font-weight: 700; font-size: 15px; }
+  .box .d { color: #3C4A57; font-size: 12.5px; margin-top: 3px; line-height: 1.4; }
+  .box.accent { background: #143D59; border-color: #143D59; }
+  .box.accent .h { color: #ffffff; }
+  .box.accent .d { color: #D7E3EE; }
+  .arrow { color: #2A9D8F; font-weight: 700; font-size: 13px; text-align: center; padding: 7px 0; }
+  .arrow .lbl { display: block; color: #5B6B7B; font-weight: 400; font-size: 11px; }
+  .note {
+    margin-top: 24px; width: 100%; border-left: 4px solid #2A9D8F;
+    background: #EEF7F5; padding: 12px 16px; font-size: 12.5px; color: #2C3E45; line-height: 1.5;
+  }
+  .note b { color: #143D59; }
+  .tag { display:inline-block; background:#2A9D8F; color:#fff; font-size:10px; font-weight:700;
+         padding:2px 7px; border-radius:10px; vertical-align:middle; margin-left:6px; }
+</style>
+</head>
+<body>
+  <div class="title">CalmSense — Samsung Health Sensor SDK Data Flow</div>
+  <div class="sub">Panic-attack detection from heart rate &amp; HRV · all sensor data processed on-device</div>
+
+  <div class="flow">
+    <div class="box accent">
+      <div class="h">Galaxy Watch — Samsung Health Sensor SDK</div>
+      <div class="d">Tracker: <b>HEART_RATE_CONTINUOUS</b> → heart rate + inter-beat interval (IBI). Only this tracker is licensed.</div>
+    </div>
+
+    <div class="arrow">▼<span class="lbl">on-device · in-process</span></div>
+
+    <div class="box">
+      <div class="h">CalmSense watch app (wear)</div>
+      <div class="d">Computes heart rate and HRV (RMSSD from IBI) locally. No raw sensor data is stored or transmitted off the watch.</div>
+    </div>
+
+    <div class="arrow">▼<span class="lbl">Wearable Data Layer · encrypted, paired devices only</span></div>
+
+    <div class="box">
+      <div class="h">CalmSense phone app <span class="tag">user consent</span></div>
+      <div class="d">On-device classifier flags early signs of a panic attack (elevated HR + suppressed HRV) and distinguishes them from exercise. Triggers breathing guidance &amp; journaling. Explicit in-app consent is obtained at onboarding before any tracking begins.</div>
+    </div>
+
+    <div class="arrow">▼<span class="lbl">optional · the user's own account only</span></div>
+
+    <div class="box">
+      <div class="h">Backend (FastAPI) — per-user model only</div>
+      <div class="d">Stores the user's own derived features (HR, HRV, motion, labels) to retrain that user's personal detection model. No Samsung raw sensor data is shared with third parties.</div>
+    </div>
+
+    <div class="note">
+      <b>Data handling:</b> Samsung Health sensor data (HR + IBI) is read and processed <b>on-device</b> solely for the individual user's health monitoring and panic-attack support. The user grants explicit consent before tracking starts and can stop monitoring at any time. Derived features stay within the user's own account; raw sensor streams never leave the device.
+    </div>
+  </div>
+</body>
+</html>

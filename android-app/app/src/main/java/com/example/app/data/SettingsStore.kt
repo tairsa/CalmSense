@@ -40,6 +40,8 @@ object SettingsStore {
     private const val KEY_COOLDOWN_MINUTES = "panic_cooldown_minutes"
     private const val KEY_MONITORING_ENABLED = "monitoring_enabled"
     private const val KEY_MONITORING_OFF_UNTIL = "monitoring_off_until"
+    private const val KEY_CONSENT_GRANTED = "consent_granted"
+    private const val KEY_CONSENT_PROMPTED = "consent_prompted"
 
     private var prefs: SharedPreferences? = null
 
@@ -67,6 +69,16 @@ object SettingsStore {
     private val _monitoringOffUntil = MutableStateFlow(0L)
     val monitoringOffUntil: StateFlow<Long> = _monitoringOffUntil
 
+    // Explicit consent to read & use heart-rate/HRV data. Gates ALL monitoring
+    // (in-app + MonitorService) — nothing reads or uploads health data until the
+    // user has granted it. [consentPrompted] tracks whether the first-launch
+    // consent screen has been answered (either way), so we don't re-block on it.
+    private val _consentGranted = MutableStateFlow(false)
+    val consentGranted: StateFlow<Boolean> = _consentGranted
+
+    private val _consentPrompted = MutableStateFlow(false)
+    val consentPrompted: StateFlow<Boolean> = _consentPrompted
+
     /** Idempotent. Call from every process entry point (activity + services). */
     fun init(context: Context) {
         if (prefs != null) return
@@ -84,6 +96,8 @@ object SettingsStore {
             p.getInt(KEY_COOLDOWN_MINUTES, DEFAULT_COOLDOWN_MINUTES).coerceAtLeast(0)
         _monitoringEnabled.value = p.getBoolean(KEY_MONITORING_ENABLED, true)
         _monitoringOffUntil.value = p.getLong(KEY_MONITORING_OFF_UNTIL, 0L)
+        _consentGranted.value = p.getBoolean(KEY_CONSENT_GRANTED, false)
+        _consentPrompted.value = p.getBoolean(KEY_CONSENT_PROMPTED, false)
         // A timed snooze that lapsed while nothing was running (alarm lost to
         // a reboot, say) resumes here as a backstop.
         if (!_monitoringEnabled.value &&
@@ -109,6 +123,19 @@ object SettingsStore {
             ?.putBoolean(KEY_MONITORING_ENABLED, enabled)
             ?.putLong(KEY_MONITORING_OFF_UNTIL, until)
             ?.apply()
+    }
+
+    /** Record the user's data-tracking consent. Marks the first-launch prompt
+     *  as answered either way; [granted] gates all monitoring. Revoking it
+     *  (granted=false) also stops monitoring. */
+    fun setConsent(granted: Boolean) {
+        _consentGranted.value = granted
+        _consentPrompted.value = true
+        prefs?.edit()
+            ?.putBoolean(KEY_CONSENT_GRANTED, granted)
+            ?.putBoolean(KEY_CONSENT_PROMPTED, true)
+            ?.apply()
+        if (!granted) setMonitoringEnabled(false)
     }
 
     fun setDetectionThreshold(value: Float) {

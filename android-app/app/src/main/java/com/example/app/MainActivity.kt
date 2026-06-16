@@ -58,8 +58,10 @@ import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.HrvSource
 import com.example.app.data.LocationProvider
 import com.example.app.data.PanicAlertGate
+import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicEventContext
 import com.example.app.data.PanicFeedbackPayload
 import com.example.app.data.PanicModel
@@ -73,6 +75,8 @@ import com.example.app.data.SleepDetector
 import com.example.app.data.UploadQueue
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
+import com.example.app.data.motionFeatureFor
+import com.example.app.ui.ConsentScreen
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.QuestionnaireScreen
 import com.example.app.ui.ReportDetailScreen
@@ -98,7 +102,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 // over Tailscale, so we use the Pi's tailnet IP (pi5-home-server-ts). This works
 // from anywhere the phone has Tailscale connected — home Wi-Fi or cellular.
 // (Pi LAN IP was http://192.168.1.227:8000 — Wi-Fi only; Tailscale supersedes it.)
-private const val BACKEND_LAN_URL = "http://100.76.34.20:8000"
+private const val BACKEND_LAN_URL = "http://100.80.59.82:8000"
 private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
 
 private val isEmulator: Boolean by lazy {
@@ -134,6 +138,7 @@ class HeartRateViewModel : ViewModel() {
     var sampleDelaySec by mutableStateOf<Long?>(null)
     var isMoving by mutableStateOf(false)
     var motionIntensity by mutableStateOf<Float?>(null)
+    var hrvSource by mutableStateOf(HrvSource.NONE)
     var isSleeping by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
     var dataSource by mutableStateOf(VitalsSource.WATCH)
@@ -154,7 +159,7 @@ class HeartRateViewModel : ViewModel() {
     private var pendingDetectedByModel: Boolean = false
     private var pendingHr: Int? = null
     private var pendingHrv: Double? = null
-    private var pendingMotion: Boolean = false
+    private var pendingMotion: Float = 0.0f
     private var pendingProbability: Double = 0.0
 
     // Journal (panic reports).
@@ -170,6 +175,7 @@ class HeartRateViewModel : ViewModel() {
     private var pollJob: Job? = null
     private var pingJob: Job? = null
     private var wasInPanic: Boolean = false
+    private val panicDebouncer = PanicDebouncer()
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
@@ -284,6 +290,7 @@ class HeartRateViewModel : ViewModel() {
         sampleDelaySec = vitals.hrSampleAgeSeconds
         isMoving = vitals.isMoving
         motionIntensity = vitals.motionIntensity
+        hrvSource = vitals.hrvSource
         // Sleep state is inferred from the watch stream only — simulated and
         // Health Connect sources don't feed the detector.
         isSleeping = dataSource == VitalsSource.WATCH && SleepDetector.isAsleep
@@ -314,6 +321,7 @@ class HeartRateViewModel : ViewModel() {
         // a fresh notification (otherwise a leftover wasInPanic=true from a
         // previous demo silently swallows it).
         wasInPanic = false
+        panicDebouncer.reset()
     }
 
     /** Fires the full panic UX (notification + breathing overlay) without
@@ -333,6 +341,7 @@ class HeartRateViewModel : ViewModel() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
         dataSource = VitalsSource.SIMULATED
         wasInPanic = false
+        panicDebouncer.reset()
     }
 
     fun resetStats() {
@@ -340,17 +349,21 @@ class HeartRateViewModel : ViewModel() {
         dataSource = VitalsSource.SIMULATED
         wasInPanic = false
         lastPanicProbability = 0.0
+        panicDebouncer.reset()
     }
 
     private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
-        if (!SettingsStore.monitoringEnabled.value || hr == null || hrv == null) {
+        if (!SettingsStore.consentGranted.value || !SettingsStore.monitoringEnabled.value ||
+            hr == null || hrv == null
+        ) {
             lastPanicProbability = 0.0
             wasInPanic = false
+            panicDebouncer.reset()
             return
         }
         val model = panicModel
-        val isPanic: Boolean = if (model != null && !model.isUntrained()) {
-            val motion = if (moving) 0.7 else 0.05
+        val rawPanic: Boolean = if (model != null && !model.isUntrained()) {
+            val motion = motionFeatureFor(motionIntensity, moving)
             val threshold = SettingsStore.detectionThreshold.value.toDouble()
             val pred = model.predict(hr.toDouble(), hrv, motion, threshold)
             lastPanicProbability = pred.probability
@@ -359,6 +372,10 @@ class HeartRateViewModel : ViewModel() {
             lastPanicProbability = 0.0
             hr > 120 && hrv < 20.0 && !moving
         }
+        // Require the positive to persist before alerting (filters single-sample
+        // spikes). Simulation drives the in-app demos, so it fires immediately.
+        val isPanic = if (dataSource == VitalsSource.SIMULATED) rawPanic
+                      else panicDebouncer.confirm(rawPanic)
         // The cooldown gate is shared with MonitorService, so the two paths
         // together raise at most one alert per cooldown window.
         if (isPanic && !wasInPanic && PanicAlertGate.tryFire()) {
@@ -487,7 +504,7 @@ class HeartRateViewModel : ViewModel() {
         pendingDetectedByModel = detectedByModel
         pendingHr = currentHr
         pendingHrv = currentHrv
-        pendingMotion = isMoving
+        pendingMotion = motionIntensity ?: if (isMoving) 1.0f else 0.0f
         pendingProbability = lastPanicProbability
 
         // Snapshot for the journal entry and kick off a GPS fix.
@@ -497,7 +514,7 @@ class HeartRateViewModel : ViewModel() {
                 detectedByModel = detectedByModel,
                 hr = currentHr,
                 hrv = currentHrv,
-                motionIntensity = if (isMoving) 1.0f else 0.0f,
+                motionIntensity = motionIntensity ?: if (isMoving) 1.0f else 0.0f,
                 duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
             )
         )
@@ -518,7 +535,7 @@ class HeartRateViewModel : ViewModel() {
             detectedByModel = pendingDetectedByModel,
             currentHr = pendingHr?.toFloat(),
             currentHrv = pendingHrv?.toFloat(),
-            currentMotionIntensity = if (pendingMotion) 1.0f else 0.0f,
+            currentMotionIntensity = pendingMotion,
             modelProbability = if (pendingDetectedByModel) pendingProbability else null,
         )
         feedbackStatus = "sending…"
@@ -545,7 +562,9 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()
         requestBatteryOptimizationExemptionIfNeeded()
-        startMonitorService()
+        // Monitoring only starts once the user has consented (see ConsentScreen);
+        // granting consent starts the service from setContent.
+        if (SettingsStore.consentGranted.value) startMonitorService()
 
         viewModel.triggerNotificationCallback = {
             sendPanicNotification()
@@ -554,6 +573,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
+                // First-launch gate: block the app behind the data-tracking consent
+                // screen until the user answers. Monitoring is disabled until consent.
+                val consentPrompted by SettingsStore.consentPrompted.collectAsState()
+                if (!consentPrompted) {
+                    ConsentScreen(
+                        onConsent = {
+                            SettingsStore.setConsent(true)
+                            SettingsStore.setMonitoringEnabled(true)
+                            startMonitorService()
+                        },
+                        onDecline = { SettingsStore.setConsent(false) },
+                    )
+                    return@AppTheme
+                }
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
@@ -965,6 +998,31 @@ fun CalmSenseDashboard(
                     label = "p(panic)",
                     value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
                     modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (advanced && viewModel.hrvSource == HrvSource.BPM_DERIVED) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "HRV is an estimate (bpm-derived) — this device can't supply real beat-to-beat intervals, so accuracy is limited.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
                 )
             }
         }

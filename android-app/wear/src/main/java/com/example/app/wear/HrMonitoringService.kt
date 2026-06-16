@@ -27,15 +27,16 @@ class HrMonitoringService : Service(), SensorEventListener {
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val sendExecutor = Executors.newSingleThreadExecutor()
 
-    // Without a wake lock the SoC suspends a few minutes after the screen
-    // goes off, and non-wakeup sensor listeners silently stop delivering —
-    // the phone then sees nothing until the user touches the watch. Held
-    // only while on-wrist; the off-body detector is a wake-up sensor, so
-    // re-wearing the watch always reaches onBodyStateChanged to re-acquire.
+    // Held only briefly (timed) around each sample send so the async send
+    // finishes before the SoC suspends again — see sendWithWakeLock. HR delivery
+    // itself rides the wake-up HR sensor, which wakes the SoC on its own, so we
+    // no longer pin the CPU awake 24/7 (that indefinite hold was the main battery
+    // drain — it blocked deep sleep).
     private var wakeLock: PowerManager.WakeLock? = null
     private var hrSensor: Sensor? = null
     private var accelSensor: Sensor? = null
     private var offBodySensor: Sensor? = null
+    private var heartBeatSensor: Sensor? = null
 
     @Volatile private var latestBpm: Int? = null
     @Volatile private var latestMotionRms: Float = 0f
@@ -46,22 +47,37 @@ class HrMonitoringService : Service(), SensorEventListener {
     // devices without the sensor, so behavior is unchanged there.
     @Volatile private var isOnBody = true
 
-    // Rolling buffer of |a|^2 samples for ~5 s @ ~50 Hz = 256 entries
-    private val accelSquares = FloatArray(256)
+    // Rolling buffer of |a|^2 samples. The accelerometer now runs at ~5 Hz with
+    // batching (low power), so 16 samples ≈ a 3 s motion window — short enough
+    // that a single movement spike doesn't keep the RMS above the "moving"
+    // threshold long after the wearer has gone still.
+    private val accelSquares = FloatArray(16)
     private var accelIndex = 0
     private var accelFilled = 0
     @Volatile private var lastSendElapsed = 0L
 
-    // HRV (RMSSD approximation). The HR sensor reports smoothed bpm (~1 Hz),
-    // not raw beat timestamps, so we derive an inter-beat interval as
-    // 60000/bpm and take the RMS of successive IBI differences over a rolling
-    // window. This tracks relative HRV trends, which is what the model uses;
-    // it is not a clinical RMSSD.
+    // HRV (RMSSD). Preferred source is TYPE_HEART_BEAT, which fires once per
+    // detected heartbeat; the gap between consecutive beat timestamps is a real
+    // inter-beat (R-R) interval, so the RMS of successive IBI differences is a
+    // genuine RMSSD. When the device exposes no beat sensor we fall back to
+    // deriving IBI from the smoothed ~1 Hz bpm (60000/bpm) — that only tracks
+    // relative trends and reads far below clinical RMSSD (the smoothing strips
+    // the beat-to-beat variance), so it is a last resort, not the intended path.
     private val ibiDiffSquares = FloatArray(HRV_WINDOW)
     private var ibiDiffIndex = 0
     private var ibiDiffFilled = 0
-    private var lastIbiMs: Float? = null
-    private var lastHrEventElapsed = 0L
+    private var lastIbiMs: Float? = null    // previous IBI, for successive-diff
+    private var lastHrEventElapsed = 0L      // bpm-fallback gap guard
+
+    // TYPE_HEART_BEAT path: timestamp of the previous beat → real R-R interval.
+    @Volatile private var useHeartBeatForHrv = false
+    private var lastBeatNs = 0L
+
+    // Samsung Health Sensor SDK path — top priority on Galaxy watches (real IBI).
+    private var samsungHrTracker: SamsungHrTracker? = null
+    @Volatile private var useSamsungIbiForHrv = false
+    // Serializes HRV-buffer access across the sensor (main) and SDK (binder) threads.
+    private val hrvLock = Any()
 
     override fun onCreate() {
         super.onCreate()
@@ -71,24 +87,47 @@ class HrMonitoringService : Service(), SensorEventListener {
         wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:HrMonitor")
             .apply { setReferenceCounted(false) }
-        if (isOnBody) wakeLock?.acquire() // indefinite by design: released off-wrist/onDestroy
 
         // Prefer the wake-up variant when the hardware has one — belt and
         // braces alongside the wake lock.
         hrSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE, true)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
         if (hrSensor != null) {
-            sensorManager.registerListener(this, hrSensor, SensorManager.SENSOR_DELAY_NORMAL)
+            // Batched: buffer ~1 Hz HR in the FIFO and wake the SoC only every
+            // ~10 s to deliver the burst, instead of every second.
+            sensorManager.registerListener(this, hrSensor, HR_SAMPLING_US, HR_BATCH_US)
             Log.i(TAG, "HR sensor listener registered (${hrSensor!!.name})")
         } else {
             Log.w(TAG, "No HR sensor available on this device")
         }
 
+        // Per-beat sensor → real R-R intervals for a true RMSSD. Prefer the
+        // wake-up variant so beats keep arriving with the screen off.
+        heartBeatSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT, true)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT)
+        useHeartBeatForHrv = heartBeatSensor != null
+        if (heartBeatSensor != null) {
+            sensorManager.registerListener(this, heartBeatSensor, SensorManager.SENSOR_DELAY_FASTEST)
+            Log.i(TAG, "Heart-beat sensor registered (${heartBeatSensor!!.name}) — HRV from real R-R")
+        } else {
+            Log.w(TAG, "No heart-beat sensor — HRV falls back to bpm-derived approximation")
+        }
+
+        // Top-priority HRV: Samsung Health Sensor SDK real IBI. Reverts to the
+        // sensor fallbacks above if it can't connect / isn't allowed on this device.
+        samsungHrTracker = SamsungHrTracker(
+            context = this,
+            onIbi = ::onSamsungIbi,
+            onUnavailable = { useSamsungIbiForHrv = false },
+        ).also { it.start() }
+
         // Linear acceleration removes gravity, so RMS reflects actual motion.
         accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         if (accelSensor != null) {
-            sensorManager.registerListener(this, accelSensor, SensorManager.SENSOR_DELAY_UI)
+            // ~5 Hz batched into ~10 s bursts: the hardware FIFO buffers samples
+            // and the SoC sleeps between bursts instead of being woken at 15 Hz.
+            sensorManager.registerListener(this, accelSensor, ACCEL_SAMPLING_US, ACCEL_BATCH_US)
             Log.i(TAG, "Accelerometer listener registered (${accelSensor!!.name})")
         } else {
             Log.w(TAG, "No accelerometer available on this device")
@@ -115,6 +154,7 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
+        samsungHrTracker?.stop()
         wakeLock?.takeIf { it.isHeld }?.release()
         sendExecutor.shutdown()
         super.onDestroy()
@@ -133,8 +173,12 @@ class HrMonitoringService : Service(), SensorEventListener {
                 if (!isOnBody) return
                 if (bpm.isNaN() || bpm < 20f || bpm > 250f) return
                 latestBpm = bpm.toInt()
-                updateHrv(bpm)
+                if (!useSamsungIbiForHrv && !useHeartBeatForHrv) updateHrv(bpm)
                 maybeSendSample()
+            }
+            Sensor.TYPE_HEART_BEAT -> {
+                if (!isOnBody) return
+                onHeartBeat(event.timestamp)
             }
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 onBodyStateChanged(onBody = event.values[0] >= 0.5f)
@@ -169,22 +213,70 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
-    private fun updateHrv(bpm: Float) {
-        val now = SystemClock.elapsedRealtime()
-        val ibiMs = 60_000f / bpm
-        val prevIbi = lastIbiMs
-        // Only pair consecutive readings; across a gap (sensor dropout, watch
-        // off wrist) the difference is meaningless. Stale entries age out of
-        // the rolling window as new readings arrive.
-        if (prevIbi != null && now - lastHrEventElapsed <= HRV_MAX_GAP_MS) {
-            val d = ibiMs - prevIbi
-            ibiDiffSquares[ibiDiffIndex] = d * d
-            ibiDiffIndex = (ibiDiffIndex + 1) % ibiDiffSquares.size
-            if (ibiDiffFilled < ibiDiffSquares.size) ibiDiffFilled++
+    /** Real-R-R HRV: the gap between consecutive beat timestamps is a true
+     *  inter-beat interval. Reject physiologically implausible intervals
+     *  (missed/double beats, gaps) so they don't corrupt RMSSD. */
+    private fun onHeartBeat(timestampNs: Long) {
+        if (useSamsungIbiForHrv) return  // Samsung SDK is higher priority
+        synchronized(hrvLock) {
+            val prevBeat = lastBeatNs
+            lastBeatNs = timestampNs
+            if (prevBeat == 0L) return
+            val ibiMs = (timestampNs - prevBeat) / 1_000_000f
+            if (ibiMs !in MIN_IBI_MS..MAX_IBI_MS) {
+                lastIbiMs = null  // break the diff chain across the bad interval
+                return
+            }
+            lastIbiMs?.let { addIbiDiff(ibiMs - it) }
+            lastIbiMs = ibiMs
+            recomputeHrv()
         }
-        lastIbiMs = ibiMs
-        lastHrEventElapsed = now
+    }
 
+    /** Real IBI from the Samsung SDK — already an inter-beat interval in ms, so
+     *  no timestamp diffing needed. Highest-priority HRV source. */
+    private fun onSamsungIbi(ibiMs: Int) {
+        synchronized(hrvLock) {
+            if (!useSamsungIbiForHrv) {
+                // First real IBI — discard any fallback diffs already accumulated.
+                ibiDiffIndex = 0
+                ibiDiffFilled = 0
+                lastIbiMs = null
+                useSamsungIbiForHrv = true
+            }
+            val ibiF = ibiMs.toFloat()
+            lastIbiMs?.let { addIbiDiff(ibiF - it) }
+            lastIbiMs = ibiF
+            recomputeHrv()
+        }
+    }
+
+    /** Fallback HRV when the device has no per-beat sensor: derive IBI from the
+     *  smoothed bpm. Reads well below true RMSSD — see the field comment. */
+    private fun updateHrv(bpm: Float) {
+        synchronized(hrvLock) {
+            val now = SystemClock.elapsedRealtime()
+            val ibiMs = 60_000f / bpm
+            val prevIbi = lastIbiMs
+            // Only pair consecutive readings; across a gap (sensor dropout, watch
+            // off wrist) the difference is meaningless. Stale entries age out of
+            // the rolling window as new readings arrive.
+            if (prevIbi != null && now - lastHrEventElapsed <= HRV_MAX_GAP_MS) {
+                addIbiDiff(ibiMs - prevIbi)
+            }
+            lastIbiMs = ibiMs
+            lastHrEventElapsed = now
+            recomputeHrv()
+        }
+    }
+
+    private fun addIbiDiff(diffMs: Float) {
+        ibiDiffSquares[ibiDiffIndex] = diffMs * diffMs
+        ibiDiffIndex = (ibiDiffIndex + 1) % ibiDiffSquares.size
+        if (ibiDiffFilled < ibiDiffSquares.size) ibiDiffFilled++
+    }
+
+    private fun recomputeHrv() {
         if (ibiDiffFilled >= HRV_MIN_DIFFS) {
             var sum = 0f
             for (i in 0 until ibiDiffFilled) sum += ibiDiffSquares[i]
@@ -201,23 +293,27 @@ class HrMonitoringService : Service(), SensorEventListener {
         isOnBody = onBody
         Log.i(TAG, if (onBody) "Watch back on wrist" else "Watch off wrist")
         if (onBody) {
-            wakeLock?.acquire()
-            hrSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            heartBeatSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
             updateNotification("On wrist — waiting for heart rate…")
         } else {
             hrSensor?.let { sensorManager.unregisterListener(this, it) }
+            heartBeatSensor?.let { sensorManager.unregisterListener(this, it) }
             // Let the watch sleep while it's off the wrist; the wake-up
             // off-body sensor brings us back when it's worn again.
             wakeLock?.takeIf { it.isHeld }?.release()
             latestBpm = null
-            latestHrvMs = null
-            lastIbiMs = null
-            ibiDiffIndex = 0
-            ibiDiffFilled = 0
+            synchronized(hrvLock) {
+                latestHrvMs = null
+                lastIbiMs = null
+                lastBeatNs = 0L
+                ibiDiffIndex = 0
+                ibiDiffFilled = 0
+            }
             updateNotification("Off wrist — heart-rate monitoring paused")
         }
         lastSendElapsed = SystemClock.elapsedRealtime()
-        sendSampleToPhone(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = onBody)
+        sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = onBody)
     }
 
     private fun maybeSendSample() {
@@ -228,7 +324,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (now - lastSendElapsed < interval) return
         if (!isOnBody) {
             lastSendElapsed = now
-            sendSampleToPhone(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = false)
+            sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = false)
             return
         }
         val bpm = latestBpm ?: return
@@ -237,7 +333,14 @@ class HrMonitoringService : Service(), SensorEventListener {
         val hrv = latestHrvMs
         val hrvText = if (hrv != null) "HRV ${hrv.toInt()} · " else ""
         updateNotification("HR $bpm · ${hrvText}motion ${"%.2f".format(motion)}")
-        sendSampleToPhone(bpm, motion, hrv, onBody = true)
+        sendWithWakeLock(bpm, motion, hrv, onBody = true)
+    }
+
+    /** Hold the CPU just long enough (timed, auto-releasing) to finish the async
+     *  send, then let the SoC sleep again — replaces the old 24/7 wake lock. */
+    private fun sendWithWakeLock(bpm: Int, motion: Float, hrvMs: Float?, onBody: Boolean) {
+        runCatching { wakeLock?.acquire(SEND_WAKELOCK_MS) }
+        sendSampleToPhone(bpm, motion, hrvMs, onBody)
     }
 
     private fun sendSampleToPhone(bpm: Int, motion: Float, hrvMs: Float?, onBody: Boolean) {
@@ -251,9 +354,16 @@ class HrMonitoringService : Service(), SensorEventListener {
                 // HRV is -1 until the rolling window has enough readings; bpm is
                 // -1 when there's no reading (off wrist, or just re-worn).
                 // 4th field: 1 = on wrist, 0 = off wrist.
+                // 5th field: HRV provenance (see HrvSource.wireCode) so the phone
+                // can flag bpm-derived estimates. Older phone builds ignore it.
+                val hrvSourceCode = when {
+                    hrvMs == null -> HRV_SRC_NONE
+                    useSamsungIbiForHrv || useHeartBeatForHrv -> HRV_SRC_REAL_IBI
+                    else -> HRV_SRC_BPM_DERIVED
+                }
                 val text = String.format(
-                    java.util.Locale.US, "%d,%.3f,%.1f,%d",
-                    bpm, motion, hrvMs ?: -1f, if (onBody) 1 else 0
+                    java.util.Locale.US, "%d,%.3f,%.1f,%d,%d",
+                    bpm, motion, hrvMs ?: -1f, if (onBody) 1 else 0, hrvSourceCode
                 )
                 val payload = text.toByteArray(Charsets.UTF_8)
                 for (node in nodes) {
@@ -262,6 +372,9 @@ class HrMonitoringService : Service(), SensorEventListener {
                 Log.d(TAG, "Sent sample bpm=$bpm motion=$motion hrv=$hrvMs onBody=$onBody to ${nodes.size} node(s)")
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed to send sample to phone", t)
+            } finally {
+                // Release as soon as the send is done (timed acquire is the backstop).
+                runCatching { wakeLock?.takeIf { it.isHeld }?.release() }
             }
         }
     }
@@ -296,11 +409,27 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val SEND_MIN_INTERVAL_MS = 2_000L
         private const val OFFBODY_SEND_INTERVAL_MS = 15_000L
+        // Timed CPU wake lock around each send; auto-releases as a backstop.
+        private const val SEND_WAKELOCK_MS = 4_000L
+        // Sensor batching (microseconds): buffer in the hardware FIFO and wake the
+        // SoC only every ~10 s, so it can deep-sleep between bursts. HR ~1 Hz,
+        // accel ~5 Hz; the ~10 s latency is the worst-case detection delay.
+        private const val HR_SAMPLING_US = 1_000_000
+        private const val HR_BATCH_US = 10_000_000
+        private const val ACCEL_SAMPLING_US = 200_000
+        private const val ACCEL_BATCH_US = 10_000_000
 
         // ~30 paired readings at ~1 Hz ≈ a 30-second HRV window.
         private const val HRV_WINDOW = 30
         private const val HRV_MIN_DIFFS = 5
         private const val HRV_MAX_GAP_MS = 5_000L
+        // Plausible R-R interval bounds (30–200 bpm); reject anything outside.
+        private const val MIN_IBI_MS = 300f
+        private const val MAX_IBI_MS = 2_000f
+        // HRV provenance codes sent to the phone — keep in sync with HrvSource.wireCode.
+        private const val HRV_SRC_NONE = 0
+        private const val HRV_SRC_REAL_IBI = 1
+        private const val HRV_SRC_BPM_DERIVED = 2
         const val ACTION_STOP = "com.example.app.wear.action.STOP"
         const val MSG_PATH_SAMPLE = "/calmsense/sample"
 
