@@ -20,6 +20,7 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 class HrMonitoringService : Service(), SensorEventListener {
@@ -76,6 +77,11 @@ class HrMonitoringService : Service(), SensorEventListener {
     // Samsung Health Sensor SDK path — top priority on Galaxy watches (real IBI).
     private var samsungHrTracker: SamsungHrTracker? = null
     @Volatile private var useSamsungIbiForHrv = false
+    // While the Samsung stream is live it owns the optical sensor: the platform
+    // TYPE_HEART_RATE client is released so two clients don't contend for the
+    // PPG (observed on the Watch5: the SDK stream stalls ~8 s in when both run).
+    @Volatile private var useSamsungHr = false
+    @Volatile private var shuttingDown = false
     // Serializes HRV-buffer access across the sensor (main) and SDK (binder) threads.
     private val hrvLock = Any()
 
@@ -117,8 +123,10 @@ class HrMonitoringService : Service(), SensorEventListener {
         // sensor fallbacks above if it can't connect / isn't allowed on this device.
         samsungHrTracker = SamsungHrTracker(
             context = this,
+            onBpm = ::onSamsungBpm,
             onIbi = ::onSamsungIbi,
-            onUnavailable = { useSamsungIbiForHrv = false },
+            onIbiDropped = ::onSamsungIbiDropped,
+            onUnavailable = ::onSamsungUnavailable,
         ).also { it.start() }
 
         // Linear acceleration removes gravity, so RMS reflects actual motion.
@@ -153,6 +161,7 @@ class HrMonitoringService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        shuttingDown = true
         sensorManager.unregisterListener(this)
         samsungHrTracker?.stop()
         wakeLock?.takeIf { it.isHeld }?.release()
@@ -169,8 +178,9 @@ class HrMonitoringService : Service(), SensorEventListener {
                 val acc = event.accuracy
                 Log.d(TAG, "HR event: raw=$bpm accuracy=$acc")
                 // Stray events can still arrive briefly after the off-body
-                // transition unregisters the HR sensor — drop them.
-                if (!isOnBody) return
+                // transition (or the Samsung takeover) unregisters the HR
+                // sensor — drop them.
+                if (!isOnBody || useSamsungHr) return
                 if (bpm.isNaN() || bpm < 20f || bpm > 250f) return
                 latestBpm = bpm.toInt()
                 if (!useSamsungIbiForHrv && !useHeartBeatForHrv) updateHrv(bpm)
@@ -227,15 +237,51 @@ class HrMonitoringService : Service(), SensorEventListener {
                 lastIbiMs = null  // break the diff chain across the bad interval
                 return
             }
-            lastIbiMs?.let { addIbiDiff(ibiMs - it) }
-            lastIbiMs = ibiMs
-            recomputeHrv()
+            acceptIbi(ibiMs)
+        }
+    }
+
+    /** Valid heart rate from the Samsung SDK. First delivery proves the stream
+     *  is live, which is when we release the contending platform HR client. */
+    private fun onSamsungBpm(bpm: Int) {
+        if (!isOnBody) return
+        onSamsungStreamActive()
+        latestBpm = bpm
+        // Keep the bpm-derived HRV estimate flowing until real IBIs validate
+        // (same fallback the platform HR events drove before the takeover).
+        if (!useSamsungIbiForHrv) updateHrv(bpm.toFloat())
+        maybeSendSample()
+    }
+
+    /** The Samsung stream owns the PPG from the first delivery onward: drop the
+     *  platform TYPE_HEART_RATE client so the two stacks stop contending for
+     *  the sensor (the contention stalls the SDK stream). */
+    private fun onSamsungStreamActive() {
+        if (useSamsungHr) return
+        useSamsungHr = true
+        hrSensor?.let { sensorManager.unregisterListener(this, it) }
+        Log.i(TAG, "Samsung stream live — released platform HR sensor (PPG contention)")
+    }
+
+    /** Samsung stream gone (connection ended/failed or tracker error). Fall
+     *  back to the platform HR sensor unless we're off-wrist or shutting down. */
+    private fun onSamsungUnavailable() {
+        useSamsungIbiForHrv = false
+        if (!useSamsungHr) return
+        useSamsungHr = false
+        if (isOnBody && !shuttingDown) {
+            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            Log.i(TAG, "Samsung stream gone — platform HR sensor re-registered")
         }
     }
 
     /** Real IBI from the Samsung SDK — already an inter-beat interval in ms, so
      *  no timestamp diffing needed. Highest-priority HRV source. */
     private fun onSamsungIbi(ibiMs: Int) {
+        // Stray callbacks can arrive after the off-body transition stops the
+        // tracker — off-wrist optical noise must not enter the HRV window.
+        if (!isOnBody) return
+        onSamsungStreamActive()
         synchronized(hrvLock) {
             if (!useSamsungIbiForHrv) {
                 // First real IBI — discard any fallback diffs already accumulated.
@@ -243,12 +289,37 @@ class HrMonitoringService : Service(), SensorEventListener {
                 ibiDiffFilled = 0
                 lastIbiMs = null
                 useSamsungIbiForHrv = true
+                Log.i(TAG, "First Samsung IBI received — HRV source is now REAL_IBI")
             }
-            val ibiF = ibiMs.toFloat()
-            lastIbiMs?.let { addIbiDiff(ibiF - it) }
-            lastIbiMs = ibiF
-            recomputeHrv()
+            acceptIbi(ibiMs.toFloat())
         }
+    }
+
+    /** The SDK rejected an IBI (bad status / implausible range). The valid IBIs
+     *  on either side of the hole are not adjacent beats, so their difference
+     *  is meaningless — break the chain instead of letting it inflate RMSSD. */
+    private fun onSamsungIbiDropped() {
+        if (!isOnBody) return
+        onSamsungStreamActive()  // even rejected IBIs prove the stream is live
+        synchronized(hrvLock) { lastIbiMs = null }
+    }
+
+    /** Adds an IBI to the rolling window with artifact rejection: an interval
+     *  deviating more than 25% from its predecessor is almost always a missed
+     *  or double-counted beat (a missed beat reports a doubled interval that
+     *  still passes the absolute 300–2000 ms check). Rejecting it breaks the
+     *  chain, so the next interval rebaselines cleanly. Call under [hrvLock]. */
+    private fun acceptIbi(ibiMs: Float) {
+        val prev = lastIbiMs
+        if (prev != null) {
+            if (abs(ibiMs - prev) > prev * MAX_IBI_REL_DEVIATION) {
+                lastIbiMs = null
+                return
+            }
+            addIbiDiff(ibiMs - prev)
+        }
+        lastIbiMs = ibiMs
+        recomputeHrv()
     }
 
     /** Fallback HRV when the device has no per-beat sensor: derive IBI from the
@@ -256,17 +327,12 @@ class HrMonitoringService : Service(), SensorEventListener {
     private fun updateHrv(bpm: Float) {
         synchronized(hrvLock) {
             val now = SystemClock.elapsedRealtime()
-            val ibiMs = 60_000f / bpm
-            val prevIbi = lastIbiMs
             // Only pair consecutive readings; across a gap (sensor dropout, watch
             // off wrist) the difference is meaningless. Stale entries age out of
             // the rolling window as new readings arrive.
-            if (prevIbi != null && now - lastHrEventElapsed <= HRV_MAX_GAP_MS) {
-                addIbiDiff(ibiMs - prevIbi)
-            }
-            lastIbiMs = ibiMs
+            if (now - lastHrEventElapsed > HRV_MAX_GAP_MS) lastIbiMs = null
             lastHrEventElapsed = now
-            recomputeHrv()
+            acceptIbi(60_000f / bpm)
         }
     }
 
@@ -295,10 +361,16 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (onBody) {
             hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
             heartBeatSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
+            samsungHrTracker?.start()
             updateNotification("On wrist — waiting for heart rate…")
         } else {
             hrSensor?.let { sensorManager.unregisterListener(this, it) }
             heartBeatSensor?.let { sensorManager.unregisterListener(this, it) }
+            // Off-wrist the SDK's continuous PPG would keep streaming optical
+            // noise (and burning battery); stop it like the platform sensors.
+            samsungHrTracker?.stop()
+            useSamsungIbiForHrv = false
+            useSamsungHr = false
             // Let the watch sleep while it's off the wrist; the wake-up
             // off-body sensor brings us back when it's worn again.
             wakeLock?.takeIf { it.isHeld }?.release()
@@ -426,6 +498,9 @@ class HrMonitoringService : Service(), SensorEventListener {
         // Plausible R-R interval bounds (30–200 bpm); reject anything outside.
         private const val MIN_IBI_MS = 300f
         private const val MAX_IBI_MS = 2_000f
+        // Beat-to-beat artifact filter: successive IBIs deviating more than this
+        // fraction are treated as missed/double beats, not real variability.
+        private const val MAX_IBI_REL_DEVIATION = 0.25f
         // HRV provenance codes sent to the phone — keep in sync with HrvSource.wireCode.
         private const val HRV_SRC_NONE = 0
         private const val HRV_SRC_REAL_IBI = 1
