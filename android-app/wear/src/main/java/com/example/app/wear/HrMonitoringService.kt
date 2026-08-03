@@ -20,6 +20,8 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.Wearable
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -34,6 +36,16 @@ class HrMonitoringService : Service(), SensorEventListener {
     // no longer pin the CPU awake 24/7 (that indefinite hold was the main battery
     // drain — it blocked deep sleep).
     private var wakeLock: PowerManager.WakeLock? = null
+
+    // Separate, indefinitely-held lock used ONLY on devices with no wake-up
+    // accelerometer to tick — see the ticker setup in onCreate. Kept distinct from
+    // [wakeLock] because that one is released after every send, which would
+    // otherwise drop this hold too (both are setReferenceCounted(false)).
+    private var keepAliveLock: PowerManager.WakeLock? = null
+
+    // Guaranteed-cadence ticker, only started in the no-wake-up-sensor fallback.
+    private val ticker = Executors.newSingleThreadScheduledExecutor()
+    private var tickerFuture: ScheduledFuture<*>? = null
     private var hrSensor: Sensor? = null
     private var accelSensor: Sensor? = null
     private var offBodySensor: Sensor? = null
@@ -42,6 +54,11 @@ class HrMonitoringService : Service(), SensorEventListener {
     @Volatile private var latestBpm: Int? = null
     @Volatile private var latestMotionRms: Float = 0f
     @Volatile private var latestHrvMs: Float? = null
+    // When latestBpm was last refreshed. Periodic sends now fire without a fresh
+    // HR event, so without this a long-dead reading would keep being re-sent and
+    // the phone — which trusts the arrival time, not the value — would show a
+    // stale bpm as current indefinitely. See currentBpm().
+    @Volatile private var lastBpmElapsed = 0L
 
     // Wrist detection. Assume on-body until the off-body sensor says otherwise
     // (it reports the current state as soon as the listener registers), and on
@@ -82,6 +99,14 @@ class HrMonitoringService : Service(), SensorEventListener {
     // PPG (observed on the Watch5: the SDK stream stalls ~8 s in when both run).
     @Volatile private var useSamsungHr = false
     @Volatile private var shuttingDown = false
+    // Watchdog state. The SDK stream can go silent without ever reporting an
+    // error — observed on the Watch5 the moment the watch enters Doze: data
+    // points stop mid-stream, no onConnectionEnded/onError fires, so
+    // onSamsungUnavailable() never runs and the platform HR sensor it displaced
+    // is never restored. The result was a live service reporting no heart rate
+    // at all. See checkSamsungStall().
+    @Volatile private var lastSamsungDataElapsed = 0L
+    @Volatile private var lastSamsungRestartElapsed = 0L
     // Serializes HRV-buffer access across the sensor (main) and SDK (binder) threads.
     private val hrvLock = Any()
 
@@ -130,15 +155,41 @@ class HrMonitoringService : Service(), SensorEventListener {
         ).also { it.start() }
 
         // Linear acceleration removes gravity, so RMS reflects actual motion.
-        accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        // Prefer the WAKE-UP variant: it is what keeps samples flowing with the
+        // screen off. Batched at ACCEL_BATCH_US, a wake-up sensor wakes the SoC
+        // itself every ~10 s to deliver its FIFO burst, and that wake is what
+        // drives the periodic send in maybeSendSample(). The non-wake-up variant
+        // cannot wake the SoC, so its events (and therefore all sends) stall
+        // while the watch sleeps — which is exactly the bug this replaces. This
+        // sensor is deliberately never unregistered while the service lives, so
+        // the Samsung SDK taking over the PPG can't silence the heartbeat.
+        accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION, true)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER, true)
+            ?: sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         if (accelSensor != null) {
             // ~5 Hz batched into ~10 s bursts: the hardware FIFO buffers samples
             // and the SoC sleeps between bursts instead of being woken at 15 Hz.
             sensorManager.registerListener(this, accelSensor, ACCEL_SAMPLING_US, ACCEL_BATCH_US)
-            Log.i(TAG, "Accelerometer listener registered (${accelSensor!!.name})")
+            Log.i(TAG, "Accelerometer listener registered (${accelSensor!!.name}, wakeUp=${accelSensor!!.isWakeUpSensor})")
         } else {
             Log.w(TAG, "No accelerometer available on this device")
+        }
+
+        // Fallback for hardware with no wake-up accelerometer: nothing can wake
+        // the SoC on our behalf, so pin the CPU awake and tick on a timer. Costs
+        // battery (it blocks deep sleep) but is the only way to keep the cadence
+        // on such a device — the alternative is sends stalling whenever it sleeps.
+        if (accelSensor?.isWakeUpSensor != true) {
+            Log.w(TAG, "No wake-up accelerometer — falling back to a held wake lock + ${SEND_MAX_INTERVAL_MS}ms ticker")
+            keepAliveLock = (getSystemService(POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:KeepAlive")
+                .apply { setReferenceCounted(false) }
+            runCatching { keepAliveLock?.acquire() }
+            tickerFuture = ticker.scheduleWithFixedDelay(
+                { runCatching { maybeSendSample() }.onFailure { Log.w(TAG, "Ticker send failed", it) } },
+                SEND_MAX_INTERVAL_MS, SEND_MAX_INTERVAL_MS, TimeUnit.MILLISECONDS,
+            )
         }
 
         offBodySensor = sensorManager.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT)
@@ -164,7 +215,10 @@ class HrMonitoringService : Service(), SensorEventListener {
         shuttingDown = true
         sensorManager.unregisterListener(this)
         samsungHrTracker?.stop()
+        tickerFuture?.cancel(false)
+        ticker.shutdownNow()
         wakeLock?.takeIf { it.isHeld }?.release()
+        keepAliveLock?.takeIf { it.isHeld }?.release()
         sendExecutor.shutdown()
         super.onDestroy()
     }
@@ -183,6 +237,7 @@ class HrMonitoringService : Service(), SensorEventListener {
                 if (!isOnBody || useSamsungHr) return
                 if (bpm.isNaN() || bpm < 20f || bpm > 250f) return
                 latestBpm = bpm.toInt()
+                lastBpmElapsed = SystemClock.elapsedRealtime()
                 if (!useSamsungIbiForHrv && !useHeartBeatForHrv) updateHrv(bpm)
                 maybeSendSample()
             }
@@ -214,9 +269,14 @@ class HrMonitoringService : Service(), SensorEventListener {
                 if (accelEventCount % 100L == 0L) {
                     Log.d(TAG, "Accel events=$accelEventCount latestRms=$latestMotionRms")
                 }
-                // Off-wrist there are no HR events to drive sends, so the
-                // accelerometer keeps the off-body heartbeat flowing.
-                if (!isOnBody) maybeSendSample()
+                // This is the cadence heartbeat, on-wrist and off. On a wake-up
+                // accelerometer each batched burst is delivered by an SoC wake,
+                // so this call is what guarantees a sample lands every ~10 s with
+                // the screen off — regardless of whether HR events are arriving
+                // (off wrist, or while the Samsung SDK owns the PPG). The whole
+                // burst arrives in one wake, so the interval gate in
+                // maybeSendSample collapses it to a single send.
+                maybeSendSample()
             }
         }
     }
@@ -247,6 +307,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (!isOnBody) return
         onSamsungStreamActive()
         latestBpm = bpm
+        lastBpmElapsed = SystemClock.elapsedRealtime()
         // Keep the bpm-derived HRV estimate flowing until real IBIs validate
         // (same fallback the platform HR events drove before the takeover).
         if (!useSamsungIbiForHrv) updateHrv(bpm.toFloat())
@@ -257,6 +318,9 @@ class HrMonitoringService : Service(), SensorEventListener {
      *  platform TYPE_HEART_RATE client so the two stacks stop contending for
      *  the sensor (the contention stalls the SDK stream). */
     private fun onSamsungStreamActive() {
+        // Stamped on every delivery (valid, dropped, or plain bpm) — this is the
+        // liveness signal the stall watchdog measures against.
+        lastSamsungDataElapsed = SystemClock.elapsedRealtime()
         if (useSamsungHr) return
         useSamsungHr = true
         hrSensor?.let { sensorManager.unregisterListener(this, it) }
@@ -388,7 +452,29 @@ class HrMonitoringService : Service(), SensorEventListener {
         sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = onBody)
     }
 
+    /** Recover from a Samsung stream that stopped delivering without reporting an
+     *  error. Reinstating the platform HR sensor matters most in Doze: it is a
+     *  wake-up sensor (flags 0x3 on the Watch5), so it keeps delivering batches
+     *  where the SDK stream does not. The tracker is then bounced in case it can
+     *  reconnect; if it does, onSamsungStreamActive takes the PPG back. Rate
+     *  limited so a permanently dead stream can't thrash the sensor stack. */
+    private fun checkSamsungStall() {
+        if (!useSamsungHr || shuttingDown) return
+        val now = SystemClock.elapsedRealtime()
+        val silentFor = now - lastSamsungDataElapsed
+        if (silentFor < SAMSUNG_STALL_TIMEOUT_MS) return
+        if (now - lastSamsungRestartElapsed < SAMSUNG_RESTART_MIN_INTERVAL_MS) return
+        lastSamsungRestartElapsed = now
+        Log.w(TAG, "Samsung stream silent for ${silentFor}ms — restoring platform HR sensor and bouncing the tracker")
+        onSamsungUnavailable()  // clears useSamsungHr and re-registers the HR sensor
+        if (isOnBody) {
+            samsungHrTracker?.stop()
+            samsungHrTracker?.start()
+        }
+    }
+
     private fun maybeSendSample() {
+        if (isOnBody) checkSamsungStall()
         val now = SystemClock.elapsedRealtime()
         // Off-wrist there's nothing to monitor — just a slow "still off" beacon
         // so the phone can tell off-wrist apart from a dead connection.
@@ -399,13 +485,30 @@ class HrMonitoringService : Service(), SensorEventListener {
             sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = false)
             return
         }
-        val bpm = latestBpm ?: return
+        // No early return on a missing bpm any more: the point of the periodic
+        // send is that the phone hears from the watch on a fixed cadence even
+        // when HR is briefly unavailable (sensor still locking on, PPG handover).
+        // bpm = -1 is the established "no reading" wire value and the phone keeps
+        // its previous vitals rather than clearing them.
+        val bpm = currentBpm()
         lastSendElapsed = now
         val motion = latestMotionRms
-        val hrv = latestHrvMs
+        // HRV without a current HR is not attributable to a current heartbeat.
+        val hrv = if (bpm > 0) latestHrvMs else null
+        val hrText = if (bpm > 0) "HR $bpm" else "HR —"
         val hrvText = if (hrv != null) "HRV ${hrv.toInt()} · " else ""
-        updateNotification("HR $bpm · ${hrvText}motion ${"%.2f".format(motion)}")
+        updateNotification("$hrText · ${hrvText}motion ${"%.2f".format(motion)}")
         sendWithWakeLock(bpm, motion, hrv, onBody = true)
+    }
+
+    /** Latest heart rate, or -1 when there isn't a current one. A cached reading
+     *  older than [BPM_STALE_AFTER_MS] is treated as absent: the phone judges
+     *  freshness by when a sample arrived, so re-sending an old value on the
+     *  periodic tick would launder it as live. */
+    private fun currentBpm(): Int {
+        val bpm = latestBpm ?: return -1
+        if (SystemClock.elapsedRealtime() - lastBpmElapsed > BPM_STALE_AFTER_MS) return -1
+        return bpm
     }
 
     /** Hold the CPU just long enough (timed, auto-releasing) to finish the async
@@ -481,6 +584,18 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val NOTIFICATION_ID = 1001
         private const val SEND_MIN_INTERVAL_MS = 2_000L
         private const val OFFBODY_SEND_INTERVAL_MS = 15_000L
+        // Target worst-case gap between samples, screen on or off. Matches
+        // ACCEL_BATCH_US: the wake-up accelerometer's batch delivery is what wakes
+        // the SoC on that cadence, and it doubles as the fallback ticker period.
+        // (SEND_MIN_INTERVAL_MS still allows faster sends while the CPU is awake.)
+        private const val SEND_MAX_INTERVAL_MS = 10_000L
+        // A cached bpm older than this is reported as "no reading" — see currentBpm().
+        private const val BPM_STALE_AFTER_MS = 30_000L
+        // The SDK streams ~1 data point/s, so this much silence means it stalled
+        // rather than paused. Kept below BPM_STALE_AFTER_MS so recovery starts
+        // before the phone would ever see a gap in heart rate.
+        private const val SAMSUNG_STALL_TIMEOUT_MS = 15_000L
+        private const val SAMSUNG_RESTART_MIN_INTERVAL_MS = 60_000L
         // Timed CPU wake lock around each send; auto-releases as a backstop.
         private const val SEND_WAKELOCK_MS = 4_000L
         // Sensor batching (microseconds): buffer in the hardware FIFO and wake the
