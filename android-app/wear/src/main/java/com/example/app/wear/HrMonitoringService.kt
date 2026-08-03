@@ -110,6 +110,17 @@ class HrMonitoringService : Service(), SensorEventListener {
     // Serializes HRV-buffer access across the sensor (main) and SDK (binder) threads.
     private val hrvLock = Any()
 
+    // Duty-cycling state for keepAliveLock. The platform HR sensor is itself a
+    // wake-up sensor on this hardware (flags 0x3 on the Watch5) batched at
+    // HR_BATCH_US, so while it is registered it wakes the SoC on exactly the
+    // cadence we need and the keep-alive lock is redundant. The lock is only
+    // required when nothing else can wake us — i.e. while the Samsung SDK has
+    // displaced the platform sensor. Tracked here and reconciled by
+    // updateKeepAlive() at every point either input can change.
+    @Volatile private var platformHrRegistered = false
+    private var hasWakeUpAccel = false
+    private val hrIsWakeUp: Boolean get() = hrSensor?.isWakeUpSensor == true
+
     override fun onCreate() {
         super.onCreate()
         ensureChannel(this)
@@ -127,7 +138,8 @@ class HrMonitoringService : Service(), SensorEventListener {
             // Batched: buffer ~1 Hz HR in the FIFO and wake the SoC only every
             // ~10 s to deliver the burst, instead of every second.
             sensorManager.registerListener(this, hrSensor, HR_SAMPLING_US, HR_BATCH_US)
-            Log.i(TAG, "HR sensor listener registered (${hrSensor!!.name})")
+            platformHrRegistered = true
+            Log.i(TAG, "HR sensor listener registered (${hrSensor!!.name}, wakeUp=$hrIsWakeUp)")
         } else {
             Log.w(TAG, "No HR sensor available on this device")
         }
@@ -176,21 +188,25 @@ class HrMonitoringService : Service(), SensorEventListener {
             Log.w(TAG, "No accelerometer available on this device")
         }
 
-        // Fallback for hardware with no wake-up accelerometer: nothing can wake
-        // the SoC on our behalf, so pin the CPU awake and tick on a timer. Costs
-        // battery (it blocks deep sleep) but is the only way to keep the cadence
-        // on such a device — the alternative is sends stalling whenever it sleeps.
-        if (accelSensor?.isWakeUpSensor != true) {
-            Log.w(TAG, "No wake-up accelerometer — falling back to a held wake lock + ${SEND_MAX_INTERVAL_MS}ms ticker")
+        // Fallback for hardware with no wake-up accelerometer: there is no cheap
+        // always-on wake source, so we may have to pin the CPU awake to keep the
+        // cadence. That lock is duty-cycled rather than simply held — see
+        // updateKeepAlive() — because the platform HR sensor covers the same job
+        // for free whenever it is the active HR source. The ticker is harmless
+        // to leave scheduled: while the lock is off and the SoC is suspended it
+        // simply doesn't run, and the HR sensor's batch wakes drive sends instead.
+        hasWakeUpAccel = accelSensor?.isWakeUpSensor == true
+        if (!hasWakeUpAccel) {
+            Log.w(TAG, "No wake-up accelerometer — keep-alive lock available, duty-cycled against the platform HR sensor")
             keepAliveLock = (getSystemService(POWER_SERVICE) as PowerManager)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:KeepAlive")
                 .apply { setReferenceCounted(false) }
-            runCatching { keepAliveLock?.acquire() }
             tickerFuture = ticker.scheduleWithFixedDelay(
                 { runCatching { maybeSendSample() }.onFailure { Log.w(TAG, "Ticker send failed", it) } },
                 SEND_MAX_INTERVAL_MS, SEND_MAX_INTERVAL_MS, TimeUnit.MILLISECONDS,
             )
         }
+        updateKeepAlive()
 
         offBodySensor = sensorManager.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT)
         if (offBodySensor != null) {
@@ -324,7 +340,10 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (useSamsungHr) return
         useSamsungHr = true
         hrSensor?.let { sensorManager.unregisterListener(this, it) }
+        platformHrRegistered = false
         Log.i(TAG, "Samsung stream live — released platform HR sensor (PPG contention)")
+        // We just gave away our free wake source; the lock has to cover the gap.
+        updateKeepAlive()
     }
 
     /** Samsung stream gone (connection ended/failed or tracker error). Fall
@@ -335,7 +354,10 @@ class HrMonitoringService : Service(), SensorEventListener {
         useSamsungHr = false
         if (isOnBody && !shuttingDown) {
             hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            platformHrRegistered = hrSensor != null
             Log.i(TAG, "Samsung stream gone — platform HR sensor re-registered")
+            // Back on a wake-up sensor: drop the lock and let the watch sleep.
+            updateKeepAlive()
         }
     }
 
@@ -424,11 +446,13 @@ class HrMonitoringService : Service(), SensorEventListener {
         Log.i(TAG, if (onBody) "Watch back on wrist" else "Watch off wrist")
         if (onBody) {
             hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            platformHrRegistered = hrSensor != null
             heartBeatSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
             samsungHrTracker?.start()
             updateNotification("On wrist — waiting for heart rate…")
         } else {
             hrSensor?.let { sensorManager.unregisterListener(this, it) }
+            platformHrRegistered = false
             heartBeatSensor?.let { sensorManager.unregisterListener(this, it) }
             // Off-wrist the SDK's continuous PPG would keep streaming optical
             // noise (and burning battery); stop it like the platform sensors.
@@ -448,8 +472,33 @@ class HrMonitoringService : Service(), SensorEventListener {
             }
             updateNotification("Off wrist — heart-rate monitoring paused")
         }
+        // Wrist state changed the HR-sensor registration either way — reconcile
+        // the keep-alive hold before we go quiet again.
+        updateKeepAlive()
         lastSendElapsed = SystemClock.elapsedRealtime()
         sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = onBody)
+    }
+
+    /** Hold the keep-alive lock only when nothing else can wake the SoC on our
+     *  cadence, so the watch can still reach deep sleep for most of the time it
+     *  is worn. A wake-up accelerometer (absent on the Watch5) or a registered
+     *  wake-up HR sensor both tick us for free; the lock is needed only in the
+     *  gap where the Samsung SDK owns the PPG, and off-wrist we deliberately let
+     *  the watch sleep and rely on the wake-up off-body sensor to bring us back.
+     *  No-op on hardware that has a wake-up accelerometer — keepAliveLock is
+     *  never created there. */
+    private fun updateKeepAlive() {
+        val lock = keepAliveLock ?: return
+        val haveFreeTicker = hasWakeUpAccel || (platformHrRegistered && hrIsWakeUp)
+        val need = isOnBody && !haveFreeTicker && !shuttingDown
+        if (need && !lock.isHeld) {
+            runCatching { lock.acquire() }
+            Log.i(TAG, "Keep-alive lock ACQUIRED — no free wake source (Samsung SDK owns the PPG)")
+        } else if (!need && lock.isHeld) {
+            runCatching { lock.release() }
+            val why = if (!isOnBody) "off wrist" else "wake-up HR sensor is ticking us"
+            Log.i(TAG, "Keep-alive lock RELEASED — $why; watch may deep-sleep")
+        }
     }
 
     /** Recover from a Samsung stream that stopped delivering without reporting an
