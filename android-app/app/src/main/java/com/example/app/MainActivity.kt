@@ -1206,80 +1206,100 @@ fun FeedbackToast(text: String, onDismiss: () -> Unit) {
     }
 }
 
+private enum class BreathPhase { INHALE, EXHALE }
+
 @Composable
 fun BreathingOverlay(onClose: () -> Unit) {
     val context = LocalContext.current
     val coach = remember { BreathingCoach() }
     var isMuted by remember { mutableStateOf(false) }
-    var ttsReady by remember { mutableStateOf(false) }
+    var voiceReady by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
-        coach.init(context) { ttsReady = true }
+        coach.init(context) { voiceReady = true }
         onDispose { coach.shutdown() }
     }
 
-    // Audio narration loop. Plays an opening line, then for each breathing
-    // cycle says "Breathe in" / "Breathe out" in sync with the 8-second
-    // animation cycle. Every 3 breaths it inserts a reassurance during a
-    // full extra cycle so the animation stays in phase with the voice.
-    LaunchedEffect(ttsReady, isMuted) {
-        if (!ttsReady || isMuted) return@LaunchedEffect
-        coach.speakOpening()
-        delay(8_000) // one full animation cycle of opening + buffer
+    // Timing. 4s inhale / 6s exhale = 10s cycle = ~6 breaths per minute — the
+    // "resonance frequency" that maximizes HRV and parasympathetic activation.
+    // A longer exhale is what actually calms the nervous system (the vagal
+    // brake engages during exhale), which is why 4-6 feels more relaxing than
+    // symmetrical 4-4.
+    val inhaleMs = 4_000L
+    val exhaleMs = 6_000L
+    val openingMs = 6_000L        // let the opening line settle before the cycle
+    val reassuranceEveryN = 3     // rest beat every N breaths
+
+    // Single source of truth. Text, circle animation, and voice all read from
+    // `phase`, so they can't fall out of sync.
+    var phase by remember { mutableStateOf(BreathPhase.INHALE) }
+    var started by remember { mutableStateOf(false) }
+
+    val targetScale = if (phase == BreathPhase.INHALE) 1.5f else 0.8f
+    val targetAlpha = if (phase == BreathPhase.INHALE) 0.7f else 0.3f
+    val phaseMs = if (phase == BreathPhase.INHALE) inhaleMs.toInt() else exhaleMs.toInt()
+
+    val scale by animateFloatAsState(
+        targetValue = if (started) targetScale else 0.8f,
+        animationSpec = tween(phaseMs, easing = FastOutSlowInEasing),
+        label = "breathe_scale",
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (started) targetAlpha else 0.3f,
+        animationSpec = tween(phaseMs, easing = FastOutSlowInEasing),
+        label = "breathe_alpha",
+    )
+
+    // Drive everything from one coroutine. Voice + phase flip + delay happen
+    // together, so the circle scale and the on-screen text can never lead or
+    // lag the audio. Mute is checked at each speak call rather than being a
+    // key on the LaunchedEffect — toggling mute mid-session no longer restarts
+    // the cycle.
+    LaunchedEffect(voiceReady) {
+        if (!voiceReady) return@LaunchedEffect
+        if (!isMuted) coach.speakOpening()
+        delay(openingMs)
         if (!isActive) return@LaunchedEffect
 
-        var cycleCount = 0
+        started = true
+        var breaths = 0
         while (isActive) {
-            coach.speakIn()
-            delay(4_000)
+            phase = BreathPhase.INHALE
+            if (!isMuted) coach.speakIn()
+            delay(inhaleMs)
             if (!isActive) break
-            coach.speakOut()
-            delay(4_000)
+
+            phase = BreathPhase.EXHALE
+            if (!isMuted) coach.speakOut()
+            delay(exhaleMs)
             if (!isActive) break
-            cycleCount++
-            if (cycleCount % 3 == 0) {
-                // Rest beat: one full animation cycle with no breath prompts,
-                // just a reassuring sentence.
-                coach.speakReassurance()
-                delay(8_000)
+
+            breaths++
+            if (breaths % reassuranceEveryN == 0) {
+                // Rest beat: hold the circle in its "exhaled" state for one
+                // extra exhale-length while a reassurance plays.
+                if (!isMuted) coach.speakReassurance()
+                delay(exhaleMs)
             }
         }
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "breathing")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathe_scale"
-    )
-
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathe_alpha"
-    )
-
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
+        color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (scale > 1.15f) "Breathe Out" else "Breathe In",
+                text = when (phase) {
+                    BreathPhase.INHALE -> "Breathe In"
+                    BreathPhase.EXHALE -> "Breathe Out"
+                },
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(64.dp))
@@ -1290,7 +1310,7 @@ fun BreathingOverlay(onClose: () -> Unit) {
                         .size(150.dp)
                         .scale(scale)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha)),
                 )
             }
 
@@ -1298,13 +1318,13 @@ fun BreathingOverlay(onClose: () -> Unit) {
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { isMuted = !isMuted }) {
                     Icon(
                         imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                         contentDescription = if (isMuted) "Unmute voice" else "Mute voice",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     )
                 }
                 TextButton(onClick = onClose) {
