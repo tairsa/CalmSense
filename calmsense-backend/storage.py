@@ -46,6 +46,25 @@ except Exception:
 _supabase = None          # the client, or None when running on JSON
 _supabase_error = None    # last init/runtime note, for logging
 
+# Silently degrading to the JSON files is the right behaviour on the Pi, where
+# they are on a persistent volume. In a container it is actively dangerous: the
+# filesystem is ephemeral, so a "fallback" write is discarded at the next cold
+# start with no error anywhere. Setting CALMSENSE_REQUIRE_SUPABASE makes Supabase
+# mandatory — bad credentials fail startup (so a broken revision never takes
+# traffic) and write errors surface as 5xx instead of vanishing.
+_REQUIRE_SUPABASE = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1", "true", "yes")
+
+
+def _write_fallback_or_raise(what: str, e: Exception) -> None:
+    """Either log-and-fall-through to the JSON write, or raise when Supabase is
+    mandatory. Callers must invoke this *before* their JSON write."""
+    if _REQUIRE_SUPABASE:
+        raise RuntimeError(
+            f"Supabase {what} failed and CALMSENSE_REQUIRE_SUPABASE is set; "
+            f"refusing to write to the ephemeral JSON store: {e}"
+        ) from e
+    print(f"[storage] Supabase {what} failed ({e}); writing JSON fallback")
+
 
 def _init_supabase():
     global _supabase_error
@@ -53,6 +72,11 @@ def _init_supabase():
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:
         _supabase_error = "SUPABASE_URL / SUPABASE_KEY not set"
+        if _REQUIRE_SUPABASE:
+            raise RuntimeError(
+                "CALMSENSE_REQUIRE_SUPABASE is set but SUPABASE_URL / SUPABASE_KEY "
+                "are missing — refusing to start on the ephemeral JSON store."
+            )
         return None
     try:
         from supabase import create_client
@@ -62,6 +86,9 @@ def _init_supabase():
         return client
     except Exception as e:  # package missing or bad credentials/URL
         _supabase_error = f"supabase init failed: {e}"
+        if _REQUIRE_SUPABASE:
+            # Fail the container start rather than come up quietly on JSON.
+            raise
         print(f"[storage] {_supabase_error} -> using JSON fallback")
         return None
 
@@ -144,7 +171,7 @@ def append_record(record: dict) -> None:
             _supabase.table(TABLE_NAME).insert(record).execute()
             return
         except Exception as e:
-            print(f"[storage] Supabase insert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("insert", e)
 
     _json_append(record)
 
@@ -176,7 +203,7 @@ def append_feedback(record: dict) -> None:
             _supabase.table(FEEDBACK_TABLE_NAME).insert(record).execute()
             return
         except Exception as e:
-            print(f"[storage] Supabase feedback insert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("feedback insert", e)
 
     _json_append_to(FEEDBACK_FILE, record)
 
@@ -204,7 +231,7 @@ def append_report(record: dict) -> None:
             _supabase.table(REPORTS_TABLE_NAME).insert(record).execute()
             return
         except Exception as e:
-            print(f"[storage] Supabase report insert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("report insert", e)
 
     _json_append_to(REPORTS_FILE, record)
 
@@ -285,7 +312,7 @@ def create_admin(email: str, password_hash: str, name: str | None) -> dict:
             resp = _supabase.table(ADMIN_USERS_TABLE_NAME).insert(record).execute()
             return (resp.data or [record])[0]
         except Exception as e:
-            print(f"[storage] Supabase admin insert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("admin insert", e)
 
     rows = _json_read_from(ADMIN_USERS_FILE)
     record["id"] = _json_next_id(rows)
@@ -304,7 +331,7 @@ def insert_model_snapshot(record: dict) -> dict:
             resp = _supabase.table(MODEL_WEIGHTS_TABLE_NAME).insert(record).execute()
             return (resp.data or [record])[0]
         except Exception as e:
-            print(f"[storage] Supabase snapshot insert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("snapshot insert", e)
 
     rows = _json_read_from(MODEL_WEIGHTS_FILE)
     stored = dict(record)
@@ -397,7 +424,7 @@ def upsert_user_model_state(user_id: str, active_weights_id: int | None,
             )
             return (resp.data or [record])[0]
         except Exception as e:
-            print(f"[storage] Supabase state upsert failed ({e}); writing JSON fallback")
+            _write_fallback_or_raise("state upsert", e)
 
     rows = _json_read_from(USER_MODEL_STATE_FILE)
     rows = [r for r in rows if r.get("user_id") != user_id]
