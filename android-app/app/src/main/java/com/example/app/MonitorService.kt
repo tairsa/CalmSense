@@ -167,15 +167,25 @@ class MonitorService : Service() {
     private fun startInForeground(notification: Notification) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
+                // LOCATION, not HEALTH. This service reads no sensor on the phone:
+                // vitals arrive from the watch over the Data Layer, and the only
+                // hardware it touches directly is GPS, captured when a panic is
+                // recorded. HEALTH was also actively breaking it — Android 14+
+                // refuses a health-typed FGS unless one of ACTIVITY_RECOGNITION /
+                // HIGH_SAMPLING_RATE_SENSORS / health.READ_* is *granted*, and the
+                // only one this app declares (health.READ_HEART_RATE) is a Health
+                // Connect permission the user never had to grant, because vitals
+                // come from the watch. The result was a SecurityException on every
+                // start, the stopSelf() below, and monitoring that silently never
+                // ran — no uploads between 2026-06-19 and 2026-08-04.
+                startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
             } else {
                 startForeground(MONITOR_NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            // On a fresh install the health FGS type is rejected until a
-            // qualifying runtime permission (e.g. Health Connect heart rate)
-            // is granted — without this the whole app crashes on first run.
-            // In-app monitoring still works; we retry on next app launch.
+            // Still possible if ACCESS_FINE_LOCATION is revoked. Kept as a
+            // backstop so a permission problem degrades to "no background
+            // monitoring" instead of crashing the app on launch.
             Log.w(TAG, "Foreground start rejected — stopping monitor service", e)
             stopSelf()
         }
