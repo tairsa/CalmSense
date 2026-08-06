@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -69,6 +70,7 @@ import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.StatsScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
 import com.example.app.ui.theme.AppTheme
@@ -112,6 +114,7 @@ private const val ROUTE_MONITOR = "monitor"
 private const val ROUTE_REPORTS = "reports"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
+private const val ROUTE_STATS = "stats"
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
@@ -523,7 +526,9 @@ class MainActivity : ComponentActivity() {
                 // Hide bottom nav on the questionnaire and report-detail
                 // pushed screens (they have their own TopAppBar with back/skip).
                 val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-                val showBottomNav = currentRoute == ROUTE_MONITOR || currentRoute == ROUTE_REPORTS
+                val showBottomNav = currentRoute == ROUTE_MONITOR ||
+                    currentRoute == ROUTE_REPORTS ||
+                    currentRoute == ROUTE_STATS
 
                 // Auto-navigate to the questionnaire when a report row was
                 // just inserted post-severity.
@@ -565,6 +570,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onReportDelete = { id -> viewModel.deleteReport(id) },
                                 )
+                            }
+                            composable(ROUTE_STATS) {
+                                StatsScreen(reports = viewModel.reports)
                             }
                             composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
                                 val id = backStack.arguments?.getString("id")?.toLongOrNull()
@@ -653,6 +661,20 @@ class MainActivity : ComponentActivity() {
                 },
                 icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
                 label = { Text("Reports") },
+            )
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_STATS,
+                onClick = {
+                    if (currentRoute != ROUTE_STATS) {
+                        navController.navigate(ROUTE_STATS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.Default.Insights, contentDescription = null) },
+                label = { Text("Stats") },
             )
         }
     }
