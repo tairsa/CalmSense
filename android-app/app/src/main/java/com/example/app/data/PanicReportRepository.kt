@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.app.BACKEND_URL
 import com.example.app.USER_ID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.time.Instant
 
@@ -20,18 +21,49 @@ class PanicReportRepository private constructor(
     private val backend: BackendClient,
 ) {
 
-    /** Reports newer than [sinceMs], sorted most-recent first. */
+    /**
+     * Reports newer than [sinceMs], sorted most-recent first, restricted to
+     * the currently signed-in user. Re-emits when either the row set OR the
+     * session changes, so signing in as another account instantly swaps the
+     * visible history.
+     */
     fun observeSince(sinceMs: Long): Flow<List<PanicReportEntity>> =
-        store.rows.map { rows -> rows.filter { it.timestampMs >= sinceMs }.sortedByDescending { it.timestampMs } }
+        combine(store.rows, SessionManager.session) { rows, session ->
+            val uid = session?.userId ?: return@combine emptyList()
+            rows.asSequence()
+                .filter { it.userId == uid && it.timestampMs >= sinceMs }
+                .sortedByDescending { it.timestampMs }
+                .toList()
+        }
 
+    /** All reports for the currently signed-in user, most-recent first. */
     fun observeAll(): Flow<List<PanicReportEntity>> =
-        store.rows.map { rows -> rows.sortedByDescending { it.timestampMs } }
+        combine(store.rows, SessionManager.session) { rows, session ->
+            val uid = session?.userId ?: return@combine emptyList()
+            rows.asSequence()
+                .filter { it.userId == uid }
+                .sortedByDescending { it.timestampMs }
+                .toList()
+        }
 
-    suspend fun findById(id: Long): PanicReportEntity? = store.findById(id)
+    /**
+     * Only returns the row if it belongs to the current user - guards against
+     * a stale nav argument pointing at another user's report id.
+     */
+    suspend fun findById(id: Long): PanicReportEntity? {
+        val row = store.findById(id) ?: return null
+        val uid = SessionManager.userId ?: return null
+        return row.takeIf { it.userId == uid }
+    }
 
-    /** Returns the inserted row's id (after the store assigns one). */
+    /**
+     * Returns the inserted row's id (after the store assigns one). The row
+     * is always tagged with the current session's user id here so callers
+     * don't need to know about the auth layer.
+     */
     suspend fun insertAndSync(report: PanicReportEntity): Long {
-        val stored = store.insert(report)
+        val tagged = report.copy(userId = USER_ID)
+        val stored = store.insert(tagged)
         if (postToBackend(stored)) {
             store.update(stored.copy(syncedToBackend = true))
         }

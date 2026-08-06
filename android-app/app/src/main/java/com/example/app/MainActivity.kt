@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Insights
@@ -66,9 +67,12 @@ import com.example.app.data.PanicReportEntity
 import com.example.app.data.PanicReportRepository
 import com.example.app.data.PingResult
 import com.example.app.data.PostResult
+import com.example.app.data.SessionManager
+import com.example.app.data.SupabaseAuth
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.QuestionnaireAnswers
+import com.example.app.ui.LoginScreen
 import com.example.app.ui.QuestionnaireScreen
 import com.example.app.ui.StatsScreen
 import com.example.app.ui.ReportDetailScreen
@@ -106,7 +110,15 @@ private val isEmulator: Boolean by lazy {
 }
 
 val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEND_LAN_URL
-const val USER_ID = "tairsa-dev"
+/**
+ * Effective user ID for all outbound data (sensor uploads, panic reports,
+ * feedback). Backed by SessionManager once the user signs in; falls back to
+ * a stable demo ID for early-startup moments where SessionManager hasn't
+ * hydrated yet (e.g. MonitorService cold-start before Activity.onCreate).
+ * Kept as a top-level getter so callers can keep referring to `USER_ID`
+ * without knowing about the session layer.
+ */
+val USER_ID: String get() = SessionManager.userId ?: "tairsa-dev"
 
 // Navigation routes — kept as compile-time constants so the NavHost and the
 // auto-navigation LaunchedEffect agree on names.
@@ -342,10 +354,16 @@ class HeartRateViewModel : ViewModel() {
         wasInPanic = isPanic
     }
 
-    /** Manual entry: user logs a panic the model missed. Skips the
-     *  "was it a panic?" question and goes straight to severity. */
+    /**
+     * Manual entry: user logs a panic the model missed. Skips the
+     * "was it a panic?" question (they already told us it is one) and
+     * opens the breathing overlay first so they can calm down; the
+     * severity sheet is queued behind it via the !showBreathingExercise
+     * guard in the UI layer and surfaces once breathing is dismissed.
+     */
     fun logManualPanic() {
         captureFeedbackContext(detectedByModel = false)
+        showBreathingExercise = true
         showSeveritySheet = true
     }
 
@@ -490,6 +508,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Hydrate any persisted session BEFORE anything reads USER_ID, so the
+        // monitor service and the model fetch start with the right user id.
+        SessionManager.init(this)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()
@@ -502,6 +523,23 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
+                // ------- Auth gate -------------------------------------------------
+                // If no session on disk, block the app behind LoginScreen.
+                // On successful sign in / sign up, persist the session and rewire
+                // the ViewModel's userId so all subsequent uploads carry the
+                // authenticated ID.
+                val session by SessionManager.session.collectAsState()
+                if (session == null) {
+                    LoginScreen(
+                        onAuthenticated = { s: SupabaseAuth.Session ->
+                            SessionManager.save(this@MainActivity, s)
+                            viewModel.userId = s.userId
+                        }
+                    )
+                    return@AppTheme
+                }
+                // ------- Signed in below -------------------------------------------
+
                 val context = LocalContext.current
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
@@ -538,9 +576,28 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Shared logout handler used by the top bar and any screen
+                // that also wants a logout button (e.g. StatsScreen).
+                val logoutScope = rememberCoroutineScope()
+                val handleLogout: () -> Unit = {
+                    val token = session?.accessToken.orEmpty()
+                    logoutScope.launch {
+                        if (token.isNotBlank()) SupabaseAuth.signOut(token)
+                    }
+                    SessionManager.clear(this@MainActivity)
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        // Only shown on the three main tab screens; pushed
+                        // detail screens (questionnaire, report detail) have
+                        // their own top bars.
+                        if (showBottomNav) {
+                            CalmSenseTopBar(onLogout = handleLogout)
+                        }
+                    },
                     bottomBar = {
                         if (showBottomNav) {
                             CalmSenseBottomNav(navController, currentRoute)
@@ -572,7 +629,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable(ROUTE_STATS) {
-                                StatsScreen(reports = viewModel.reports)
+                                // Logout also lives in the shared top bar; we
+                                // keep it available on StatsScreen itself for
+                                // discoverability next to the account email.
+                                StatsScreen(
+                                    reports = viewModel.reports,
+                                    userEmail = session?.email,
+                                    onLogout = handleLogout,
+                                )
                             }
                             composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
                                 val id = backStack.arguments?.getString("id")?.toLongOrNull()
@@ -630,6 +694,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun CalmSenseTopBar(onLogout: () -> Unit) {
+        TopAppBar(
+            title = {},
+            actions = {
+                IconButton(onClick = onLogout) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Sign out",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+            ),
+        )
     }
 
     @Composable

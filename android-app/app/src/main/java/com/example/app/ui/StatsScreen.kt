@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +43,8 @@ import java.util.Locale
 fun StatsScreen(
     reports: List<PanicReportEntity>,
     modifier: Modifier = Modifier,
+    userEmail: String? = null,
+    onLogout: (() -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
 
@@ -56,7 +59,7 @@ fun StatsScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Header()
+            Header(userEmail = userEmail, onLogout = onLogout)
             if (reports.isEmpty()) {
                 EmptyState()
             } else {
@@ -72,11 +75,26 @@ fun StatsScreen(
 /* ---------- Header + empty state ----------------------------------------- */
 
 @Composable
-private fun Header() {
+private fun Header(userEmail: String?, onLogout: (() -> Unit)?) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth(),
     ) {
+        // Logout icon in the top-right corner (only shown if a handler exists).
+        if (onLogout != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                IconButton(onClick = onLogout) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Sign out",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                }
+            }
+        }
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -100,7 +118,11 @@ private fun Header() {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "See when attacks happen and what triggers them.",
+            text = if (userEmail.isNullOrBlank()) {
+                "See when attacks happen and what triggers them."
+            } else {
+                "Signed in as $userEmail"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,

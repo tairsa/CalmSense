@@ -82,6 +82,7 @@ class PanicReportStore private constructor(context: Context) {
     private fun serialize(r: PanicReportEntity): JSONObject {
         val o = JSONObject()
         o.put("id", r.id)
+        o.put("user_id", r.userId)
         o.put("timestamp_ms", r.timestampMs)
         o.put("severity", r.severity)
         o.put("detected_by_model", r.detectedByModel)
@@ -110,6 +111,10 @@ class PanicReportStore private constructor(context: Context) {
         } else emptyList()
         return PanicReportEntity(
             id = o.optLong("id"),
+            // Legacy rows written before per-user isolation shipped have no
+            // "user_id" key; treat as empty (they'll be invisible to any
+            // authenticated user via the repository's filtered observers).
+            userId = o.optString("user_id", ""),
             timestampMs = o.getLong("timestamp_ms"),
             severity = o.getInt("severity"),
             detectedByModel = o.getBoolean("detected_by_model"),
