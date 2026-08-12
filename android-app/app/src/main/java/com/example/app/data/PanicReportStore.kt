@@ -55,6 +55,29 @@ class PanicReportStore private constructor(context: Context) {
         _rows.value = updated
     }
 
+    /**
+     * One-shot upgrade path: hand every untagged row to [userId].
+     *
+     * Rows written before per-user isolation shipped have `userId == ""` and
+     * are filtered out by every repository observer, so without this they
+     * would sit on disk forever, invisible - including the panic history the
+     * on-device model was trained against. The first account to sign in on
+     * this device inherits them, which on a single-owner phone is the right
+     * answer. Called once, guarded by a flag in [SessionManager].
+     *
+     * Returns the number of rows claimed (0 on a fresh install).
+     */
+    suspend fun claimUntaggedRows(userId: String): Int = writeMutex.withLock {
+        if (userId.isBlank()) return@withLock 0
+        val current = _rows.value
+        val claimed = current.count { it.userId.isBlank() }
+        if (claimed == 0) return@withLock 0
+        val updated = current.map { if (it.userId.isBlank()) it.copy(userId = userId) else it }
+        persist(updated)
+        _rows.value = updated
+        claimed
+    }
+
     suspend fun findById(id: Long): PanicReportEntity? = _rows.value.firstOrNull { it.id == id }
 
     suspend fun unsynced(): List<PanicReportEntity> = _rows.value.filter { !it.syncedToBackend }

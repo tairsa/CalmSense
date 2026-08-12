@@ -1,5 +1,7 @@
 package com.example.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,17 +11,23 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -41,18 +49,25 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
 import com.example.app.data.SettingsStore
+import com.example.app.data.UserRole
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Settings tab: detection (sensitivity dial + alert cooldown), display
- * (advanced mode) and the monitoring on/off switch. Profile settings (name,
- * language, password) will join once user accounts land.
+ * Settings tab: the signed-in account, detection (sensitivity dial + alert
+ * cooldown), display (advanced mode) and the monitoring on/off switch.
+ *
+ * The account card at the top is the only entry point to [ProfileScreen],
+ * which in turn is the only way to Stats and to signing out.
  */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    email: String?,
+    role: UserRole,
+    onOpenProfile: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -65,6 +80,8 @@ fun SettingsScreen() {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 8.dp),
         )
+
+        AccountCard(email = email, role = role, onClick = onOpenProfile)
 
         Text(
             "Detection",
@@ -107,6 +124,58 @@ fun SettingsScreen() {
         ConsentCard()
 
         Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+/**
+ * Account row at the top of Settings: who you are, what role you hold, and a
+ * chevron into [ProfileScreen]. Everyone sees this regardless of role - it is
+ * also the only route to Sign out.
+ */
+@Composable
+private fun AccountCard(email: String?, role: UserRole, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    email?.takeIf { it.isNotBlank() } ?: "Signed in",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    role.displayName(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            )
+        }
     }
 }
 

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,10 +25,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -76,13 +76,18 @@ import com.example.app.data.SessionManager
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
 import com.example.app.data.SupabaseAuth
+import com.example.app.data.TherapistApi
 import com.example.app.data.UploadQueue
+import com.example.app.data.UserRole
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.data.motionFeatureFor
 import com.example.app.ui.ConsentScreen
+import com.example.app.ui.DebugScreen
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.LoginScreen
+import com.example.app.ui.PatientPickerScreen
+import com.example.app.ui.ProfileScreen
 import com.example.app.ui.QuestionnaireScreen
 import com.example.app.ui.StatsScreen
 import com.example.app.ui.ReportDetailScreen
@@ -149,7 +154,14 @@ private const val ROUTE_REPORTS = "reports"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
+
+// Account area, reached from the Settings account card rather than the bottom
+// nav. Stats is clinical, so it sits behind the profile's role gate: a
+// therapist picks a patient first, and the route carries that patient's id.
+private const val ROUTE_PROFILE = "profile"
+private const val ROUTE_PATIENTS = "patients"
 private const val ROUTE_STATS = "stats"
+private const val ROUTE_DEBUG = "debug"
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
@@ -627,11 +639,27 @@ class MainActivity : ComponentActivity() {
                 // the ViewModel's userId so all subsequent uploads carry the
                 // authenticated ID.
                 val session by SessionManager.session.collectAsState()
+                val loginScope = rememberCoroutineScope()
                 if (session == null) {
                     LoginScreen(
                         onAuthenticated = { s: SupabaseAuth.Session ->
                             SessionManager.save(this@MainActivity, s)
                             viewModel.userId = s.userId
+                            // Upgrade path: reports logged before accounts
+                            // existed have no owner and would otherwise be
+                            // invisible forever. The first account to sign in
+                            // on this device inherits them, once.
+                            loginScope.launch {
+                                val claimed = SessionManager.claimLegacyRowsOnce(
+                                    this@MainActivity, s,
+                                )
+                                if (claimed > 0) {
+                                    Log.i(
+                                        "CalmSense",
+                                        "Claimed $claimed legacy report(s) for ${s.userId}",
+                                    )
+                                }
+                            }
                         }
                     )
                     return@AppTheme
@@ -675,8 +703,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Shared logout handler used by the top bar and any screen
-                // that also wants a logout button (e.g. StatsScreen).
+                // Sign out lives on ProfileScreen only - there is no global
+                // top bar any more, so the three tab screens keep their full
+                // height and a destructive action is not one mistap away.
                 val logoutScope = rememberCoroutineScope()
                 val handleLogout: () -> Unit = {
                     val token = session?.accessToken.orEmpty()
@@ -689,14 +718,6 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background,
-                    topBar = {
-                        // Only shown on the three main tab screens; pushed
-                        // detail screens (questionnaire, report detail) have
-                        // their own top bars.
-                        if (showBottomNav) {
-                            CalmSenseTopBar(onLogout = handleLogout)
-                        }
-                    },
                     bottomBar = {
                         if (showBottomNav) {
                             CalmSenseBottomNav(navController, currentRoute)
@@ -719,7 +740,53 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable(ROUTE_SETTINGS) {
-                                SettingsScreen()
+                                SettingsScreen(
+                                    email = session?.email,
+                                    role = session?.role ?: UserRole.USER,
+                                    onOpenProfile = { navController.navigate(ROUTE_PROFILE) },
+                                )
+                            }
+                            composable(ROUTE_PROFILE) {
+                                val role = session?.role ?: UserRole.USER
+                                ProfileScreen(
+                                    email = session?.email,
+                                    role = role,
+                                    onBack = { navController.popBackStack() },
+                                    // Therapists choose a patient first; a
+                                    // developer goes through the same picker
+                                    // so both see the same, server-checked list.
+                                    onOpenStats = { navController.navigate(ROUTE_PATIENTS) },
+                                    onOpenDebug = { navController.navigate(ROUTE_DEBUG) },
+                                    onLogout = handleLogout,
+                                )
+                            }
+                            composable(ROUTE_PATIENTS) {
+                                PatientPickerScreen(
+                                    accessToken = session?.accessToken.orEmpty(),
+                                    onBack = { navController.popBackStack() },
+                                    onPatientSelected = { patientId ->
+                                        navController.navigate("$ROUTE_STATS/$patientId")
+                                    },
+                                )
+                            }
+                            composable("$ROUTE_STATS/{patientId}") { backStack ->
+                                val patientId = backStack.arguments?.getString("patientId").orEmpty()
+                                TherapistStatsRoute(
+                                    accessToken = session?.accessToken.orEmpty(),
+                                    patientId = patientId,
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
+                            composable(ROUTE_DEBUG) {
+                                DebugScreen(
+                                    backendUrl = BACKEND_URL,
+                                    serverStatus = viewModel.serverStatus,
+                                    modelStatus = viewModel.modelStatus,
+                                    userId = viewModel.userId,
+                                    dataSource = viewModel.dataSource,
+                                    onDataSourceChange = { viewModel.dataSource = it },
+                                    onBack = { navController.popBackStack() },
+                                )
                             }
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
@@ -728,16 +795,6 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate("$ROUTE_REPORT_DETAIL/$id")
                                     },
                                     onReportDelete = { id -> viewModel.deleteReport(id) },
-                                )
-                            }
-                            composable(ROUTE_STATS) {
-                                // Logout also lives in the shared top bar; we
-                                // keep it available on StatsScreen itself for
-                                // discoverability next to the account email.
-                                StatsScreen(
-                                    reports = viewModel.reports,
-                                    userEmail = session?.email,
-                                    onLogout = handleLogout,
                                 )
                             }
                             composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
@@ -798,24 +855,73 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Loads one patient's reports from the backend and hands them to
+     * [StatsScreen].
+     *
+     * A therapist's phone holds none of their patients' data locally, so this
+     * is a network read rather than a look at the local store. Failures show
+     * the server's reason (403 for a non-therapist account, say) instead of an
+     * empty chart that looks like "no panic attacks".
+     */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun CalmSenseTopBar(onLogout: () -> Unit) {
-        TopAppBar(
-            title = {},
-            actions = {
-                IconButton(onClick = onLogout) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = "Sign out",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+    private fun TherapistStatsRoute(
+        accessToken: String,
+        patientId: String,
+        onBack: () -> Unit,
+    ) {
+        var reports by remember(patientId) {
+            mutableStateOf<List<PanicReportEntity>?>(null)
+        }
+        var error by remember(patientId) { mutableStateOf<String?>(null) }
+
+        LaunchedEffect(accessToken, patientId) {
+            reports = null
+            error = null
+            when (val r = TherapistApi.patientReports(accessToken, patientId)) {
+                is TherapistApi.Result.Ok -> reports = r.value
+                is TherapistApi.Result.Err -> error = r.message
+            }
+        }
+
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = { Text(patientId) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
+                )
+            },
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    error != null -> Text(
+                        error!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(32.dp),
+                    )
+                    reports == null -> CircularProgressIndicator()
+                    else -> StatsScreen(
+                        reports = reports!!,
+                        patientLabel = "$patientId · ${reports!!.size} reports",
                     )
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background,
-            ),
-        )
+            }
+        }
     }
 
     @Composable

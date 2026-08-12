@@ -39,12 +39,19 @@ import java.util.Locale
  * Plus a summary card up top: total episodes, average severity, top trigger.
  * ------------------------------------------------------------------------- */
 
+/**
+ * Charts for one patient's panic history.
+ *
+ * Identity and sign-out used to live in this screen's header; they moved to
+ * [ProfileScreen] when Stats went behind the therapist role gate, so this is
+ * now purely a charts view. [patientLabel] names whose data is on screen -
+ * the therapist picked it in [PatientPickerScreen].
+ */
 @Composable
 fun StatsScreen(
     reports: List<PanicReportEntity>,
     modifier: Modifier = Modifier,
-    userEmail: String? = null,
-    onLogout: (() -> Unit)? = null,
+    patientLabel: String? = null,
 ) {
     val scroll = rememberScrollState()
 
@@ -59,7 +66,7 @@ fun StatsScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Header(userEmail = userEmail, onLogout = onLogout)
+            Header(patientLabel = patientLabel)
             if (reports.isEmpty()) {
                 EmptyState()
             } else {
@@ -75,26 +82,11 @@ fun StatsScreen(
 /* ---------- Header + empty state ----------------------------------------- */
 
 @Composable
-private fun Header(userEmail: String?, onLogout: (() -> Unit)?) {
+private fun Header(patientLabel: String?) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        // Logout icon in the top-right corner (only shown if a handler exists).
-        if (onLogout != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                IconButton(onClick = onLogout) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = "Sign out",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    )
-                }
-            }
-        }
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -111,17 +103,17 @@ private fun Header(userEmail: String?, onLogout: (() -> Unit)?) {
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            "Your patterns",
+            "Patterns",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = if (userEmail.isNullOrBlank()) {
-                "See when attacks happen and what triggers them."
+            text = if (patientLabel.isNullOrBlank()) {
+                "When attacks happen and what triggers them."
             } else {
-                "Signed in as $userEmail"
+                patientLabel
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),

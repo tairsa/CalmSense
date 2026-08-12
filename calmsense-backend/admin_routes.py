@@ -1,5 +1,10 @@
 """Admin web-app API. All routes are under /api/v1/admin and (except login)
 require a valid admin JWT. Backs the React admin app.
+
+Two read-only routes - the user list and a user's panic reports - additionally
+accept a Supabase JWT from a therapist/developer account, because the phone
+app's therapist Stats view reads the same data. Those use get_clinical_viewer
+instead of get_current_admin; everything else stays admin-only.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ import model_service
 import storage
 from auth import (
     create_access_token,
+    get_clinical_viewer,
     get_current_admin,
     hash_password,
     verify_password,
@@ -68,8 +74,12 @@ def list_admins(admin: dict = Depends(get_current_admin)):
 # --- Users -----------------------------------------------------------------
 
 @router.get("/users")
-def list_users(admin: dict = Depends(get_current_admin)):
-    """Distinct app users (by user_id) with per-source row counts."""
+def list_users(viewer: dict = Depends(get_clinical_viewer)):
+    """Distinct app users (by user_id) with per-source row counts.
+
+    Also serves the phone app's therapist patient picker, hence
+    get_clinical_viewer rather than get_current_admin.
+    """
     sensors = storage.read_all_records()
     feedback = storage.read_all_feedback()
     reports = storage.read_all_reports()
@@ -122,7 +132,8 @@ def user_detail(user_id: str, admin: dict = Depends(get_current_admin)):
 
 
 @router.get("/users/{user_id}/reports")
-def user_reports(user_id: str, admin: dict = Depends(get_current_admin)):
+def user_reports(user_id: str, viewer: dict = Depends(get_clinical_viewer)):
+    """One user's panic reports. Backs both the dashboard and therapist Stats."""
     rows = [r for r in storage.read_all_reports() if r.get("user_id") == user_id]
     rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
     return {"reports": rows}
