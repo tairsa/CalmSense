@@ -50,7 +50,12 @@ object SessionManager {
         val email = prefs.getString(KEY_EMAIL, null)
         val access = prefs.getString(KEY_ACCESS_TOKEN, null)
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, null)
-        _session.value = if (id.isNullOrBlank()) {
+        // A persisted session with no access token cannot authenticate against
+        // anything, so treat it as signed out rather than letting the user in
+        // to a session that silently fails. This happens when a signup needed
+        // email confirmation; it self-heals devices that stored one before
+        // LoginScreen started rejecting them.
+        _session.value = if (id.isNullOrBlank() || access.isNullOrBlank()) {
             null
         } else {
             SupabaseAuth.Session(

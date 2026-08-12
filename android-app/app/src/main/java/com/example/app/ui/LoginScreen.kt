@@ -56,7 +56,20 @@ fun LoginScreen(
             }
             loading = false
             when (result) {
-                is SupabaseAuth.AuthResult.Success -> onAuthenticated(result.session)
+                is SupabaseAuth.AuthResult.Success -> {
+                    // Supabase returns a user id but an EMPTY access token when
+                    // the project requires email confirmation. Treating that as
+                    // signed-in produces a session that cannot authenticate
+                    // against the backend - the failure then surfaces much
+                    // later, somewhere unrelated. Keep them on this screen.
+                    if (result.session.accessToken.isBlank()) {
+                        error = "Check your email to confirm your account, " +
+                            "then sign in."
+                        mode = AuthMode.SIGN_IN
+                    } else {
+                        onAuthenticated(result.session)
+                    }
+                }
                 is SupabaseAuth.AuthResult.Error -> error = result.message
             }
         }
