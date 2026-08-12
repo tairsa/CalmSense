@@ -13,6 +13,15 @@ package com.example.app.data
 data class PanicReportEntity(
     val id: Long = 0L,
 
+    /**
+     * Supabase auth user id (UUID) of the account that logged this report.
+     * Empty string on legacy rows created before per-user isolation shipped;
+     * those rows are hidden from all authenticated users (see repository
+     * observe* methods) and effectively become dead data. New inserts are
+     * always tagged in [PanicReportRepository.insertAndSync].
+     */
+    val userId: String = "",
+
     /** Event start, ms since epoch. */
     val timestampMs: Long,
 

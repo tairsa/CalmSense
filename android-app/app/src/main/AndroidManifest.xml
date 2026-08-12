@@ -9,7 +9,10 @@
     <!-- No FOREGROUND_SERVICE_HEALTH: MonitorService is a "location" FGS now.
          The health.READ_* permissions below stay — they are for reading vitals
          through Health Connect (HealthConnectVitalsRepository), which is a
-         separate, optional data source and unrelated to the service type. -->
+         separate, optional data source and unrelated to the service type.
+         The branch alternative (keep "health" + HIGH_SAMPLING_RATE_SENSORS)
+         was dropped in the merge: location-only is the fix that was verified
+         on-device, and it needs no extra sensor permission at all. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
