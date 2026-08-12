@@ -92,6 +92,17 @@ class TokenResponse(BaseModel):
     admin: AdminPublic
 
 
+class SetRoleRequest(BaseModel):
+    """Change one Supabase account's role from the admin dashboard.
+
+    Validated again in supabase_admin.set_role against VALID_ROLES before it
+    reaches Supabase, so an unexpected value can never be written into
+    user_metadata.
+    """
+
+    role: str  # "user" | "therapist" | "developer"
+
+
 class RollbackRequest(BaseModel):
     """Roll a user's model back to the snapshot active as of `cutoff`.
 

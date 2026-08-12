@@ -66,6 +66,15 @@ export const api = {
     request("/api/v1/admin/auth/register", { method: "POST", body: payload }),
   admins: () => request("/api/v1/admin/admins"),
 
+  // Supabase auth accounts + their role. Distinct from users() below, which
+  // is derived from data rows and includes pre-auth ids that have no account.
+  accounts: () => request("/api/v1/admin/accounts"),
+  setAccountRole: (id, role) =>
+    request(`/api/v1/admin/accounts/${encodeURIComponent(id)}/role`, {
+      method: "PUT",
+      body: { role },
+    }),
+
   globalMetrics: () => request("/api/v1/admin/metrics/global"),
   users: () => request("/api/v1/admin/users"),
   userDetail: (id) => request(`/api/v1/admin/users/${encodeURIComponent(id)}`),

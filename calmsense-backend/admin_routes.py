@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import auto_retrain
 import model_service
 import storage
+import supabase_admin
 from auth import (
     create_access_token,
     get_clinical_viewer,
@@ -26,6 +27,7 @@ from models import (
     AdminRegisterRequest,
     RetrainRequest,
     RollbackRequest,
+    SetRoleRequest,
     TokenResponse,
 )
 
@@ -69,6 +71,39 @@ def me(admin: dict = Depends(get_current_admin)):
 def list_admins(admin: dict = Depends(get_current_admin)):
     """All admin accounts (no password hashes). Used by the Admins page."""
     return {"admins": storage.list_admins()}
+
+
+# --- Accounts (Supabase auth users + roles) ---------------------------------
+#
+# Distinct from /users below: that list is derived from data rows and still
+# contains pre-auth ids like "tairsa-dev", which are not Supabase accounts and
+# cannot hold a role. Role management therefore works off the auth service.
+#
+# Admin-only. A therapist must not be able to promote themselves, so these use
+# get_current_admin rather than get_clinical_viewer.
+
+@router.get("/accounts")
+def list_accounts(admin: dict = Depends(get_current_admin)):
+    """Supabase auth accounts with their current role."""
+    try:
+        return {"accounts": supabase_admin.list_accounts()}
+    except supabase_admin.SupabaseAdminError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.put("/accounts/{user_id}/role")
+def set_account_role(
+    user_id: str,
+    body: SetRoleRequest,
+    admin: dict = Depends(get_current_admin),
+):
+    """Set one account's role (user / therapist / developer)."""
+    try:
+        return {"account": supabase_admin.set_role(user_id, body.role)}
+    except supabase_admin.SupabaseAdminError as e:
+        # An unknown role is the caller's fault; anything else is upstream.
+        code = 400 if "Unknown role" in str(e) else 503
+        raise HTTPException(status_code=code, detail=str(e))
 
 
 # --- Users -----------------------------------------------------------------
