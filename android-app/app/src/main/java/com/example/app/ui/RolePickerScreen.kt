@@ -3,6 +3,7 @@ package com.example.app.ui
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MedicalServices
@@ -13,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -26,10 +28,12 @@ import com.example.app.ui.theme.AppTheme
  */
 @Composable
 fun RolePickerScreen(
-    onSelected: (role: String) -> Unit,
+    onSelected: (role: String, displayName: String) -> Unit,
     loading: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    var displayName by remember { mutableStateOf("") }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -69,14 +73,34 @@ fun RolePickerScreen(
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(24.dp))
+
+            // Full name shown to the other party in the therapist / patient
+            // relationship. Optional - if left blank we fall back to "Client"
+            // / "Therapist" in the dashboards, same as before.
+            OutlinedTextField(
+                value = displayName,
+                onValueChange = { displayName = it },
+                label = { Text("Your full name") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                supportingText = {
+                    Text(
+                        "So your therapist (or client) can recognize you.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(20.dp))
 
             RoleCard(
                 icon = Icons.Filled.Person,
                 title = "I'm a patient",
                 subtitle = "Track my heart, log panic attacks, get calming guidance.",
                 enabled = !loading,
-                onClick = { onSelected("patient") },
+                onClick = { onSelected("patient", displayName.trim()) },
             )
             Spacer(Modifier.height(16.dp))
             RoleCard(
@@ -84,7 +108,7 @@ fun RolePickerScreen(
                 title = "I'm a therapist",
                 subtitle = "See a client's episodes and patterns, with their consent.",
                 enabled = !loading,
-                onClick = { onSelected("therapist") },
+                onClick = { onSelected("therapist", displayName.trim()) },
             )
 
             if (loading) {
@@ -161,5 +185,5 @@ private fun RoleCard(
 @Preview(showBackground = true)
 @Composable
 private fun RolePickerScreenPreview() {
-    AppTheme { RolePickerScreen(onSelected = {}) }
+    AppTheme { RolePickerScreen(onSelected = { _, _ -> }) }
 }

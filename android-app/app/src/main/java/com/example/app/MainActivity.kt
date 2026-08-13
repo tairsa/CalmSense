@@ -283,11 +283,16 @@ class HeartRateViewModel : ViewModel() {
         }
     }
 
-    /** Called from RolePickerScreen — persist choice, then update local state. */
-    fun setRole(role: String) {
+    /**
+     * Called from RolePickerScreen - persist choice + display name (blank
+     * -> null so the DB stores NULL, keeping the dashboards' "Client"
+     * fallback intact for users who leave it empty), then update local state.
+     */
+    fun setRole(role: String, displayName: String) {
         roleSaving = true
         viewModelScope.launch {
-            val ok = therapistApi.setProfile(userId = userId, role = role)
+            val name = displayName.trim().ifBlank { null }
+            val ok = therapistApi.setProfile(userId = userId, role = role, displayName = name)
             roleSaving = false
             if (ok) profileRole = role
         }
@@ -703,7 +708,7 @@ class MainActivity : ComponentActivity() {
                 }
                 if (viewModel.profileRole == null) {
                     RolePickerScreen(
-                        onSelected = { role -> viewModel.setRole(role) },
+                        onSelected = { role, name -> viewModel.setRole(role, name) },
                         loading = viewModel.roleSaving,
                     )
                     return@AppTheme
