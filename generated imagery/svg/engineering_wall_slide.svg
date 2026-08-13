@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#1a1a1a"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="80" y="95" font-size="48" font-weight="700" fill="#000000">The Engineering Wall</text>
+  <text x="80" y="135" font-size="22" fill="#000000" opacity="0.65">Why we built our own watch app</text>
+
+  <!-- Underline accent -->
+  <rect x="80" y="155" width="180" height="5" fill="#aad7d4"/>
+
+  <!-- ============ THE GOAL ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="200" width="1440" height="90" rx="14" fill="#c6f3f0"/>
+  </g>
+  <text x="110" y="232" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">WHAT WE NEEDED</text>
+  <text x="110" y="270" font-size="22" fill="#000000">Continuous, low-latency heart rate from the wrist — stable enough to trust for real-time panic detection.</text>
+
+  <!-- ============ WHAT DIDN'T WORK ============ -->
+  <text x="80" y="345" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">WHAT WE TRIED — AND WHY EACH FAILED</text>
+
+  <!-- Row 1: Samsung Health -->
+  <g filter="url(#soft)">
+    <rect x="80" y="370" width="1440" height="80" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5" opacity="0.92"/>
+  </g>
+  <circle cx="125" cy="410" r="20" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="113" y1="398" x2="137" y2="422" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <line x1="137" y1="398" x2="113" y2="422" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <text x="175" y="403" font-size="22" font-weight="700" fill="#000000">Samsung Health</text>
+  <text x="175" y="432" font-size="17" fill="#000000" opacity="0.7">Required us to manually open the app and pull-to-refresh just to push data to Health Connect. Batched, never real-time — unusable for live panic detection.</text>
+
+  <!-- Row 2: Health Connect -->
+  <g filter="url(#soft)">
+    <rect x="80" y="465" width="1440" height="80" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5" opacity="0.92"/>
+  </g>
+  <circle cx="125" cy="505" r="20" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="113" y1="493" x2="137" y2="517" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <line x1="137" y1="493" x2="113" y2="517" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <text x="175" y="498" font-size="22" font-weight="700" fill="#000000">Health Connect</text>
+  <text x="175" y="527" font-size="17" fill="#000000" opacity="0.7">Android's official health hub — but it doesn't run on Wear OS. The watch literally can't speak this API to send us data.</text>
+
+  <!-- Row 3: Wear Health Services -->
+  <g filter="url(#soft)">
+    <rect x="80" y="560" width="1440" height="80" rx="12" fill="#ffffff" stroke="#000000" stroke-width="1.5" opacity="0.92"/>
+  </g>
+  <circle cx="125" cy="600" r="20" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="113" y1="588" x2="137" y2="612" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <line x1="137" y1="588" x2="113" y2="612" stroke="#000000" stroke-width="3" stroke-linecap="round"/>
+  <text x="175" y="593" font-size="22" font-weight="700" fill="#000000">Wear Health Services</text>
+  <text x="175" y="622" font-size="17" fill="#000000" opacity="0.7">Google's official wearable API. Permissions kept getting rejected at runtime on the Galaxy Watch 5 — a known platform-level dead end.</text>
+
+  <!-- ============ THE SOLUTION ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="680" width="1440" height="170" rx="14" fill="#aad7d4"/>
+  </g>
+  <text x="110" y="712" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">HOW WE GOT PAST IT</text>
+
+  <!-- Check mark -->
+  <circle cx="145" cy="775" r="28" fill="#000000"/>
+  <path d="M 130 776 L 142 788 L 162 766" stroke="#aad7d4" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="195" y="765" font-size="26" font-weight="700" fill="#000000">A dedicated CalmSense watch app</text>
+  <text x="195" y="800" font-size="18" fill="#000000">Reads the watch's heart-rate and motion sensors directly — no third-party middleman.</text>
+  <text x="195" y="826" font-size="18" fill="#000000">Streams vitals to the phone every 2 seconds. We own the pipeline end-to-end: real-time, stable, ours.</text>
+</svg>

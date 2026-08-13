@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="800" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="80" y="80" font-size="38" font-weight="700" fill="#000000">Panic vs Exercise</text>
+  <text x="80" y="115" font-size="19" fill="#000000" opacity="0.65">Why a fast heart rate alone isn't enough — motion is the deciding signal</text>
+  <rect x="80" y="132" width="160" height="5" fill="#aad7d4"/>
+
+  <!-- ============ PANIC CARD ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="170" width="1040" height="270" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="80" y="170" width="8" height="270" fill="#aad7d4"/>
+  <text x="115" y="205" font-size="22" font-weight="700" fill="#000000">PANIC ATTACK</text>
+  <text x="115" y="228" font-size="14" fill="#000000" opacity="0.65">Sharp HR rise + stationary body  →  high p(panic)</text>
+
+  <!-- HR plot (panic) -->
+  <text x="115" y="265" font-size="13" font-weight="600" fill="#000000">ΔHR</text>
+  <line x1="170" y1="380" x2="700" y2="380" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <line x1="170" y1="265" x2="170" y2="380" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <polyline points="170,375 220,373 270,370 320,365 370,355 420,335 470,305 520,278 570,265 620,260 670,258 700,257"
+            fill="none" stroke="#000000" stroke-width="3"/>
+  <text x="700" y="252" font-size="13" fill="#000000" font-weight="700">sharp spike</text>
+
+  <!-- Motion bars (panic — low) -->
+  <text x="115" y="415" font-size="13" font-weight="600" fill="#000000">motion</text>
+  <line x1="170" y1="425" x2="700" y2="425" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <g fill="#000000" opacity="0.55">
+    <rect x="180" y="418" width="20" height="7"/>
+    <rect x="210" y="419" width="20" height="6"/>
+    <rect x="240" y="417" width="20" height="8"/>
+    <rect x="270" y="418" width="20" height="7"/>
+    <rect x="300" y="419" width="20" height="6"/>
+    <rect x="330" y="418" width="20" height="7"/>
+    <rect x="360" y="417" width="20" height="8"/>
+    <rect x="390" y="418" width="20" height="7"/>
+    <rect x="420" y="419" width="20" height="6"/>
+    <rect x="450" y="418" width="20" height="7"/>
+    <rect x="480" y="417" width="20" height="8"/>
+    <rect x="510" y="419" width="20" height="6"/>
+    <rect x="540" y="418" width="20" height="7"/>
+    <rect x="570" y="417" width="20" height="8"/>
+    <rect x="600" y="419" width="20" height="6"/>
+    <rect x="630" y="418" width="20" height="7"/>
+    <rect x="660" y="418" width="20" height="7"/>
+  </g>
+  <text x="700" y="424" font-size="13" fill="#000000" font-weight="700">body is still</text>
+
+  <!-- Verdict (panic) -->
+  <line x1="850" y1="195" x2="850" y2="425" stroke="#000000" stroke-width="1" opacity="0.2"/>
+  <circle cx="905" cy="320" r="28" fill="#000000"/>
+  <path d="M 890 321 L 902 333 L 922 311" stroke="#aad7d4" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="950" y="313" font-size="24" font-weight="700" fill="#000000">DETECTED</text>
+  <text x="950" y="338" font-size="14" fill="#000000" opacity="0.7">p ≥ threshold</text>
+
+  <!-- ============ EXERCISE CARD ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="465" width="1040" height="270" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <rect x="80" y="465" width="8" height="270" fill="#000000" opacity="0.25"/>
+  <text x="115" y="500" font-size="22" font-weight="700" fill="#000000">EXERCISE</text>
+  <text x="115" y="523" font-size="14" fill="#000000" opacity="0.65">Gradual HR rise + sustained activity  →  low p(panic), no false alarm</text>
+
+  <!-- HR plot (exercise) -->
+  <text x="115" y="560" font-size="13" font-weight="600" fill="#000000">ΔHR</text>
+  <line x1="170" y1="675" x2="700" y2="675" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <line x1="170" y1="560" x2="170" y2="675" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <polyline points="170,670 220,665 270,659 320,652 370,644 420,635 470,625 520,615 570,604 620,592 670,580 700,572"
+            fill="none" stroke="#000000" stroke-width="3"/>
+  <text x="700" y="567" font-size="13" fill="#000000" font-weight="700">gradual climb</text>
+
+  <!-- Motion bars (exercise — high) -->
+  <text x="115" y="710" font-size="13" font-weight="600" fill="#000000">motion</text>
+  <line x1="170" y1="720" x2="700" y2="720" stroke="#000000" stroke-width="1" opacity="0.4"/>
+  <g fill="#000000" opacity="0.6">
+    <rect x="180" y="680" width="20" height="40"/>
+    <rect x="210" y="675" width="20" height="45"/>
+    <rect x="240" y="683" width="20" height="37"/>
+    <rect x="270" y="677" width="20" height="43"/>
+    <rect x="300" y="681" width="20" height="39"/>
+    <rect x="330" y="675" width="20" height="45"/>
+    <rect x="360" y="679" width="20" height="41"/>
+    <rect x="390" y="673" width="20" height="47"/>
+    <rect x="420" y="678" width="20" height="42"/>
+    <rect x="450" y="676" width="20" height="44"/>
+    <rect x="480" y="680" width="20" height="40"/>
+    <rect x="510" y="674" width="20" height="46"/>
+    <rect x="540" y="678" width="20" height="42"/>
+    <rect x="570" y="675" width="20" height="45"/>
+    <rect x="600" y="681" width="20" height="39"/>
+    <rect x="630" y="676" width="20" height="44"/>
+    <rect x="660" y="679" width="20" height="41"/>
+  </g>
+  <text x="700" y="710" font-size="13" fill="#000000" font-weight="700">sustained activity</text>
+
+  <!-- Verdict (exercise) -->
+  <line x1="850" y1="490" x2="850" y2="720" stroke="#000000" stroke-width="1" opacity="0.2"/>
+  <circle cx="905" cy="615" r="28" fill="none" stroke="#000000" stroke-width="3"/>
+  <line x1="891" y1="615" x2="919" y2="615" stroke="#000000" stroke-width="4" stroke-linecap="round"/>
+  <text x="950" y="608" font-size="24" font-weight="700" fill="#000000">IGNORED</text>
+  <text x="950" y="633" font-size="14" fill="#000000" opacity="0.7">no false alarm</text>
+
+  <!-- Caption -->
+  <text x="80" y="775" font-size="14" fill="#000000" opacity="0.7">Same elevated heart rate — opposite verdicts. The accelerometer is what tells them apart.</text>
+</svg>

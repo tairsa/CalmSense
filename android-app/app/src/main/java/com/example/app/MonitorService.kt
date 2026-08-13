@@ -16,9 +16,16 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.app.data.BackendClient
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.PanicAlertGate
+import com.example.app.data.PanicDebouncer
+import com.example.app.data.PanicModelCache
 import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
+import com.example.app.data.SettingsStore
+import com.example.app.data.SleepDetector
+import com.example.app.data.UploadQueue
 import com.example.app.data.Vitals
+import com.example.app.data.motionFeature
 import com.example.app.data.WatchVitalsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,12 +41,17 @@ class MonitorService : Service() {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var pollJob: Job? = null
     private lateinit var repo: HealthConnectVitalsRepository
+    private lateinit var modelCache: PanicModelCache
     private val backend = BackendClient(BACKEND_URL)
+    private val panicDebouncer = PanicDebouncer()
 
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        SettingsStore.init(applicationContext)
+        UploadQueue.init(applicationContext)
         repo = HealthConnectVitalsRepository(applicationContext)
+        modelCache = PanicModelCache(applicationContext)
         startInForeground(buildMonitorNotification("Starting…"))
         startPolling()
     }
@@ -74,6 +86,9 @@ class MonitorService : Service() {
         // Prefer the watch when it has a fresh sample — bypasses Samsung Health/HC sync delay.
         val fromWatch = WatchVitalsRepository.readVitals()
         if (fromWatch.heartRateBpm != null) return fromWatch
+        // Watch explicitly off-wrist: anything in Health Connect is from before
+        // it came off, so don't fall back to it.
+        if (fromWatch.watchOnBody == false) return fromWatch
         return runCatching { repo.readVitals() }.getOrNull()
             ?: Vitals(null, null, false)
     }
@@ -85,19 +100,48 @@ class MonitorService : Service() {
     }
 
     private fun handleVitals(v: Vitals) {
+        // No detection or upload of health data without the user's consent. If a
+        // system restart revived the service without it, stop ourselves.
+        if (!SettingsStore.consentGranted.value) {
+            stopSelf()
+            return
+        }
         val statusText = when {
+            v.watchOnBody == false -> "Paused — watch is off your wrist"
+            v.heartRateBpm != null && SleepDetector.isAsleep ->
+                "Monitoring (sleeping) — ${v.heartRateBpm} bpm"
             v.heartRateBpm != null -> "Monitoring — ${v.heartRateBpm} bpm"
             v.hrSampleAgeMinutes != null -> "Monitoring — last reading ${v.hrSampleAgeMinutes} min ago"
             else -> "Monitoring — waiting for watch data"
         }
         updateMonitorNotification(statusText)
 
-        val hr = v.heartRateBpm
-        val hrv = v.hrv
-        val panic = hr != null && hrv != null && hr > 120 && hrv < 20.0 && !v.isMoving
-        if (panic) firePanicNotification()
+        // Require the detection to persist before acting (filters single-sample
+        // spikes); the cooldown gate then keeps a sustained episode from
+        // re-notifying on every poll (every 5 s when elevated).
+        val panic = panicDebouncer.confirm(isPanic(v))
+        if (panic && PanicAlertGate.tryFire()) firePanicNotification()
 
         uploadIfFresh(v, panic)
+    }
+
+    /** Same decision the in-app classifier makes: trained model at the user's
+     *  sensitivity threshold, falling back to the fixed rule when no trained
+     *  model is cached yet. Reloading the cache each poll (every 5–30 s) keeps
+     *  this in sync with weights the app fetches while we run. */
+    private fun isPanic(v: Vitals): Boolean {
+        val hr = v.heartRateBpm ?: return false
+        val hrv = v.hrv ?: return false
+        val model = modelCache.load()
+        return if (model != null && !model.isUntrained()) {
+            // Mirror HeartRateViewModel.checkPanicRisk's motion encoding so
+            // foreground and background detections always agree.
+            val motion = v.motionFeature()
+            val threshold = SettingsStore.detectionThreshold.value.toDouble()
+            model.predict(hr.toDouble(), hrv, motion, threshold).isPanic
+        } else {
+            hr > 120 && hrv < 20.0 && !v.isMoving
+        }
     }
 
     private fun uploadIfFresh(v: Vitals, panic: Boolean) {
@@ -110,19 +154,40 @@ class MonitorService : Service() {
             currentMotionIntensity = v.motionIntensity ?: if (v.isMoving) 1.0f else 0.0f,
         )
         scope.launch {
-            when (val r = backend.postSensorData(payload)) {
+            // Queued on network failure and re-sent (oldest first) once the
+            // server answers again — see UploadQueue.
+            when (val r = UploadQueue.postSensor(backend, payload)) {
                 PostResult.Success -> Log.d(TAG, "POST ok: hr=$hr panic=$panic")
                 is PostResult.HttpError -> Log.w(TAG, "POST failed: HTTP ${r.code}")
-                is PostResult.NetworkError -> Log.w(TAG, "POST failed: ${r.reason}")
+                is PostResult.NetworkError -> Log.w(TAG, "POST queued: ${r.reason}")
             }
         }
     }
 
     private fun startInForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH)
-        } else {
-            startForeground(MONITOR_NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // LOCATION, not HEALTH. This service reads no sensor on the phone:
+                // vitals arrive from the watch over the Data Layer, and the only
+                // hardware it touches directly is GPS, captured when a panic is
+                // recorded. HEALTH was also actively breaking it — Android 14+
+                // refuses a health-typed FGS unless one of ACTIVITY_RECOGNITION /
+                // HIGH_SAMPLING_RATE_SENSORS / health.READ_* is *granted*, and the
+                // only one this app declares (health.READ_HEART_RATE) is a Health
+                // Connect permission the user never had to grant, because vitals
+                // come from the watch. The result was a SecurityException on every
+                // start, the stopSelf() below, and monitoring that silently never
+                // ran — no uploads between 2026-06-19 and 2026-08-04.
+                startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(MONITOR_NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Still possible if ACCESS_FINE_LOCATION is revoked. Kept as a
+            // backstop so a permission problem degrades to "no background
+            // monitoring" instead of crashing the app on launch.
+            Log.w(TAG, "Foreground start rejected — stopping monitor service", e)
+            stopSelf()
         }
     }
 
@@ -179,10 +244,15 @@ class MonitorService : Service() {
 
     private fun firePanicNotification() {
         if (!hasPostPermission()) return
+        // ACTION_PANIC_ALERT makes MainActivity surface the "was it a panic?"
+        // prompt when the user opens the app through this notification.
         val openApp = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
+            this, 2,
+            Intent(this, MainActivity::class.java).apply {
+                action = ACTION_PANIC_ALERT
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
         val n = NotificationCompat.Builder(this, PANIC_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)

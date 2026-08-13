@@ -120,14 +120,14 @@ def build() -> None:
         "Galaxy Watch 5\n"
         "  Sensor.TYPE_HEART_RATE  ─┐\n"
         "  Sensor.TYPE_LINEAR_ACCEL ┘──► HrMonitoringService\n"
-        "                                  │  CSV \"<bpm>,<rms>\"\n"
+        "                                  │  CSV \"<bpm>,<rms>,<hrv>,<on_body>,<hrv_src>\"\n"
         "                                  ▼\n"
         "                          Wear MessageClient\n"
         "                                  │  path: /calmsense/sample\n"
         "                                  ▼\n"
         "Phone (Android)\n"
         "  WatchListenerService ─► WatchVitalsRepository\n"
-        "                                  │  Vitals(hr, motion)\n"
+        "                                  │  Vitals(hr, hrv, motion, onBody)\n"
         "                                  ▼\n"
         "                          MonitorService (poll loop)\n"
         "                                  ├─► PanicModel.predict()  (on-device sigmoid)\n"
@@ -162,9 +162,13 @@ def build() -> None:
     add_bullets(
         doc,
         [
-            "TYPE_HEART_RATE @ SENSOR_DELAY_NORMAL — ~1 Hz HR samples with accuracy 3 when worn; 0 with accuracy −1 when off-wrist.",
-            "TYPE_LINEAR_ACCELERATION @ SENSOR_DELAY_UI — ~16 Hz; maintained as a rolling RMS over a 5-second window.",
-            "Throttled to one outbound message every ~2 s; format is the ASCII CSV \"<bpm>,<rms>\".",
+            "TYPE_HEART_RATE — wake-up variant preferred, sampled at ~1 Hz and batched with a 10 s max report latency, so the hardware FIFO buffers samples and the SoC is woken once per burst instead of every second. Accuracy 3 when worn; off-wrist the listener is unregistered entirely.",
+            "TYPE_LINEAR_ACCELERATION (wake-up variant preferred, falling back to TYPE_ACCELEROMETER) — sampled at ~5 Hz, batched at 10 s, maintained as a rolling RMS over 16 samples ≈ a 3-second motion window. Under TYPE_ACCELEROMETER gravity is subtracted before squaring.",
+            "TYPE_LOW_LATENCY_OFFBODY_DETECT — wrist on/off. Off-wrist the optical sensors are released and sends drop to a slow 15 s \"still off\" beacon so the phone can distinguish off-wrist from a dead link.",
+            "HRV (RMSSD) has three sources in priority order: real inter-beat intervals from the Samsung Health Sensor SDK (SamsungHrTracker), then TYPE_HEART_BEAT timestamps, then a bpm-derived approximation that reads far below clinical RMSSD. The chosen source is sent to the phone so it can flag estimates.",
+            "Outbound messages are throttled to one every ~2 s while worn, with a guaranteed floor of one every ~10 s — the batched wake-up sensor's delivery is what wakes the SoC to send while the screen is off. Format is the ASCII CSV \"<bpm>,<motion_rms>,<hrv_ms>,<on_body>,<hrv_source>\"; bpm and hrv are −1 when unavailable.",
+            "Devices with no wake-up accelerometer (including the Galaxy Watch 5) have no free periodic wake source while the Samsung SDK owns the PPG, so a partial wake lock covers that window only. It is duty-cycled against the platform HR sensor rather than held, so the watch can still deep-sleep.",
+            "A stall watchdog restores the platform HR sensor if the Samsung SDK stops delivering for 15 s. The SDK goes silent on entering Doze without firing onConnectionEnded or onError, which would otherwise leave the service alive with no HR source at all.",
             "MessageClient send runs on a single-thread Executor — sensor callbacks fire on the main thread and Tasks.await() throws there.",
         ],
     )
@@ -188,8 +192,12 @@ def build() -> None:
     add_para(
         doc,
         "Receives Wear MessageClient events. Parses the CSV payload "
-        "(\"<bpm>,<motion_rms>\") and updates WatchVitalsRepository. Also "
-        "accepts the legacy \"<bpm>\" payload on /calmsense/hr for back-compat.",
+        "(\"<bpm>,<motion_rms>,<hrv_ms>,<on_body>,<hrv_source>\") and updates "
+        "WatchVitalsRepository and SleepDetector. Trailing fields are optional, "
+        "so payloads from older watch builds still parse: a missing hrv_source "
+        "is inferred as bpm-derived. A bpm or hrv of −1 means \"no reading\" and "
+        "leaves the previously held value untouched rather than clearing it. "
+        "Also accepts the legacy \"<bpm>\" payload on /calmsense/hr for back-compat.",
     )
 
     add_heading(doc, "WatchVitalsRepository", level=2)
@@ -260,7 +268,7 @@ def build() -> None:
         doc,
         [
             "Watch ↔ phone: Google Play Services Wearable Data Layer (MessageClient).",
-            "Phone ↔ backend: plain HTTP over LAN. BACKEND_URL constant in MainActivity.kt currently points at http://192.168.1.72:8000. AndroidManifest sets usesCleartextTraffic=\"true\" for the dev configuration.",
+            "Phone ↔ backend: plain HTTP over the Tailscale tailnet, not the LAN. The BACKEND_URL constant in MainActivity.kt resolves to http://pi5-home-server-ts.tail4f470e.ts.net:8000 — the Pi's MagicDNS name rather than a raw 100.x address, so the app survives the Pi's tailnet IP changing (100.76.34.20 at time of writing). This requires Tailscale to be connected on the phone; it works from anywhere, not just home Wi-Fi. The Android emulator uses http://10.0.2.2:8000 instead, since it cannot reach the host by any other address. AndroidManifest sets usesCleartextTraffic=\"true\" for the dev configuration.",
             "Watch never speaks to the backend directly — all backend traffic is mediated by the phone's MonitorService.",
         ],
     )
@@ -286,7 +294,8 @@ def build() -> None:
         "│   └── wear/          — Watch module (com.example.app.wear)\n"
         "│       └── src/main/java/com/example/app/wear/\n"
         "│           ├── WearMainActivity.kt\n"
-        "│           └── HrMonitoringService.kt\n"
+        "│           ├── HrMonitoringService.kt\n"
+        "│           └── SamsungHrTracker.kt    ← real-IBI HRV via Samsung SDK\n"
         "└── calmsense-backend/\n"
         "    ├── main.py        — FastAPI routes\n"
         "    ├── models.py      — Pydantic schemas\n"

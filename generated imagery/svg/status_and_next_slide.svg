@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- ============ TITLE ============ -->
+  <text x="80" y="80" font-size="44" font-weight="700" fill="#000000">Status &amp; What's Next</text>
+  <text x="80" y="115" font-size="20" fill="#000000" opacity="0.65">A working system today — and an open research path ahead</text>
+  <rect x="80" y="132" width="180" height="5" fill="#aad7d4"/>
+
+  <!-- ============ LEFT COLUMN: WHAT'S WORKING ============ -->
+  <g filter="url(#soft)">
+    <rect x="80" y="170" width="720" height="640" rx="14" fill="#c6f3f0"/>
+  </g>
+
+  <text x="110" y="210" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">WHAT'S WORKING TODAY</text>
+  <text x="110" y="242" font-size="26" font-weight="700" fill="#000000">Built &amp; deployed</text>
+
+  <!-- Item 1 -->
+  <circle cx="140" cy="320" r="22" fill="#000000"/>
+  <path d="M 128 321 L 137 330 L 153 312" stroke="#aad7d4" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="180" y="312" font-size="20" font-weight="700" fill="#000000">Dedicated CalmSense watch app</text>
+  <text x="180" y="336" font-size="15" fill="#000000" opacity="0.7">Reads heart-rate and motion sensors directly. Streams to the phone every 2 seconds.</text>
+
+  <!-- Item 2 -->
+  <circle cx="140" cy="440" r="22" fill="#000000"/>
+  <path d="M 128 441 L 137 450 L 153 432" stroke="#aad7d4" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="180" y="432" font-size="20" font-weight="700" fill="#000000">FastAPI backend pipeline</text>
+  <text x="180" y="456" font-size="15" fill="#000000" opacity="0.7">REST endpoints for vitals, feedback, and reports. Supabase + JSON storage.</text>
+
+  <!-- Item 3 -->
+  <circle cx="140" cy="560" r="22" fill="#000000"/>
+  <path d="M 128 561 L 137 570 L 153 552" stroke="#aad7d4" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="180" y="552" font-size="20" font-weight="700" fill="#000000">On-device panic detection</text>
+  <text x="180" y="576" font-size="15" fill="#000000" opacity="0.7">Logistic-regression classifier runs offline on the phone. Cached model survives reinstall.</text>
+
+  <!-- Item 4 -->
+  <circle cx="140" cy="680" r="22" fill="#000000"/>
+  <path d="M 128 681 L 137 690 L 153 672" stroke="#aad7d4" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="180" y="672" font-size="20" font-weight="700" fill="#000000">Closed feedback loop</text>
+  <text x="180" y="696" font-size="15" fill="#000000" opacity="0.7">Every prediction prompts hit/miss → labeled sample stored for retraining.</text>
+
+  <!-- Footer note inside left column -->
+  <line x1="110" y1="745" x2="770" y2="745" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="110" y="775" font-size="14" font-style="italic" fill="#000000" opacity="0.65">End-to-end pipeline from wrist to backend, validated by user feedback in the live app.</text>
+
+  <!-- ============ RIGHT COLUMN: WHAT'S NEXT ============ -->
+  <g filter="url(#soft)">
+    <rect x="820" y="170" width="700" height="640" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+
+  <text x="850" y="210" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">WHAT'S NEXT</text>
+  <text x="850" y="242" font-size="26" font-weight="700" fill="#000000">Open research path</text>
+
+  <!-- Item 1 -->
+  <circle cx="880" cy="320" r="22" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="869" y1="320" x2="889" y2="320" stroke="#000000" stroke-width="2.5"/>
+  <polyline points="884,314 891,320 884,326" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="920" y="312" font-size="20" font-weight="700" fill="#000000">Server-side retraining pipeline</text>
+  <text x="920" y="336" font-size="15" fill="#000000" opacity="0.7">Replace the synthetic baseline with a model retrained on real user hit/miss labels.</text>
+
+  <!-- Item 2 -->
+  <circle cx="880" cy="440" r="22" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="869" y1="440" x2="889" y2="440" stroke="#000000" stroke-width="2.5"/>
+  <polyline points="884,434 891,440 884,446" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="920" y="432" font-size="20" font-weight="700" fill="#000000">Per-user personalized models</text>
+  <text x="920" y="456" font-size="15" fill="#000000" opacity="0.7">API already keys on user_id — serve weights tuned to each individual's vitals.</text>
+
+  <!-- Item 3 -->
+  <circle cx="880" cy="560" r="22" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="869" y1="560" x2="889" y2="560" stroke="#000000" stroke-width="2.5"/>
+  <polyline points="884,554 891,560 884,566" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="920" y="552" font-size="20" font-weight="700" fill="#000000">JWT authentication</text>
+  <text x="920" y="576" font-size="15" fill="#000000" opacity="0.7">user_id is trusted from the phone today. Real users need real auth.</text>
+
+  <!-- Item 4 -->
+  <circle cx="880" cy="680" r="22" fill="#ffffff" stroke="#000000" stroke-width="2.5"/>
+  <line x1="869" y1="680" x2="889" y2="680" stroke="#000000" stroke-width="2.5"/>
+  <polyline points="884,674 891,680 884,686" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="920" y="672" font-size="20" font-weight="700" fill="#000000">HRV computed on-device</text>
+  <text x="920" y="696" font-size="15" fill="#000000" opacity="0.7">Currently null from the watch path. Unlocks the second ML feature and improves accuracy.</text>
+
+  <!-- Footer note inside right column -->
+  <line x1="850" y1="745" x2="1490" y2="745" stroke="#000000" stroke-width="1" opacity="0.15"/>
+  <text x="850" y="775" font-size="14" font-style="italic" fill="#000000" opacity="0.65">Each item is an open research or engineering problem — not a polish task.</text>
+
+  <!-- ============ FOOTER ============ -->
+  <text x="800" y="865" font-size="15" text-anchor="middle" fill="#000000" opacity="0.7">A foundation that works  →  the science of making it work for every user.</text>
+</svg>

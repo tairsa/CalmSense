@@ -88,3 +88,54 @@ class RedeemConsentRequest(BaseModel):
     """Patient submits a code they received from a therapist."""
     code: str
     patient_id: str
+
+
+# ---------------------------------------------------------------------------
+# Admin web-app models (auth + model management). These back the JWT-protected
+# /api/v1/admin endpoints used by the React admin app — not the phone.
+# ---------------------------------------------------------------------------
+
+
+class AdminLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AdminRegisterRequest(BaseModel):
+    email: str
+    password: str = Field(..., min_length=8)
+    name: Optional[str] = None
+
+
+class AdminPublic(BaseModel):
+    id: int
+    email: str
+    name: Optional[str] = None
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    admin: AdminPublic
+
+
+class RollbackRequest(BaseModel):
+    """Roll a user's model back to the snapshot active as of `cutoff`.
+
+    No refitting: the most recent snapshot at or before `cutoff` is re-activated,
+    and `cutoff` is stored as the user's training cutoff so future retrains
+    ignore data after it (until cleared).
+    """
+
+    cutoff: str  # ISO 8601 date/datetime
+
+
+class RetrainRequest(BaseModel):
+    """Retrain a user's model from their labeled feedback.
+
+    If `respect_cutoff` is true and the user has a training cutoff set, feedback
+    after the cutoff is excluded. Pass an explicit `cutoff` to override.
+    """
+
+    respect_cutoff: bool = True
+    cutoff: Optional[str] = None

@@ -3,12 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- So monitoring survives a reboot instead of staying off until the app is opened. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <!-- Normal (install-time) permission. Satisfies the Android 14+ requirement
-         that a health-typed foreground service holds one of ACTIVITY_RECOGNITION /
-         BODY_SENSORS / HIGH_SAMPLING_RATE_SENSORS. This one needs no runtime prompt. -->
-    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <!-- No FOREGROUND_SERVICE_HEALTH: MonitorService is a "location" FGS now.
+         The health.READ_* permissions below stay — they are for reading vitals
+         through Health Connect (HealthConnectVitalsRepository), which is a
+         separate, optional data source and unrelated to the service type. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -47,10 +48,32 @@
             </intent-filter>
         </activity>
 
+        <!-- "location" only. The phone service consumes vitals sent by the watch
+             rather than reading any sensor itself; GPS at panic time is the sole
+             hardware it uses. Declaring "health" additionally required a granted
+             health runtime permission on Android 14+, which this app never asks
+             for, so every start threw SecurityException. See MonitorService. -->
         <service
             android:name=".MonitorService"
             android:exported="false"
-            android:foregroundServiceType="health|location" />
+            android:foregroundServiceType="location" />
+
+        <receiver
+            android:name=".MonitoringResumeReceiver"
+            android:exported="false" />
+
+        <!-- Restarts MonitorService after a reboot or an app update. Not exported:
+             both actions are protected system broadcasts, and MY_PACKAGE_REPLACED
+             is only ever delivered to this app. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".data.WatchListenerService"

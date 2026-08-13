@@ -19,6 +19,9 @@ import kotlin.math.exp
  *     p_panic = 1 / (1 + exp(-z))
  *     is_panic = p_panic > threshold
  *
+ * The threshold defaults to 0.5 but callers pass the user's detection
+ * sensitivity setting (SettingsStore.detectionThreshold).
+ *
  * Inference is intentionally on-device: it must work offline (panic attacks
  * happen in places without signal) and respond in milliseconds. The server's
  * job is to *train* this model and ship the weights — the actual decision
@@ -35,14 +38,14 @@ data class PanicModel(
         require(weights.size == 5) { "weights must have 5 elements, got ${weights.size}" }
     }
 
-    /** Return (probability of panic, decision at threshold 0.5). */
-    fun predict(hr: Double, hrv: Double, motion: Double): Prediction {
+    /** Return (probability of panic, decision at [threshold]). */
+    fun predict(hr: Double, hrv: Double, motion: Double, threshold: Double = 0.5): Prediction {
         val z = weights[0] * hr +
                 weights[1] * hrv +
                 weights[2] * motion +
                 weights[4]   // weights[3] is reserved/unused
         val p = 1.0 / (1.0 + exp(-z))
-        return Prediction(probability = p, isPanic = p > 0.5)
+        return Prediction(probability = p, isPanic = p > threshold)
     }
 
     /** True if every coefficient is zero — i.e. the server returned defaults. */

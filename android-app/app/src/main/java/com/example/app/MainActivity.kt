@@ -2,6 +2,7 @@ package com.example.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
@@ -58,7 +60,10 @@ import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.HrvSource
 import com.example.app.data.LocationProvider
+import com.example.app.data.PanicAlertGate
+import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicEventContext
 import com.example.app.data.PanicFeedbackPayload
 import com.example.app.data.PanicModel
@@ -68,10 +73,15 @@ import com.example.app.data.PanicReportRepository
 import com.example.app.data.PingResult
 import com.example.app.data.PostResult
 import com.example.app.data.SessionManager
+import com.example.app.data.SettingsStore
+import com.example.app.data.SleepDetector
 import com.example.app.data.SupabaseAuth
 import com.example.app.data.TherapistApi
+import com.example.app.data.UploadQueue
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
+import com.example.app.data.motionFeatureFor
+import com.example.app.ui.ConsentScreen
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.ConnectTherapistScreen
 import com.example.app.ui.LoginScreen
@@ -82,6 +92,7 @@ import com.example.app.ui.StatsScreen
 import com.example.app.ui.TherapistDashboardScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
+import com.example.app.ui.SettingsScreen
 import com.example.app.ui.theme.AppTheme
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.navigation.NavHostController
@@ -98,9 +109,16 @@ import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 
 // The Android emulator can't reach the host at the host's LAN IP — it sees the
-// host only as 10.0.2.2 on its internal NAT. A real phone on the same Wi-Fi
-// sees the host at its LAN IP. We pick whichever fits the current device.
-private const val BACKEND_LAN_URL = "http://192.168.1.72:8000"
+// host only as 10.0.2.2 on its internal NAT. A real phone reaches the backend
+// over Tailscale, so we use the Pi's tailnet IP (pi5-home-server-ts). This works
+// from anywhere the phone has Tailscale connected — home Wi-Fi or cellular.
+// (Pi LAN IP was http://192.168.1.227:8000 — Wi-Fi only; Tailscale supersedes it.)
+// MagicDNS name rather than a raw 100.x address, so the app survives the Pi's tailnet
+// IP changing. Resolved by Tailscale's own resolver at 100.100.100.100, which every
+// connected node gets — verified 2026-08-02 to return 100.76.34.20. Requires Tailscale
+// to be connected on the device (it already was, for the tailnet IP to be reachable).
+// Equivalent raw IP as of 2026-08-02, if you ever need to fall back: http://100.76.34.20:8000
+private const val BACKEND_LAN_URL = "http://pi5-home-server-ts.tail4f470e.ts.net:8000"
 private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
 
 private val isEmulator: Boolean by lazy {
@@ -125,10 +143,15 @@ val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEN
  */
 val USER_ID: String get() = SessionManager.userId ?: "tairsa-dev"
 
+// Intent action carried by panic-alert notifications: opening the app
+// through one should surface the "was it a panic?" confirm prompt.
+const val ACTION_PANIC_ALERT = "com.example.app.action.PANIC_ALERT"
+
 // Navigation routes — kept as compile-time constants so the NavHost and the
 // auto-navigation LaunchedEffect agree on names.
 private const val ROUTE_MONITOR = "monitor"
 private const val ROUTE_REPORTS = "reports"
+private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
 private const val ROUTE_STATS = "stats"
@@ -140,7 +163,11 @@ class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
     var currentHrv by mutableStateOf<Double?>(45.0)
     var hrSampleAgeMin by mutableStateOf<Long?>(null)
+    var sampleDelaySec by mutableStateOf<Long?>(null)
     var isMoving by mutableStateOf(false)
+    var motionIntensity by mutableStateOf<Float?>(null)
+    var hrvSource by mutableStateOf(HrvSource.NONE)
+    var isSleeping by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
     var dataSource by mutableStateOf(VitalsSource.WATCH)
     var healthConnectStatus by mutableStateOf("Not connected")
@@ -160,7 +187,7 @@ class HeartRateViewModel : ViewModel() {
     private var pendingDetectedByModel: Boolean = false
     private var pendingHr: Int? = null
     private var pendingHrv: Double? = null
-    private var pendingMotion: Boolean = false
+    private var pendingMotion: Float = 0.0f
     private var pendingProbability: Double = 0.0
 
     // Journal (panic reports).
@@ -176,6 +203,7 @@ class HeartRateViewModel : ViewModel() {
     private var pollJob: Job? = null
     private var pingJob: Job? = null
     private var wasInPanic: Boolean = false
+    private val panicDebouncer = PanicDebouncer()
 
     private val fakeRepo = FakeVitalsRepository()
     private var healthConnectRepo: HealthConnectVitalsRepository? = null
@@ -212,6 +240,7 @@ class HeartRateViewModel : ViewModel() {
     var connectSuccess by mutableStateOf(false)
 
     fun attachHealthConnect(context: Context) {
+        SettingsStore.init(context)
         if (healthConnectRepo == null) {
             healthConnectRepo = HealthConnectVitalsRepository(context.applicationContext)
         }
@@ -383,11 +412,21 @@ class HeartRateViewModel : ViewModel() {
     fun startPinging() {
         if (pingJob != null) return
         pingJob = viewModelScope.launch {
+            var wasOffline = false
             while (true) {
-                serverStatus = when (val r = pingBackend.ping()) {
+                val r = pingBackend.ping()
+                serverStatus = when (r) {
                     PingResult.Connected -> "Server: connected"
                     is PingResult.HttpError -> "Server: HTTP ${r.code}"
                     is PingResult.NetworkError -> "Server: offline"
+                }
+                // Connection came back: push everything held while offline.
+                if (r == PingResult.Connected) {
+                    if (UploadQueue.pendingCount.value > 0) UploadQueue.flush(pingBackend)
+                    if (wasOffline) reportRepo?.syncPending()
+                    wasOffline = false
+                } else {
+                    wasOffline = true
                 }
                 delay(5_000)
             }
@@ -405,7 +444,13 @@ class HeartRateViewModel : ViewModel() {
         currentHr = vitals.heartRateBpm
         currentHrv = vitals.hrv
         hrSampleAgeMin = vitals.hrSampleAgeMinutes
+        sampleDelaySec = vitals.hrSampleAgeSeconds
         isMoving = vitals.isMoving
+        motionIntensity = vitals.motionIntensity
+        hrvSource = vitals.hrvSource
+        // Sleep state is inferred from the watch stream only — simulated and
+        // Health Connect sources don't feed the detector.
+        isSleeping = dataSource == VitalsSource.WATCH && SleepDetector.isAsleep
 
         healthConnectStatus = when (dataSource) {
             VitalsSource.SIMULATED -> "Simulation"
@@ -415,7 +460,9 @@ class HeartRateViewModel : ViewModel() {
                 else -> "Connected (reading HR)"
             }
             VitalsSource.WATCH -> when {
+                vitals.watchOnBody == false -> "Watch — off wrist"
                 vitals.heartRateBpm != null -> "Watch (live)"
+                vitals.watchOnBody == true -> "Watch — reading heart rate…"
                 vitals.hrSampleAgeMinutes != null -> "Watch — last reading ${vitals.hrSampleAgeMinutes}m ago"
                 else -> "Watch — waiting for samples"
             }
@@ -431,6 +478,7 @@ class HeartRateViewModel : ViewModel() {
         // a fresh notification (otherwise a leftover wasInPanic=true from a
         // previous demo silently swallows it).
         wasInPanic = false
+        panicDebouncer.reset()
     }
 
     /** Fires the full panic UX (notification + breathing overlay) without
@@ -450,6 +498,7 @@ class HeartRateViewModel : ViewModel() {
         fakeRepo.setMode(FakeVitalsRepository.Mode.EXERCISE)
         dataSource = VitalsSource.SIMULATED
         wasInPanic = false
+        panicDebouncer.reset()
     }
 
     fun resetStats() {
@@ -457,25 +506,36 @@ class HeartRateViewModel : ViewModel() {
         dataSource = VitalsSource.SIMULATED
         wasInPanic = false
         lastPanicProbability = 0.0
+        panicDebouncer.reset()
     }
 
     private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
-        if (hr == null || hrv == null) {
+        if (!SettingsStore.consentGranted.value || !SettingsStore.monitoringEnabled.value ||
+            hr == null || hrv == null
+        ) {
             lastPanicProbability = 0.0
             wasInPanic = false
+            panicDebouncer.reset()
             return
         }
         val model = panicModel
-        val isPanic: Boolean = if (model != null && !model.isUntrained()) {
-            val motion = if (moving) 0.7 else 0.05
-            val pred = model.predict(hr.toDouble(), hrv, motion)
+        val rawPanic: Boolean = if (model != null && !model.isUntrained()) {
+            val motion = motionFeatureFor(motionIntensity, moving)
+            val threshold = SettingsStore.detectionThreshold.value.toDouble()
+            val pred = model.predict(hr.toDouble(), hrv, motion, threshold)
             lastPanicProbability = pred.probability
             pred.isPanic
         } else {
             lastPanicProbability = 0.0
             hr > 120 && hrv < 20.0 && !moving
         }
-        if (isPanic && !wasInPanic) {
+        // Require the positive to persist before alerting (filters single-sample
+        // spikes). Simulation drives the in-app demos, so it fires immediately.
+        val isPanic = if (dataSource == VitalsSource.SIMULATED) rawPanic
+                      else panicDebouncer.confirm(rawPanic)
+        // The cooldown gate is shared with MonitorService, so the two paths
+        // together raise at most one alert per cooldown window.
+        if (isPanic && !wasInPanic && PanicAlertGate.tryFire()) {
             triggerNotificationCallback?.invoke()
             captureFeedbackContext(detectedByModel = true)
             // In simulation mode, also open the breathing overlay so the demo
@@ -489,6 +549,17 @@ class HeartRateViewModel : ViewModel() {
             showPanicConfirm = true
         }
         wasInPanic = isPanic
+    }
+
+    /** A panic-alert notification was tapped: surface the "was it a panic?"
+     *  prompt. In-app detections captured their feedback context when they
+     *  fired; a background (MonitorService) detection hasn't, so capture one
+     *  now rather than clobber an existing snapshot. */
+    fun onPanicNotificationOpened() {
+        if (PanicEventContext.peek() == null) {
+            captureFeedbackContext(detectedByModel = true)
+        }
+        showPanicConfirm = true
     }
 
     /**
@@ -547,6 +618,7 @@ class HeartRateViewModel : ViewModel() {
                     currentHr = snap?.hr ?: pendingHr,
                     currentHrv = snap?.hrv ?: pendingHrv,
                     currentMotionIntensity = snap?.motionIntensity,
+                    duringSleep = snap?.duringSleep,
                 )
             )
             pendingQuestionnaireId = id
@@ -595,7 +667,7 @@ class HeartRateViewModel : ViewModel() {
         pendingDetectedByModel = detectedByModel
         pendingHr = currentHr
         pendingHrv = currentHrv
-        pendingMotion = isMoving
+        pendingMotion = motionIntensity ?: if (isMoving) 1.0f else 0.0f
         pendingProbability = lastPanicProbability
 
         // Snapshot for the journal entry and kick off a GPS fix.
@@ -605,7 +677,8 @@ class HeartRateViewModel : ViewModel() {
                 detectedByModel = detectedByModel,
                 hr = currentHr,
                 hrv = currentHrv,
-                motionIntensity = if (isMoving) 1.0f else 0.0f,
+                motionIntensity = motionIntensity ?: if (isMoving) 1.0f else 0.0f,
+                duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
             )
         )
         val ctx = appContext ?: return
@@ -625,15 +698,15 @@ class HeartRateViewModel : ViewModel() {
             detectedByModel = pendingDetectedByModel,
             currentHr = pendingHr?.toFloat(),
             currentHrv = pendingHrv?.toFloat(),
-            currentMotionIntensity = if (pendingMotion) 1.0f else 0.0f,
+            currentMotionIntensity = pendingMotion,
             modelProbability = if (pendingDetectedByModel) pendingProbability else null,
         )
         feedbackStatus = "sending…"
         viewModelScope.launch {
-            feedbackStatus = when (val r = pingBackend.submitPanicFeedback(payload)) {
+            feedbackStatus = when (val r = UploadQueue.postFeedback(pingBackend, payload)) {
                 PostResult.Success -> "Feedback saved — thanks!"
                 is PostResult.HttpError -> "Feedback failed (HTTP ${r.code})"
-                is PostResult.NetworkError -> "Feedback failed: offline"
+                is PostResult.NetworkError -> "Saved on this phone — sends when the server is back"
             }
         }
     }
@@ -648,15 +721,21 @@ class MainActivity : ComponentActivity() {
         // Hydrate any persisted session BEFORE anything reads USER_ID, so the
         // monitor service and the model fetch start with the right user id.
         SessionManager.init(this)
+        // Before setContent: the dashboard reads SettingsStore on first compose.
+        SettingsStore.init(this)
+        UploadQueue.init(this)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()
         requestBatteryOptimizationExemptionIfNeeded()
-        startMonitorService()
+        // Monitoring only starts once the user has consented (see ConsentScreen);
+        // granting consent starts the service from setContent.
+        if (SettingsStore.consentGranted.value) startMonitorService()
 
         viewModel.triggerNotificationCallback = {
             sendPanicNotification()
         }
+        handlePanicIntent(intent)
 
         setContent {
             AppTheme {
@@ -675,7 +754,22 @@ class MainActivity : ComponentActivity() {
                     )
                     return@AppTheme
                 }
-                // ------- Signed in below -------------------------------------------
+                // ------- Consent gate ----------------------------------------------
+                // Signed in but not yet asked whether they consent to data
+                // tracking. Monitoring stays off until they answer.
+                val consentPrompted by SettingsStore.consentPrompted.collectAsState()
+                if (!consentPrompted) {
+                    ConsentScreen(
+                        onConsent = {
+                            SettingsStore.setConsent(true)
+                            SettingsStore.setMonitoringEnabled(true)
+                            startMonitorService()
+                        },
+                        onDecline = { SettingsStore.setConsent(false) },
+                    )
+                    return@AppTheme
+                }
+                // ------- Signed in + consented below -------------------------------
                 val context = LocalContext.current
 
                 // Shared logout - defined up here so both the profile gate,
@@ -791,7 +885,8 @@ class MainActivity : ComponentActivity() {
                 val showBottomNav = currentRoute == ROUTE_MONITOR ||
                     currentRoute == ROUTE_REPORTS ||
                     currentRoute == ROUTE_STATS ||
-                    currentRoute == ROUTE_CONNECT_THERAPIST
+                    currentRoute == ROUTE_CONNECT_THERAPIST ||
+                    currentRoute == ROUTE_SETTINGS
 
                 // Auto-navigate to the questionnaire when a report row was
                 // just inserted post-severity.
@@ -832,6 +927,9 @@ class MainActivity : ComponentActivity() {
                                     onUseSimulation = { viewModel.dataSource = VitalsSource.SIMULATED },
                                     onConnectWatch = { viewModel.dataSource = VitalsSource.WATCH }
                                 )
+                            }
+                            composable(ROUTE_SETTINGS) {
+                                SettingsScreen()
                             }
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
@@ -985,6 +1083,20 @@ class MainActivity : ComponentActivity() {
                 icon = { Icon(Icons.Default.Insights, contentDescription = null) },
                 label = { Text("Stats") },
             )
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_SETTINGS,
+                onClick = {
+                    if (currentRoute != ROUTE_SETTINGS) {
+                        navController.navigate(ROUTE_SETTINGS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                label = { Text("Settings") },
+            )
         }
     }
 
@@ -1017,6 +1129,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startMonitorService() {
+        // Respect the Settings off switch: don't bring monitoring back on launch.
+        if (!SettingsStore.monitoringEnabled.value) return
         val intent = Intent(this, MonitorService::class.java)
         ContextCompat.startForegroundService(this, intent)
     }
@@ -1049,7 +1163,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Notifications arrive here while the activity is alive (singleTop via
+     *  the panic PendingIntent); cold starts go through onCreate instead. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handlePanicIntent(intent)
+    }
+
+    private fun handlePanicIntent(intent: Intent?) {
+        if (intent?.action == ACTION_PANIC_ALERT) {
+            viewModel.onPanicNotificationOpened()
+        }
+    }
+
     private fun sendPanicNotification() {
+        val openPrompt = PendingIntent.getActivity(
+            this, 2,
+            Intent(this, MainActivity::class.java).apply {
+                action = ACTION_PANIC_ALERT
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val builder = NotificationCompat.Builder(this, "PANIC_CHANNEL_ID")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("CalmSense: Breathe with me")
@@ -1057,6 +1192,7 @@ class MainActivity : ComponentActivity() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
+            .setContentIntent(openPrompt)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -1080,6 +1216,11 @@ fun CalmSenseDashboard(
     onUseSimulation: () -> Unit,
     onConnectWatch: () -> Unit,
 ) {
+    // Advanced mode = developer view (simulation tools, server/model status,
+    // p(panic), motion, threshold, delay). Off = clean end-user dashboard.
+    val advanced by SettingsStore.advancedMode.collectAsState()
+    val threshold by SettingsStore.detectionThreshold.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1132,34 +1273,38 @@ fun CalmSenseDashboard(
                 label = { Text(viewModel.healthConnectStatus) },
             )
             Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onUseSimulation) { Text("Sim") }
-            Button(onClick = onConnectWatch) { Text("Watch") }
+            if (advanced) {
+                TextButton(onClick = onUseSimulation) { Text("Sim") }
+                Button(onClick = onConnectWatch) { Text("Watch") }
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        if (advanced) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AssistChip(
-                onClick = {},
-                label = { Text(viewModel.serverStatus) },
-            )
-        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text(viewModel.serverStatus) },
+                )
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = viewModel.modelStatus,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = viewModel.modelStatus,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -1175,16 +1320,74 @@ fun CalmSenseDashboard(
                     ?: "--",
                 modifier = Modifier.weight(1f)
             )
-            StatCard(
-                label = "Status",
-                value = if (viewModel.isMoving) "Active" else "Resting",
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                label = "p(panic)",
-                value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
-                modifier = Modifier.weight(1f)
-            )
+            if (advanced) {
+                StatCard(
+                    label = "Status",
+                    value = when {
+                        viewModel.isSleeping -> "Sleeping"
+                        viewModel.isMoving -> "Active"
+                        else -> "Resting"
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "p(panic)",
+                    value = String.format(Locale.getDefault(), "%.2f", viewModel.lastPanicProbability),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        if (advanced && viewModel.hrvSource == HrvSource.BPM_DERIVED) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = "HRV is an estimate (bpm-derived) — this device can't supply real beat-to-beat intervals, so accuracy is limited.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+
+        if (advanced) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                StatCard(
+                    label = "Threshold",
+                    value = String.format(Locale.getDefault(), "%.2f", threshold),
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "Motion",
+                    value = viewModel.motionIntensity
+                        ?.let { String.format(Locale.getDefault(), "%.2f", it) }
+                        ?: "--",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    label = "Delay",
+                    value = viewModel.sampleDelaySec?.let { "${it}s" } ?: "--",
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1205,23 +1408,25 @@ fun CalmSenseDashboard(
             onClick = { viewModel.logManualPanic() }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        if (advanced) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-        var showSimSheet by remember { mutableStateOf(false) }
-        OutlinedButton(
-            onClick = { showSimSheet = true },
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Run a simulation") }
+            var showSimSheet by remember { mutableStateOf(false) }
+            OutlinedButton(
+                onClick = { showSimSheet = true },
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Run a simulation") }
 
-        if (showSimSheet) {
-            SimulationSheet(
-                onDismiss = { showSimSheet = false },
-                onPanicNow = { viewModel.triggerPanicDemo(); showSimSheet = false },
-                onStressVitals = { viewModel.simulatePanicAttack(); showSimSheet = false },
-                onExercise = { viewModel.simulateExercise(); showSimSheet = false },
-                onReset = { viewModel.resetStats(); showSimSheet = false },
-            )
+            if (showSimSheet) {
+                SimulationSheet(
+                    onDismiss = { showSimSheet = false },
+                    onPanicNow = { viewModel.triggerPanicDemo(); showSimSheet = false },
+                    onStressVitals = { viewModel.simulatePanicAttack(); showSimSheet = false },
+                    onExercise = { viewModel.simulateExercise(); showSimSheet = false },
+                    onReset = { viewModel.resetStats(); showSimSheet = false },
+                )
+            }
         }
     }
 }

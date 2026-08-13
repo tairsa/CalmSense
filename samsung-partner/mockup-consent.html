@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 412px; height: 892px; }
+  body { font-family: "Segoe UI", Roboto, Arial, sans-serif; background: #FFFFFF; color: #1F2933;
+         display: flex; flex-direction: column; padding: 52px 28px 36px; }
+  .ic { width: 60px; height: 60px; border-radius: 16px; background: #E4EFF7; color: #143D59;
+        display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 20px; }
+  h1 { color: #143D59; font-size: 25px; line-height: 1.2; }
+  .lead { color: #5B6B7B; font-size: 14px; margin-top: 10px; line-height: 1.5; }
+  .card { margin-top: 22px; border: 1px solid #E1E8EF; border-radius: 14px; overflow: hidden; }
+  .row { display: flex; gap: 13px; align-items: flex-start; padding: 14px 16px; }
+  .row + .row { border-top: 1px solid #EDF1F5; }
+  .row .b { flex:0 0 26px; font-size: 18px; }
+  .row .t { font-size: 14px; font-weight: 600; }
+  .row .s { font-size: 12.5px; color: #5B6B7B; margin-top: 2px; line-height: 1.45; }
+  .fine { font-size: 11.5px; color: #8493A1; margin-top: 16px; line-height: 1.5; }
+  .fine a { color: #2A9D8F; text-decoration: none; }
+  .spacer { flex: 1; }
+  .primary { background: #143D59; color: #fff; text-align: center; font-size: 16px; font-weight: 600;
+             padding: 16px; border-radius: 14px; }
+  .secondary { text-align: center; color: #5B6B7B; font-size: 15px; font-weight: 600; padding: 14px; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <div class="ic">♥</div>
+  <h1>Allow heart-rate monitoring</h1>
+  <div class="lead">To detect panic attacks early, CalmSense needs to read sensor data from your Galaxy Watch. Here's exactly what and why:</div>
+
+  <div class="card">
+    <div class="row"><div class="b">❤️</div><div><div class="t">Heart rate &amp; beat-to-beat interval (IBI)</div><div class="s">Continuously, while you wear the watch — to measure heart-rate variability (HRV).</div></div></div>
+    <div class="row"><div class="b">🧠</div><div><div class="t">Used only to detect a panic attack</div><div class="s">A high heart rate with low HRV is an early sign. Motion tells panic apart from exercise.</div></div></div>
+    <div class="row"><div class="b">📱</div><div><div class="t">Processed on your devices</div><div class="s">Analysis runs on your watch and phone. You can stop monitoring anytime in Settings.</div></div></div>
+  </div>
+
+  <div class="fine">By continuing you consent to CalmSense reading your heart-rate and HRV data for panic-attack detection, as described in our <a>Privacy Policy</a>. This is not a medical device.</div>
+
+  <div class="spacer"></div>
+  <div class="primary">I consent — start monitoring</div>
+  <div class="secondary">Not now</div>
+</body>
+</html>

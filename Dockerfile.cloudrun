@@ -1,0 +1,53 @@
+# CalmSense single-service cloud image (API + admin dashboard).
+#
+# Deliberately separate from calmsense-backend/Dockerfile and admin-app/Dockerfile,
+# which stay as they are for the docker-compose stack on the Raspberry Pi. This
+# one builds the React dashboard and bakes it into the Python image so a single
+# Cloud Run service serves both, from one origin:
+#
+#   /            -> admin dashboard (SPA)
+#   /api/v1/...  -> FastAPI
+#   /health      -> liveness
+#
+# Build context is the repository root (it needs both sibling folders):
+#   gcloud run deploy calmsense --source . --dockerfile Dockerfile.cloudrun
+#
+# Cloud Run notes:
+#   - The container MUST listen on $PORT (8080 by default), not a fixed port.
+#   - The filesystem is ephemeral. Configure Supabase via env vars, or every
+#     cold start silently resets the JSON fallback store.
+
+# --- stage 1: build the admin dashboard -------------------------------------
+FROM node:20-alpine AS admin-build
+WORKDIR /admin
+COPY admin-app/package.json admin-app/package-lock.json ./
+RUN npm ci
+COPY admin-app/ ./
+# No VITE_API_BASE: the app calls a relative /api, which is now the same origin.
+RUN npm run build
+
+# --- stage 2: python runtime ------------------------------------------------
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY calmsense-backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY calmsense-backend/ .
+
+# The built dashboard; main.py mounts this automatically when present.
+COPY --from=admin-build /admin/dist ./admin_dist
+
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app/data
+USER appuser
+
+# Shell form so ${PORT} is expanded at runtime. Cloud Run sets it; the default
+# keeps `docker run` working locally without passing anything.
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}

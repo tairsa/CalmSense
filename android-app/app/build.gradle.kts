@@ -11,7 +11,9 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.app"
+        // Real package id (was the placeholder com.example.app). Must match the
+        // wear module and the package registered in the Samsung allow-list.
+        applicationId = "com.calmsense.app"
         minSdk = 30
         targetSdk = 36
         versionCode = 1

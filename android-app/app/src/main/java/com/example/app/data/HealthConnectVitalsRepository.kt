@@ -58,6 +58,13 @@ class HealthConnectVitalsRepository(private val context: Context) {
                 .records.sumOf { it.count } > 0
         }.getOrDefault(false)
 
-        return Vitals(heartRateBpm = hr, hrv = hrv, isMoving = moving, hrSampleAgeMinutes = hrAgeMin)
+        return Vitals(
+            heartRateBpm = hr,
+            hrv = hrv,
+            // Health Connect's RMSSD record is real beat-derived HRV.
+            hrvSource = if (hrv != null) HrvSource.REAL_IBI else HrvSource.NONE,
+            isMoving = moving,
+            hrSampleAgeMinutes = hrAgeMin,
+        )
     }
 }

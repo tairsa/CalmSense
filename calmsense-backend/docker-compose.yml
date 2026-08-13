@@ -1,0 +1,39 @@
+# Convenience launcher for the CalmSense stack (backend API + admin dashboard).
+#
+#   docker compose up -d --build      # build + start both in the background
+#   docker compose logs -f            # follow logs
+#   docker compose down               # stop
+#
+# After it's up:
+#   Dashboard : http://<host>:8080     (e.g. http://100.76.34.20:8080)
+#   API       : http://<host>:8000     (also proxied at <host>:8080/api by the dashboard)
+#
+# Seed the first admin once the backend is up:
+#   docker compose exec backend python seed_admin.py --email you@example.com --name "Alex"
+
+services:
+  backend:
+    build: .
+    image: calmsense-backend
+    container_name: calmsense-backend
+    ports:
+      - "8000:8000"          # reachable on the host (and over Tailscale) at :8000
+    env_file:
+      - path: .env           # optional: Supabase creds + ADMIN_JWT_SECRET, etc.
+        required: false      # needs Docker Compose v2.24+; if older, create an empty .env
+    volumes:
+      - calmsense-data:/app/data   # persist the JSON fallback store
+    restart: unless-stopped
+
+  dashboard:
+    build: ../admin-app      # sibling folder; nginx serves the built React app
+    image: calmsense-admin
+    container_name: calmsense-admin
+    ports:
+      - "8080:80"            # dashboard at http://<host>:8080 (port 80 is taken by Pi-hole)
+    depends_on:
+      - backend              # nginx proxies /api -> backend on the compose network
+    restart: unless-stopped
+
+volumes:
+  calmsense-data:

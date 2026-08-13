@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <filter id="soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#000000"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="800" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="80" y="80" font-size="38" font-weight="700" fill="#000000">The Validation Loop</text>
+  <text x="80" y="115" font-size="19" fill="#000000" opacity="0.65">Every prediction in the wild becomes a labeled training sample</text>
+  <rect x="80" y="132" width="160" height="5" fill="#aad7d4"/>
+
+  <!-- Baseline note -->
+  <g filter="url(#soft)">
+    <rect x="80" y="170" width="1040" height="90" rx="14" fill="#c6f3f0"/>
+  </g>
+  <text x="110" y="205" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">SYNTHETIC BASELINE</text>
+  <text x="110" y="237" font-size="20" font-weight="600" fill="#000000">0.992 accuracy on simulated data*  —  a starting point, not the real validation.</text>
+
+  <!-- Loop diagram -->
+  <text x="80" y="305" font-size="14" font-weight="700" fill="#000000" letter-spacing="2">CLOSED FEEDBACK LOOP</text>
+
+  <!-- Four step cards arranged in a cycle -->
+  <!-- Step 1: Model fires alert (top-left) -->
+  <g filter="url(#soft)">
+    <rect x="120" y="345" width="320" height="110" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <circle cx="170" cy="400" r="22" fill="#aad7d4"/>
+  <text x="170" y="408" font-size="22" font-weight="700" text-anchor="middle" fill="#000000">1</text>
+  <text x="210" y="388" font-size="18" font-weight="700" fill="#000000">Model fires alert</text>
+  <text x="210" y="412" font-size="13" fill="#000000" opacity="0.7">on-device sigmoid crosses</text>
+  <text x="210" y="429" font-size="13" fill="#000000" opacity="0.7">the trigger threshold</text>
+
+  <!-- Arrow 1 → 2 -->
+  <line x1="445" y1="400" x2="755" y2="400" stroke="#000000" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- Step 2: User confirms (top-right) -->
+  <g filter="url(#soft)">
+    <rect x="760" y="345" width="320" height="110" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <circle cx="810" cy="400" r="22" fill="#aad7d4"/>
+  <text x="810" y="408" font-size="22" font-weight="700" text-anchor="middle" fill="#000000">2</text>
+  <text x="850" y="388" font-size="18" font-weight="700" fill="#000000">User confirms</text>
+  <text x="850" y="412" font-size="13" fill="#000000" opacity="0.7">"Was this a panic attack?"</text>
+  <text x="850" y="429" font-size="13" fill="#000000" opacity="0.7">severity 0–10  ·  0 = miss</text>
+
+  <!-- Arrow 2 → 3 (down on right) -->
+  <line x1="920" y1="460" x2="920" y2="555" stroke="#000000" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- Step 3: Sample stored (bottom-right) -->
+  <g filter="url(#soft)">
+    <rect x="760" y="565" width="320" height="110" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <circle cx="810" cy="620" r="22" fill="#aad7d4"/>
+  <text x="810" y="628" font-size="22" font-weight="700" text-anchor="middle" fill="#000000">3</text>
+  <text x="850" y="608" font-size="18" font-weight="700" fill="#000000">Sample stored</text>
+  <text x="850" y="632" font-size="13" fill="#000000" opacity="0.7">vitals + label written to</text>
+  <text x="850" y="649" font-size="13" fill="#000000" opacity="0.7">panic_feedback table</text>
+
+  <!-- Arrow 3 → 4 (right to left at bottom) -->
+  <line x1="755" y1="620" x2="445" y2="620" stroke="#000000" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <!-- Step 4: Retrain (bottom-left) -->
+  <g filter="url(#soft)">
+    <rect x="120" y="565" width="320" height="110" rx="14" fill="#ffffff" stroke="#000000" stroke-width="1.5"/>
+  </g>
+  <circle cx="170" cy="620" r="22" fill="#aad7d4"/>
+  <text x="170" y="628" font-size="22" font-weight="700" text-anchor="middle" fill="#000000">4</text>
+  <text x="210" y="608" font-size="18" font-weight="700" fill="#000000">Weights retrained</text>
+  <text x="210" y="632" font-size="13" fill="#000000" opacity="0.7">logistic regression refit on</text>
+  <text x="210" y="649" font-size="13" fill="#000000" opacity="0.7">accumulated real labels</text>
+
+  <!-- Arrow 4 → 1 (up on left, closes the loop) -->
+  <line x1="280" y1="560" x2="280" y2="465" stroke="#000000" stroke-width="2.5" stroke-dasharray="6,5" marker-end="url(#arr)"/>
+  <text x="295" y="513" font-size="13" font-style="italic" fill="#000000" opacity="0.7">smarter next time</text>
+
+  <!-- Footer caption -->
+  <text x="80" y="745" font-size="14" fill="#000000" opacity="0.7">Hit/miss labels accumulate in panic_feedback. As real data replaces synthetic, the model adapts to actual users.</text>
+  <text x="1120" y="775" font-size="11" text-anchor="end" fill="#000000" opacity="0.55">*Live user-labeled data will replace the synthetic baseline.</text>
+</svg>

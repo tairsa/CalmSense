@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vite/
+.env
+.env.*
+.git/
+*.local
+run-admin.bat
+README.md

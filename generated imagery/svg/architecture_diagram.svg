@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" font-family="Segoe UI, Calibri, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#4a5a78"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="800" y="80" font-size="44" font-weight="700" text-anchor="middle" fill="#1a2b4a">CalmSense Architecture</text>
+  <text x="800" y="118" font-size="22" text-anchor="middle" fill="#6a7a95">Watch → Phone → Server → Database</text>
+
+  <!-- =================== WATCH =================== -->
+  <g filter="url(#shadow)">
+    <rect x="60" y="220" width="320" height="380" rx="20" fill="#eaf2ff" stroke="#3a6fd8" stroke-width="3"/>
+  </g>
+  <!-- Watch icon -->
+  <rect x="170" y="260" width="100" height="120" rx="18" fill="#3a6fd8"/>
+  <rect x="185" y="280" width="70" height="80" rx="6" fill="#eaf2ff"/>
+  <rect x="200" y="246" width="40" height="14" rx="3" fill="#3a6fd8"/>
+  <rect x="200" y="380" width="40" height="14" rx="3" fill="#3a6fd8"/>
+  <circle cx="220" cy="320" r="14" fill="#e8334a"/>
+
+  <text x="220" y="430" font-size="26" font-weight="700" text-anchor="middle" fill="#1f3d7a">Galaxy Watch 5</text>
+  <text x="220" y="460" font-size="17" text-anchor="middle" fill="#4a5a78">Wear OS</text>
+
+  <line x1="100" y1="490" x2="340" y2="490" stroke="#3a6fd8" stroke-width="1" opacity="0.3"/>
+
+  <text x="220" y="520" font-size="17" text-anchor="middle" fill="#222" font-weight="600">SensorManager</text>
+  <text x="220" y="548" font-size="15" text-anchor="middle" fill="#555">Heart Rate · Motion</text>
+  <text x="220" y="582" font-size="15" text-anchor="middle" fill="#555" font-style="italic">Foreground Service</text>
+
+  <!-- Arrow Watch → Phone -->
+  <line x1="395" y1="410" x2="475" y2="410" stroke="#4a5a78" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="435" y="395" font-size="14" text-anchor="middle" fill="#4a5a78" font-weight="600">Bluetooth</text>
+  <text x="435" y="430" font-size="13" text-anchor="middle" fill="#6a7a95">MessageClient</text>
+
+  <!-- =================== PHONE =================== -->
+  <g filter="url(#shadow)">
+    <rect x="490" y="220" width="320" height="380" rx="20" fill="#eafff1" stroke="#2e9b5c" stroke-width="3"/>
+  </g>
+  <!-- Phone icon -->
+  <rect x="610" y="250" width="80" height="140" rx="12" fill="#2e9b5c"/>
+  <rect x="620" y="266" width="60" height="100" rx="3" fill="#eafff1"/>
+  <circle cx="650" cy="378" r="4" fill="#eafff1"/>
+
+  <text x="650" y="430" font-size="26" font-weight="700" text-anchor="middle" fill="#1c5e36">Android Phone</text>
+  <text x="650" y="460" font-size="17" text-anchor="middle" fill="#4a785a">Kotlin · Jetpack Compose</text>
+
+  <line x1="530" y1="490" x2="770" y2="490" stroke="#2e9b5c" stroke-width="1" opacity="0.3"/>
+
+  <text x="650" y="520" font-size="17" text-anchor="middle" fill="#222" font-weight="600">Monitor Service</text>
+  <text x="650" y="548" font-size="15" text-anchor="middle" fill="#555">On-device ML inference</text>
+  <text x="650" y="582" font-size="15" text-anchor="middle" fill="#555" font-style="italic">Panic detection &amp; UI</text>
+
+  <!-- Arrow Phone → Server -->
+  <line x1="825" y1="410" x2="905" y2="410" stroke="#4a5a78" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="865" y="395" font-size="14" text-anchor="middle" fill="#4a5a78" font-weight="600">HTTPS</text>
+  <text x="865" y="430" font-size="13" text-anchor="middle" fill="#6a7a95">REST · JSON</text>
+
+  <!-- =================== SERVER =================== -->
+  <g filter="url(#shadow)">
+    <rect x="920" y="220" width="320" height="380" rx="20" fill="#fff1e8" stroke="#c25a1f" stroke-width="3"/>
+  </g>
+  <!-- Server icon -->
+  <rect x="1020" y="255" width="120" height="40" rx="6" fill="#c25a1f"/>
+  <circle cx="1035" cy="275" r="5" fill="#7eff7e"/>
+  <rect x="1020" y="305" width="120" height="40" rx="6" fill="#c25a1f"/>
+  <circle cx="1035" cy="325" r="5" fill="#7eff7e"/>
+  <rect x="1020" y="355" width="120" height="40" rx="6" fill="#c25a1f"/>
+  <circle cx="1035" cy="375" r="5" fill="#7eff7e"/>
+
+  <text x="1080" y="430" font-size="26" font-weight="700" text-anchor="middle" fill="#7a2e0c">FastAPI Backend</text>
+  <text x="1080" y="460" font-size="17" text-anchor="middle" fill="#7a4e3a">Python · Uvicorn</text>
+
+  <line x1="960" y1="490" x2="1200" y2="490" stroke="#c25a1f" stroke-width="1" opacity="0.3"/>
+
+  <text x="1080" y="520" font-size="17" text-anchor="middle" fill="#222" font-weight="600">REST Endpoints</text>
+  <text x="1080" y="548" font-size="15" text-anchor="middle" fill="#555">Sensor data · Feedback · Reports</text>
+  <text x="1080" y="582" font-size="15" text-anchor="middle" fill="#555" font-style="italic">Logistic regression model</text>
+
+  <!-- Arrow Server → DB -->
+  <line x1="1255" y1="410" x2="1335" y2="410" stroke="#4a5a78" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="1295" y="395" font-size="14" text-anchor="middle" fill="#4a5a78" font-weight="600">SQL</text>
+  <text x="1295" y="430" font-size="13" text-anchor="middle" fill="#6a7a95">supabase-py</text>
+
+  <!-- =================== DB =================== -->
+  <g filter="url(#shadow)">
+    <rect x="1350" y="220" width="220" height="380" rx="20" fill="#f1eaff" stroke="#6a3ad8" stroke-width="3"/>
+  </g>
+  <!-- DB cylinder icon -->
+  <ellipse cx="1460" cy="285" rx="55" ry="14" fill="#6a3ad8"/>
+  <path d="M 1405 285 L 1405 380 Q 1405 394 1460 394 Q 1515 394 1515 380 L 1515 285" fill="#6a3ad8"/>
+  <ellipse cx="1460" cy="285" rx="55" ry="14" fill="#d4c4ff"/>
+  <ellipse cx="1460" cy="320" rx="55" ry="14" fill="none" stroke="#d4c4ff" stroke-width="2"/>
+  <ellipse cx="1460" cy="355" rx="55" ry="14" fill="none" stroke="#d4c4ff" stroke-width="2"/>
+
+  <text x="1460" y="430" font-size="26" font-weight="700" text-anchor="middle" fill="#3a1f7a">Supabase</text>
+  <text x="1460" y="460" font-size="17" text-anchor="middle" fill="#5a4a78">PostgreSQL</text>
+
+  <line x1="1370" y1="490" x2="1550" y2="490" stroke="#6a3ad8" stroke-width="1" opacity="0.3"/>
+
+  <text x="1460" y="520" font-size="15" text-anchor="middle" fill="#222">sensor_data</text>
+  <text x="1460" y="548" font-size="15" text-anchor="middle" fill="#222">panic_feedback</text>
+  <text x="1460" y="576" font-size="15" text-anchor="middle" fill="#222">panic_reports</text>
+
+  <!-- =================== FOOTER FLOW =================== -->
+  <text x="800" y="720" font-size="20" text-anchor="middle" fill="#4a5a78" font-weight="600">Vitals stream every 2 s · Classified on-device · Sent to backend · Stored for retraining</text>
+
+  <!-- Tech stack bar -->
+  <g>
+    <rect x="60" y="770" width="1510" height="80" rx="14" fill="#1a2b4a"/>
+    <text x="220" y="800" font-size="14" text-anchor="middle" fill="#9ab" font-weight="600">WEARABLE</text>
+    <text x="220" y="828" font-size="18" text-anchor="middle" fill="#fff" font-weight="700">Wear OS · Kotlin</text>
+
+    <text x="650" y="800" font-size="14" text-anchor="middle" fill="#9ab" font-weight="600">MOBILE</text>
+    <text x="650" y="828" font-size="18" text-anchor="middle" fill="#fff" font-weight="700">Android · Compose</text>
+
+    <text x="1080" y="800" font-size="14" text-anchor="middle" fill="#9ab" font-weight="600">BACKEND</text>
+    <text x="1080" y="828" font-size="18" text-anchor="middle" fill="#fff" font-weight="700">FastAPI · Python</text>
+
+    <text x="1460" y="800" font-size="14" text-anchor="middle" fill="#9ab" font-weight="600">DATABASE</text>
+    <text x="1460" y="828" font-size="18" text-anchor="middle" fill="#fff" font-weight="700">Supabase · Postgres</text>
+
+    <line x1="430" y1="785" x2="430" y2="835" stroke="#3a4a6a" stroke-width="1"/>
+    <line x1="860" y1="785" x2="860" y2="835" stroke="#3a4a6a" stroke-width="1"/>
+    <line x1="1290" y1="785" x2="1290" y2="835" stroke="#3a4a6a" stroke-width="1"/>
+  </g>
+</svg>

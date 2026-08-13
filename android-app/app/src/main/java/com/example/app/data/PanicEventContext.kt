@@ -20,6 +20,7 @@ object PanicEventContext {
         val hr: Int?,
         val hrv: Double?,
         val motionIntensity: Float?,
+        val duringSleep: Boolean? = null,
         val latitude: Double? = null,
         val longitude: Double? = null,
         val locationAccuracyM: Float? = null,

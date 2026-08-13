@@ -48,6 +48,10 @@ data class PanicReportEntity(
     val currentHrv: Double? = null,
     val currentMotionIntensity: Float? = null,
 
+    /** True if the sleep detector said the wearer was asleep when the event
+     *  started (nocturnal panic). Null = unknown (no watch data / old rows). */
+    val duringSleep: Boolean? = null,
+
     /** False until the row has been mirrored to the backend. */
     val syncedToBackend: Boolean = false,
 )
