@@ -1,0 +1,38 @@
+# What `gcloud run deploy --source .` uploads to Cloud Build.
+#
+# gcloud auto-generates one of these from the ROOT .gitignore when it is
+# absent, which does not honour nested .gitignore files - so admin-app/
+# node_modules (50+ MB, with win32 binaries) would be uploaded anyway. Being
+# explicit is both faster and safer.
+#
+# Mirror of .dockerignore; keep the two in sync.
+
+.git/
+.github/
+.gitignore
+.claude/
+
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+admin-app/dist/
+android-app/
+
+# Secrets and real user data must never leave the machine.
+**/.env
+**/.env.*
+!**/.env.example
+calmsense-backend/data/
+*.tgz
+
+**/*.bat
+update-server.sh
+scripts/
+samsung-partner/
+generated imagery/
+*.pdf
+*.docx
+*.png
+*.jpg

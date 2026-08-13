@@ -14,8 +14,18 @@
 #
 # Cloud Run notes:
 #   - The container MUST listen on $PORT (8080 by default), not a fixed port.
-#   - The filesystem is ephemeral. Configure Supabase via env vars, or every
-#     cold start silently resets the JSON fallback store.
+#   - The filesystem is ephemeral, so set CALMSENSE_REQUIRE_SUPABASE=1. That
+#     makes the backend refuse to start without Supabase and refuse to read or
+#     write the JSON store at all, instead of silently serving an empty
+#     database that resets on every cold start.
+#   - Required env: SUPABASE_URL, SUPABASE_KEY (service_role), ADMIN_JWT_SECRET,
+#     SUPABASE_JWT_SECRET. The last two must come from Secret Manager.
+#   - Set CALMSENSE_AUTO_RETRAIN_MINUTES=0. The in-process loop runs a full
+#     retrain pass on startup, which on a scale-to-zero service means every
+#     cold start retrains; and its timer never fires anyway, because idle
+#     instances are frozen and then reaped.
+#   - Deploy with an explicit --max-instances: it is the billing cap on a
+#     public URL, not a tuning knob.
 
 # --- stage 1: build the admin dashboard -------------------------------------
 FROM node:20-alpine AS admin-build
@@ -40,13 +50,26 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY calmsense-backend/ .
 
+# Belt-and-braces against a stale or bypassed .dockerignore. data/ holds real
+# user rows plus the admin password hash, and .env holds the service_role key;
+# neither may end up in an image layer. Cheap insurance for a serious leak.
+RUN rm -rf ./data ./.env ./.venv
+
 # The built dashboard; main.py mounts this automatically when present.
 COPY --from=admin-build /admin/dist ./admin_dist
 
+# No /app/data directory is created, deliberately. The container has no durable
+# disk, so anything writing there is a bug -- and with
+# CALMSENSE_REQUIRE_SUPABASE set, storage.py refuses to touch it regardless.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app/data
+    && chown -R appuser:appuser /app
 USER appuser
+
+# Cloud Run has its own probing, but this keeps `docker run` and any other
+# runtime honest. Uses $PORT rather than a fixed 8000 (which is why the Pi
+# Dockerfile's healthcheck cannot be reused here).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8080')+'/health')"
 
 # Shell form so ${PORT} is expanded at runtime. Cloud Run sets it; the default
 # keeps `docker run` working locally without passing anything.

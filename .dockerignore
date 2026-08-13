@@ -1,0 +1,50 @@
+# Build context for Dockerfile.cloudrun is the REPOSITORY ROOT, because that
+# image needs both calmsense-backend/ and admin-app/.
+#
+# Docker only reads the .dockerignore at the root of the build context, so
+# calmsense-backend/.dockerignore and admin-app/.dockerignore are NOT applied
+# to that build. This file is what actually protects it. Without it the image
+# would contain a live admin password hash (calmsense-backend/data/
+# admin_users.json) and 50+ MB of host node_modules holding win32 binaries
+# that break the Linux Vite build.
+#
+# Keep in sync with .gcloudignore, which does the same job for the upload when
+# deploying with `gcloud run deploy --source .`.
+
+# --- version control / tooling ---
+.git/
+.github/
+.gitignore
+.claude/
+
+# --- dependency and build output (must be rebuilt inside the image) ---
+**/node_modules/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+admin-app/dist/
+android-app/
+
+# --- secrets and local state ---
+# .env files hold the Supabase service_role key; data/ holds real user data
+# and the admin password hash. Neither belongs in an image layer.
+**/.env
+**/.env.*
+!**/.env.example
+calmsense-backend/data/
+*.tgz
+
+# --- not needed at runtime ---
+# Dev-only scripts and Windows launchers.
+**/*.bat
+update-server.sh
+scripts/
+samsung-partner/
+generated imagery/
+*.pdf
+*.docx
+*.png
+*.jpg
+**/README.md
+!admin-app/README.md
