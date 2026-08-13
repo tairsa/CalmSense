@@ -24,8 +24,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -70,15 +72,24 @@ import com.example.app.data.PanicReportEntity
 import com.example.app.data.PanicReportRepository
 import com.example.app.data.PingResult
 import com.example.app.data.PostResult
+import com.example.app.data.SessionManager
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
+import com.example.app.data.SupabaseAuth
+import com.example.app.data.TherapistApi
 import com.example.app.data.UploadQueue
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.data.motionFeatureFor
 import com.example.app.ui.ConsentScreen
 import com.example.app.ui.QuestionnaireAnswers
+import com.example.app.ui.ConnectTherapistScreen
+import com.example.app.ui.LoginScreen
+import com.example.app.ui.PatientDetailScreen
 import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.RolePickerScreen
+import com.example.app.ui.StatsScreen
+import com.example.app.ui.TherapistDashboardScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
 import com.example.app.ui.SettingsScreen
@@ -122,7 +133,15 @@ private val isEmulator: Boolean by lazy {
 }
 
 val BACKEND_URL: String get() = if (isEmulator) BACKEND_EMULATOR_URL else BACKEND_LAN_URL
-const val USER_ID = "tairsa-dev"
+/**
+ * Effective user ID for all outbound data (sensor uploads, panic reports,
+ * feedback). Backed by SessionManager once the user signs in; falls back to
+ * a stable demo ID for early-startup moments where SessionManager hasn't
+ * hydrated yet (e.g. MonitorService cold-start before Activity.onCreate).
+ * Kept as a top-level getter so callers can keep referring to `USER_ID`
+ * without knowing about the session layer.
+ */
+val USER_ID: String get() = SessionManager.userId ?: "tairsa-dev"
 
 // Intent action carried by panic-alert notifications: opening the app
 // through one should surface the "was it a panic?" confirm prompt.
@@ -135,6 +154,10 @@ private const val ROUTE_REPORTS = "reports"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
+private const val ROUTE_STATS = "stats"
+private const val ROUTE_CONNECT_THERAPIST = "connect-therapist"
+private const val ROUTE_THERAPIST_DASHBOARD = "therapist-dashboard"
+private const val ROUTE_THERAPIST_PATIENT = "therapist-patient"
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
@@ -187,6 +210,34 @@ class HeartRateViewModel : ViewModel() {
     private var modelCache: PanicModelCache? = null
     private val backend = BackendApi(BACKEND_URL)
     private val pingBackend = BackendClient(BACKEND_URL)
+    private val therapistApi = TherapistApi(BACKEND_URL)
+
+    // -----------------------------------------------------------------
+    // Profile / therapist-mode state (Phase-2 features).
+    // profileLoaded flips true once we've asked the server whether this
+    // user has picked a role. profileRole == null after load = show the
+    // one-time RolePickerScreen.
+    // -----------------------------------------------------------------
+    var profileLoaded by mutableStateOf(false)
+    var profileRole by mutableStateOf<String?>(null)
+    var roleSaving by mutableStateOf(false)
+
+    // Therapist dashboard state.
+    var patients by mutableStateOf<List<TherapistApi.PatientSummary>>(emptyList())
+        private set
+    var generatingCode by mutableStateOf(false)
+    var generatedCode by mutableStateOf<TherapistApi.ConsentCodeResponse?>(null)
+    var therapistError by mutableStateOf<String?>(null)
+
+    // Currently-viewed patient's reports (therapist side).
+    var viewingPatientReports by mutableStateOf<List<TherapistApi.PatientReport>>(emptyList())
+        private set
+    var loadingPatientReports by mutableStateOf(false)
+
+    // Connect-therapist state (patient side).
+    var connectSubmitting by mutableStateOf(false)
+    var connectError by mutableStateOf<String?>(null)
+    var connectSuccess by mutableStateOf(false)
 
     fun attachHealthConnect(context: Context) {
         SettingsStore.init(context)
@@ -246,6 +297,107 @@ class HeartRateViewModel : ViewModel() {
 
     fun requiredHealthPermissions(): Set<String> =
         healthConnectRepo?.requiredPermissions().orEmpty()
+
+    // -----------------------------------------------------------------
+    // Profile / therapist-mode functions.
+    // -----------------------------------------------------------------
+
+    /** Ask the server for the current user's profile. profileLoaded flips true
+     *  regardless of outcome so the UI can move past the loading indicator. */
+    fun loadProfile() {
+        viewModelScope.launch {
+            val p = therapistApi.getProfile(userId)
+            profileRole = p?.role
+            profileLoaded = true
+        }
+    }
+
+    /**
+     * Called from RolePickerScreen - persist choice + display name (blank
+     * -> null so the DB stores NULL, keeping the dashboards' "Client"
+     * fallback intact for users who leave it empty), then update local state.
+     */
+    fun setRole(role: String, displayName: String) {
+        roleSaving = true
+        viewModelScope.launch {
+            val name = displayName.trim().ifBlank { null }
+            val ok = therapistApi.setProfile(userId = userId, role = role, displayName = name)
+            roleSaving = false
+            if (ok) profileRole = role
+        }
+    }
+
+    /** Reset profile state — used on logout so the next login re-fetches. */
+    fun resetProfile() {
+        profileLoaded = false
+        profileRole = null
+        patients = emptyList()
+        generatedCode = null
+        viewingPatientReports = emptyList()
+    }
+
+    // Therapist ------------------------------------------------------
+
+    fun refreshPatients() {
+        therapistError = null
+        viewModelScope.launch {
+            patients = therapistApi.listPatients(userId)
+        }
+    }
+
+    fun generateConsentCode() {
+        generatingCode = true
+        therapistError = null
+        viewModelScope.launch {
+            val resp = therapistApi.createConsentCode(userId)
+            generatingCode = false
+            if (resp != null) {
+                generatedCode = resp
+            } else {
+                therapistError = "Could not generate a code. Check the backend is running."
+            }
+        }
+    }
+
+    fun dismissGeneratedCode() {
+        generatedCode = null
+        // Give the patient a beat to redeem, then refresh the list.
+        refreshPatients()
+    }
+
+    fun loadPatientReports(patientId: String) {
+        loadingPatientReports = true
+        therapistError = null
+        viewModelScope.launch {
+            viewingPatientReports = therapistApi.getPatientReports(userId, patientId)
+            loadingPatientReports = false
+        }
+    }
+
+    // Patient --------------------------------------------------------
+
+    fun redeemConsentCode(code: String) {
+        connectSubmitting = true
+        connectError = null
+        connectSuccess = false
+        viewModelScope.launch {
+            when (val r = therapistApi.redeemConsentCode(code, userId)) {
+                TherapistApi.RedeemResult.Success -> {
+                    connectSuccess = true
+                }
+                is TherapistApi.RedeemResult.Failure -> {
+                    connectError = r.message
+                }
+            }
+            connectSubmitting = false
+        }
+    }
+
+    fun resetConnectState() {
+        connectSubmitting = false
+        connectError = null
+        connectSuccess = false
+    }
 
     fun startPolling() {
         if (pollJob != null) return
@@ -410,10 +562,16 @@ class HeartRateViewModel : ViewModel() {
         showPanicConfirm = true
     }
 
-    /** Manual entry: user logs a panic the model missed. Skips the
-     *  "was it a panic?" question and goes straight to severity. */
+    /**
+     * Manual entry: user logs a panic the model missed. Skips the
+     * "was it a panic?" question (they already told us it is one) and
+     * opens the breathing overlay first so they can calm down; the
+     * severity sheet is queued behind it via the !showBreathingExercise
+     * guard in the UI layer and surfaces once breathing is dismissed.
+     */
     fun logManualPanic() {
         captureFeedbackContext(detectedByModel = false)
+        showBreathingExercise = true
         showSeveritySheet = true
     }
 
@@ -560,6 +718,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Hydrate any persisted session BEFORE anything reads USER_ID, so the
+        // monitor service and the model fetch start with the right user id.
+        SessionManager.init(this)
         // Before setContent: the dashboard reads SettingsStore on first compose.
         SettingsStore.init(this)
         UploadQueue.init(this)
@@ -578,8 +739,24 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
-                // First-launch gate: block the app behind the data-tracking consent
-                // screen until the user answers. Monitoring is disabled until consent.
+                // ------- Auth gate -------------------------------------------------
+                // If no session on disk, block the app behind LoginScreen.
+                // On successful sign in / sign up, persist the session and rewire
+                // the ViewModel's userId so all subsequent uploads carry the
+                // authenticated ID.
+                val session by SessionManager.session.collectAsState()
+                if (session == null) {
+                    LoginScreen(
+                        onAuthenticated = { s: SupabaseAuth.Session ->
+                            SessionManager.save(this@MainActivity, s)
+                            viewModel.userId = s.userId
+                        }
+                    )
+                    return@AppTheme
+                }
+                // ------- Consent gate ----------------------------------------------
+                // Signed in but not yet asked whether they consent to data
+                // tracking. Monitoring stays off until they answer.
                 val consentPrompted by SettingsStore.consentPrompted.collectAsState()
                 if (!consentPrompted) {
                     ConsentScreen(
@@ -592,7 +769,96 @@ class MainActivity : ComponentActivity() {
                     )
                     return@AppTheme
                 }
+                // ------- Signed in + consented below -------------------------------
                 val context = LocalContext.current
+
+                // Shared logout - defined up here so both the profile gate,
+                // the therapist flow, AND the patient scaffold below can use
+                // the same handler. Also wipes profile state so the next user
+                // re-fetches (see resetProfile).
+                val logoutScope = rememberCoroutineScope()
+                val handleLogout: () -> Unit = {
+                    val token = session?.accessToken.orEmpty()
+                    logoutScope.launch {
+                        if (token.isNotBlank()) SupabaseAuth.signOut(token)
+                    }
+                    viewModel.resetProfile()
+                    SessionManager.clear(this@MainActivity)
+                }
+
+                // ------- Profile gate ---------------------------------------------
+                // Once signed in we need to know whether this user is a patient
+                // or a therapist (different landing screens). Fetch the profile
+                // on entry; while it loads show a spinner. On first-ever login
+                // there's no profile row -> show RolePickerScreen.
+                LaunchedEffect(session?.userId) {
+                    if (!viewModel.profileLoaded) viewModel.loadProfile()
+                }
+                if (!viewModel.profileLoaded) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    return@AppTheme
+                }
+                if (viewModel.profileRole == null) {
+                    RolePickerScreen(
+                        onSelected = { role, name -> viewModel.setRole(role, name) },
+                        loading = viewModel.roleSaving,
+                    )
+                    return@AppTheme
+                }
+
+                // ------- Therapist flow -------------------------------------------
+                if (viewModel.profileRole == "therapist") {
+                    LaunchedEffect(Unit) { viewModel.refreshPatients() }
+                    val therapistNav = rememberNavController()
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        containerColor = MaterialTheme.colorScheme.background,
+                        topBar = { CalmSenseTopBar(onLogout = handleLogout) },
+                    ) { inner ->
+                        Box(modifier = Modifier.padding(inner)) {
+                            NavHost(
+                                navController = therapistNav,
+                                startDestination = ROUTE_THERAPIST_DASHBOARD,
+                            ) {
+                                composable(ROUTE_THERAPIST_DASHBOARD) {
+                                    TherapistDashboardScreen(
+                                        patients = viewModel.patients,
+                                        generatedCode = viewModel.generatedCode,
+                                        generating = viewModel.generatingCode,
+                                        error = viewModel.therapistError,
+                                        onGenerateCode = { viewModel.generateConsentCode() },
+                                        onDismissCode = { viewModel.dismissGeneratedCode() },
+                                        onPatientClick = { pid ->
+                                            therapistNav.navigate("$ROUTE_THERAPIST_PATIENT/$pid")
+                                        },
+                                    )
+                                }
+                                composable("$ROUTE_THERAPIST_PATIENT/{pid}") { backStack ->
+                                    val pid = backStack.arguments?.getString("pid").orEmpty()
+                                    LaunchedEffect(pid) {
+                                        if (pid.isNotBlank()) viewModel.loadPatientReports(pid)
+                                    }
+                                    val label = viewModel.patients
+                                        .firstOrNull { it.userId == pid }
+                                        ?.displayName?.takeIf { it.isNotBlank() }
+                                        ?: "Client"
+                                    PatientDetailScreen(
+                                        patientLabel = label,
+                                        reports = viewModel.viewingPatientReports,
+                                        loading = viewModel.loadingPatientReports,
+                                        error = viewModel.therapistError,
+                                        onBack = { therapistNav.popBackStack() },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    return@AppTheme
+                }
+
+                // ------- Patient flow (existing content) --------------------------
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
                     viewModel.loadModelFromBackend()
@@ -618,6 +884,8 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
                 val showBottomNav = currentRoute == ROUTE_MONITOR ||
                     currentRoute == ROUTE_REPORTS ||
+                    currentRoute == ROUTE_STATS ||
+                    currentRoute == ROUTE_CONNECT_THERAPIST ||
                     currentRoute == ROUTE_SETTINGS
 
                 // Auto-navigate to the questionnaire when a report row was
@@ -631,6 +899,14 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        // Only shown on the three main tab screens; pushed
+                        // detail screens (questionnaire, report detail) have
+                        // their own top bars.
+                        if (showBottomNav) {
+                            CalmSenseTopBar(onLogout = handleLogout)
+                        }
+                    },
                     bottomBar = {
                         if (showBottomNav) {
                             CalmSenseBottomNav(navController, currentRoute)
@@ -662,6 +938,27 @@ class MainActivity : ComponentActivity() {
                                         navController.navigate("$ROUTE_REPORT_DETAIL/$id")
                                     },
                                     onReportDelete = { id -> viewModel.deleteReport(id) },
+                                )
+                            }
+                            composable(ROUTE_STATS) {
+                                // Logout lives in the shared top bar - no need
+                                // to duplicate it inside StatsScreen.
+                                StatsScreen(
+                                    reports = viewModel.reports,
+                                    userEmail = session?.email,
+                                    onConnectTherapist = {
+                                        viewModel.resetConnectState()
+                                        navController.navigate(ROUTE_CONNECT_THERAPIST)
+                                    },
+                                )
+                            }
+                            composable(ROUTE_CONNECT_THERAPIST) {
+                                ConnectTherapistScreen(
+                                    onSubmit = { code -> viewModel.redeemConsentCode(code) },
+                                    submitting = viewModel.connectSubmitting,
+                                    error = viewModel.connectError,
+                                    success = viewModel.connectSuccess,
+                                    onBack = { navController.popBackStack() },
                                 )
                             }
                             composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
@@ -722,6 +1019,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun CalmSenseTopBar(onLogout: () -> Unit) {
+        TopAppBar(
+            title = {},
+            actions = {
+                IconButton(onClick = onLogout) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Sign out",
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    )
+                }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+            ),
+        )
+    }
+
     @Composable
     private fun CalmSenseBottomNav(navController: NavHostController, currentRoute: String?) {
         NavigationBar {
@@ -751,6 +1068,20 @@ class MainActivity : ComponentActivity() {
                 },
                 icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
                 label = { Text("Reports") },
+            )
+            NavigationBarItem(
+                selected = currentRoute == ROUTE_STATS,
+                onClick = {
+                    if (currentRoute != ROUTE_STATS) {
+                        navController.navigate(ROUTE_STATS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                icon = { Icon(Icons.Default.Insights, contentDescription = null) },
+                label = { Text("Stats") },
             )
             NavigationBarItem(
                 selected = currentRoute == ROUTE_SETTINGS,
@@ -1411,80 +1742,100 @@ fun FeedbackToast(text: String, onDismiss: () -> Unit) {
     }
 }
 
+private enum class BreathPhase { INHALE, EXHALE }
+
 @Composable
 fun BreathingOverlay(onClose: () -> Unit) {
     val context = LocalContext.current
     val coach = remember { BreathingCoach() }
     var isMuted by remember { mutableStateOf(false) }
-    var ttsReady by remember { mutableStateOf(false) }
+    var voiceReady by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
-        coach.init(context) { ttsReady = true }
+        coach.init(context) { voiceReady = true }
         onDispose { coach.shutdown() }
     }
 
-    // Audio narration loop. Plays an opening line, then for each breathing
-    // cycle says "Breathe in" / "Breathe out" in sync with the 8-second
-    // animation cycle. Every 3 breaths it inserts a reassurance during a
-    // full extra cycle so the animation stays in phase with the voice.
-    LaunchedEffect(ttsReady, isMuted) {
-        if (!ttsReady || isMuted) return@LaunchedEffect
-        coach.speakOpening()
-        delay(8_000) // one full animation cycle of opening + buffer
+    // Timing. 4s inhale / 6s exhale = 10s cycle = ~6 breaths per minute — the
+    // "resonance frequency" that maximizes HRV and parasympathetic activation.
+    // A longer exhale is what actually calms the nervous system (the vagal
+    // brake engages during exhale), which is why 4-6 feels more relaxing than
+    // symmetrical 4-4.
+    val inhaleMs = 4_000L
+    val exhaleMs = 6_000L
+    val openingMs = 6_000L        // let the opening line settle before the cycle
+    val reassuranceEveryN = 3     // rest beat every N breaths
+
+    // Single source of truth. Text, circle animation, and voice all read from
+    // `phase`, so they can't fall out of sync.
+    var phase by remember { mutableStateOf(BreathPhase.INHALE) }
+    var started by remember { mutableStateOf(false) }
+
+    val targetScale = if (phase == BreathPhase.INHALE) 1.5f else 0.8f
+    val targetAlpha = if (phase == BreathPhase.INHALE) 0.7f else 0.3f
+    val phaseMs = if (phase == BreathPhase.INHALE) inhaleMs.toInt() else exhaleMs.toInt()
+
+    val scale by animateFloatAsState(
+        targetValue = if (started) targetScale else 0.8f,
+        animationSpec = tween(phaseMs, easing = FastOutSlowInEasing),
+        label = "breathe_scale",
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (started) targetAlpha else 0.3f,
+        animationSpec = tween(phaseMs, easing = FastOutSlowInEasing),
+        label = "breathe_alpha",
+    )
+
+    // Drive everything from one coroutine. Voice + phase flip + delay happen
+    // together, so the circle scale and the on-screen text can never lead or
+    // lag the audio. Mute is checked at each speak call rather than being a
+    // key on the LaunchedEffect — toggling mute mid-session no longer restarts
+    // the cycle.
+    LaunchedEffect(voiceReady) {
+        if (!voiceReady) return@LaunchedEffect
+        if (!isMuted) coach.speakOpening()
+        delay(openingMs)
         if (!isActive) return@LaunchedEffect
 
-        var cycleCount = 0
+        started = true
+        var breaths = 0
         while (isActive) {
-            coach.speakIn()
-            delay(4_000)
+            phase = BreathPhase.INHALE
+            if (!isMuted) coach.speakIn()
+            delay(inhaleMs)
             if (!isActive) break
-            coach.speakOut()
-            delay(4_000)
+
+            phase = BreathPhase.EXHALE
+            if (!isMuted) coach.speakOut()
+            delay(exhaleMs)
             if (!isActive) break
-            cycleCount++
-            if (cycleCount % 3 == 0) {
-                // Rest beat: one full animation cycle with no breath prompts,
-                // just a reassuring sentence.
-                coach.speakReassurance()
-                delay(8_000)
+
+            breaths++
+            if (breaths % reassuranceEveryN == 0) {
+                // Rest beat: hold the circle in its "exhaled" state for one
+                // extra exhale-length while a reassurance plays.
+                if (!isMuted) coach.speakReassurance()
+                delay(exhaleMs)
             }
         }
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "breathing")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathe_scale"
-    )
-
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.7f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "breathe_alpha"
-    )
-
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f)
+        color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = if (scale > 1.15f) "Breathe Out" else "Breathe In",
+                text = when (phase) {
+                    BreathPhase.INHALE -> "Breathe In"
+                    BreathPhase.EXHALE -> "Breathe Out"
+                },
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
             )
 
             Spacer(modifier = Modifier.height(64.dp))
@@ -1495,7 +1846,7 @@ fun BreathingOverlay(onClose: () -> Unit) {
                         .size(150.dp)
                         .scale(scale)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha)),
                 )
             }
 
@@ -1503,13 +1854,13 @@ fun BreathingOverlay(onClose: () -> Unit) {
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { isMuted = !isMuted }) {
                     Icon(
                         imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
                         contentDescription = if (isMuted) "Unmute voice" else "Mute voice",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     )
                 }
                 TextButton(onClick = onClose) {

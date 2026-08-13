@@ -11,12 +11,18 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
 REPORTS_FILE = os.path.join(DATA_DIR, "panic_reports.json")
+PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
+CONSENT_CODES_FILE = os.path.join(DATA_DIR, "consent_codes.json")
+LINKS_FILE = os.path.join(DATA_DIR, "therapist_patients.json")
 ADMIN_USERS_FILE = os.path.join(DATA_DIR, "admin_users.json")
 MODEL_WEIGHTS_FILE = os.path.join(DATA_DIR, "model_weights.json")
 USER_MODEL_STATE_FILE = os.path.join(DATA_DIR, "user_model_state.json")
 TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
 REPORTS_TABLE_NAME = "panic_reports"
+PROFILES_TABLE_NAME = "profiles"
+CONSENT_CODES_TABLE_NAME = "consent_codes"
+LINKS_TABLE_NAME = "therapist_patients"
 ADMIN_USERS_TABLE_NAME = "admin_users"
 MODEL_WEIGHTS_TABLE_NAME = "model_weights"
 USER_MODEL_STATE_TABLE_NAME = "user_model_state"
@@ -251,6 +257,192 @@ def read_all_reports() -> list:
 
     return _json_read_from(REPORTS_FILE)
 
+
+# ---------------------------------------------------------------------------
+# Profiles / consent / therapist-patient links
+#
+# These power the therapist mode. Same Supabase-first, JSON-fallback pattern
+# as the sensor tables above so a demo without cloud connectivity still works
+# end-to-end.
+# ---------------------------------------------------------------------------
+
+def _json_replace_by_key(path: str, key: str, record: dict) -> None:
+    """Insert or replace a single row identified by [key] in a JSON file."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    rows = _json_read_from(path)
+    rows = [r for r in rows if r.get(key) != record.get(key)]
+    rows.append(record)
+    fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(rows, f, indent=2)
+        os.replace(tmp_path, path)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+
+
+# --- Profiles --------------------------------------------------------------
+
+def upsert_profile(record: dict) -> None:
+    """Set or update a profile row (keyed by user_id)."""
+    if _supabase is not None:
+        try:
+            _supabase.table(PROFILES_TABLE_NAME).upsert(record, on_conflict="user_id").execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase profile upsert failed ({e}); writing JSON fallback")
+    _json_replace_by_key(PROFILES_FILE, "user_id", record)
+
+
+def get_profile(user_id: str) -> dict | None:
+    """Fetch a single profile by user_id, or None if missing."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(PROFILES_TABLE_NAME)
+                .select("*")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            data = resp.data or []
+            return data[0] if data else None
+        except Exception as e:
+            print(f"[storage] Supabase profile read failed ({e}); reading JSON fallback")
+    rows = _json_read_from(PROFILES_FILE)
+    return next((r for r in rows if r.get("user_id") == user_id), None)
+
+
+# --- Consent codes ---------------------------------------------------------
+
+def create_consent_code(record: dict) -> None:
+    """Store a new consent code (keyed by code)."""
+    if _supabase is not None:
+        try:
+            _supabase.table(CONSENT_CODES_TABLE_NAME).insert(record).execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase consent-code insert failed ({e}); writing JSON fallback")
+    _json_append_to(CONSENT_CODES_FILE, record)
+
+
+def find_consent_code(code: str) -> dict | None:
+    """Return the code row if it exists (whether used or not)."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(CONSENT_CODES_TABLE_NAME)
+                .select("*")
+                .eq("code", code)
+                .execute()
+            )
+            data = resp.data or []
+            return data[0] if data else None
+        except Exception as e:
+            print(f"[storage] Supabase consent-code read failed ({e}); reading JSON fallback")
+    rows = _json_read_from(CONSENT_CODES_FILE)
+    return next((r for r in rows if r.get("code") == code), None)
+
+
+def mark_consent_code_used(code: str, patient_id: str, used_at_iso: str) -> None:
+    """Set used_at/used_by on the code so it can't be redeemed twice."""
+    if _supabase is not None:
+        try:
+            _supabase.table(CONSENT_CODES_TABLE_NAME).update({
+                "used_at": used_at_iso,
+                "used_by": patient_id,
+            }).eq("code", code).execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase consent-code update failed ({e}); updating JSON fallback")
+    rows = _json_read_from(CONSENT_CODES_FILE)
+    for r in rows:
+        if r.get("code") == code:
+            r["used_at"] = used_at_iso
+            r["used_by"] = patient_id
+    _json_replace_by_key(CONSENT_CODES_FILE, "code", next(r for r in rows if r.get("code") == code))
+
+
+# --- Therapist-patient links ----------------------------------------------
+
+def create_therapist_patient_link(record: dict) -> None:
+    """Create the (therapist_id, patient_id) link. No-op if it already exists."""
+    if _supabase is not None:
+        try:
+            _supabase.table(LINKS_TABLE_NAME).insert(record).execute()
+            return
+        except Exception as e:
+            print(f"[storage] Supabase link insert note ({e})")
+            return
+    rows = _json_read_from(LINKS_FILE)
+    exists = any(
+        r.get("therapist_id") == record.get("therapist_id")
+        and r.get("patient_id") == record.get("patient_id")
+        for r in rows
+    )
+    if not exists:
+        _json_append_to(LINKS_FILE, record)
+
+
+def list_patients_for_therapist(therapist_id: str) -> list[str]:
+    """Return the patient_ids linked to this therapist."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(LINKS_TABLE_NAME)
+                .select("patient_id")
+                .eq("therapist_id", therapist_id)
+                .execute()
+            )
+            return [r["patient_id"] for r in (resp.data or []) if "patient_id" in r]
+        except Exception as e:
+            print(f"[storage] Supabase link read failed ({e}); reading JSON fallback")
+    rows = _json_read_from(LINKS_FILE)
+    return [r["patient_id"] for r in rows if r.get("therapist_id") == therapist_id]
+
+
+def is_link_active(therapist_id: str, patient_id: str) -> bool:
+    """Guard used by therapist-scoped read endpoints."""
+    return patient_id in list_patients_for_therapist(therapist_id)
+
+
+def get_reports_for_patient(patient_id: str) -> list:
+    """All panic_reports rows for a given patient (used by therapist view)."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(REPORTS_TABLE_NAME)
+                .select("*")
+                .eq("user_id", patient_id)
+                .order("id")
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase per-patient reports read failed ({e}); reading JSON fallback")
+    return [r for r in _json_read_from(REPORTS_FILE) if r.get("user_id") == patient_id]
+
+
+def get_sensor_data_for_patient(patient_id: str) -> list:
+    """All sensor_data rows for a given patient."""
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(TABLE_NAME)
+                .select("*")
+                .eq("user_id", patient_id)
+                .order("id")
+                .execute()
+            )
+            return resp.data or []
+        except Exception as e:
+            print(f"[storage] Supabase per-patient sensor read failed ({e}); reading JSON fallback")
+    return [r for r in _json_read_from(DATA_FILE) if r.get("user_id") == patient_id]
+
+
+# ---------------------------------------------------------------------------
+# Admin users + versioned model weights (Alex's admin app)
+# ---------------------------------------------------------------------------
 
 # --- Admin users -----------------------------------------------------------
 

@@ -1,119 +1,125 @@
 package com.example.app.data
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
-import java.util.Locale
+import android.media.MediaPlayer
+import android.util.Log
 
 /**
- * Wraps Android's TextToSpeech for the breathing-exercise overlay.
+ * Plays pre-recorded calm-voice audio clips for the breathing overlay.
  *
- * Trade-off: built-in TTS always has a faintly synthetic timbre. To make
- * the guide sound truly human we would need to ship pre-recorded audio
- * (either user-recorded or AI-generated clips placed in res/raw). See
- * the project README for that path. This wrapper does as much as TTS
- * allows: slow rate, low pitch, prefer the highest-quality installed
- * voice, and weave reassuring phrases into the breathing cycle.
+ * Motivation: Android's built-in TextToSpeech always has a faintly synthetic
+ * timbre. Real recorded audio (either the user's own voice or an AI-voice
+ * MP3 from ElevenLabs) sounds noticeably more human, which is the whole
+ * point of this screen.
+ *
+ * File layout - drop these into app/src/main/res/raw/ (all lowercase,
+ * snake_case; Android is picky about that):
+ *
+ *     opening.mp3        "It will be okay. I am here with you. Let us breathe together."
+ *     breathe_in.mp3     "Breathe in."
+ *     breathe_out.mp3    "Breathe out."
+ *     reassure_1.mp3     "You are doing great."
+ *     reassure_2.mp3     "I am right here with you."
+ *     reassure_3.mp3     "Keep going. You are safe."
+ *     reassure_4.mp3     "Just keep breathing. One breath at a time."
+ *     reassure_5.mp3     "Beautiful. Keep going."
+ *     reassure_6.mp3     "You are not alone. I have got you."
+ *
+ * Missing files are tolerated - that clip just won't play, and a warning
+ * is logged. That way the app keeps building while you're still generating
+ * or recording the audio.
+ *
+ * Public API is unchanged from the TTS version, so MainActivity doesn't
+ * need to change.
  */
 class BreathingCoach {
 
-    private var tts: TextToSpeech? = null
-    @Volatile private var isReady: Boolean = false
+    private var openingPlayer: MediaPlayer? = null
+    private var breatheInPlayer: MediaPlayer? = null
+    private var breatheOutPlayer: MediaPlayer? = null
+    private var reassurePlayers: List<MediaPlayer> = emptyList()
 
-    private val reassurances: List<String> = listOf(
-        "You are doing great.",
-        "I am right here with you.",
-        "Keep going. You are safe.",
-        "Just keep breathing. One breath at a time.",
-        "Beautiful. Keep going.",
-        "You are not alone. I have got you.",
-    )
-    private var reassuranceIndex: Int = 0
+    private var reassureIndex: Int = 0
 
-    /** [onReady] is called on the main thread once the engine is initialized. */
+    @Volatile
+    private var isReady: Boolean = false
+
+    /** [onReady] is called synchronously on the caller's thread once loaded. */
     fun init(context: Context, onReady: (() -> Unit)? = null) {
-        if (tts != null) {
-            if (isReady) onReady?.invoke()
+        if (isReady) {
+            onReady?.invoke()
             return
         }
-        tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.let { engine ->
-                    engine.language = Locale.US
-                    // Slow + slightly lower pitch -> calmer perceived voice.
-                    // 1.0 is the default. Below 0.7 starts sounding "off"; below
-                    // 0.85 pitch begins distorting on some engines.
-                    engine.setSpeechRate(0.72f)
-                    engine.setPitch(0.90f)
-                    pickBestVoice(engine)
-                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {}
-                        override fun onDone(utteranceId: String?) {}
-                        @Deprecated("deprecated in API level 21", ReplaceWith(""))
-                        override fun onError(utteranceId: String?) {}
-                    })
-                }
-                isReady = true
-                onReady?.invoke()
-            }
-        }
+        val app = context.applicationContext
+        openingPlayer = loadRaw(app, "opening")
+        breatheInPlayer = loadRaw(app, "breathe_in")
+        breatheOutPlayer = loadRaw(app, "breathe_out")
+        reassurePlayers = (1..6).mapNotNull { loadRaw(app, "reassure_$it") }
+        isReady = true
+        onReady?.invoke()
     }
 
-    /**
-     * Pick the highest-quality English voice the device has installed.
-     * Heuristic: prefer non-default voices, prefer female (typically used
-     * for guided meditation), prefer those with the highest declared quality.
-     * Quietly falls back to the engine default if anything goes wrong.
-     */
-    private fun pickBestVoice(engine: TextToSpeech) {
-        try {
-            val voices = engine.voices ?: return
-            val best = voices
-                .filter { it.locale.language == Locale.US.language }
-                .filter { !it.isNetworkConnectionRequired }
-                .maxByOrNull { v ->
-                    var score = v.quality   // android Voice quality 100..500
-                    if (v.name.contains("female", ignoreCase = true)) score += 50
-                    if (v.name.contains("network", ignoreCase = true)) score += 25
-                    if (v.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) == true) score -= 1000
-                    score
-                }
-            if (best != null) engine.voice = best
-        } catch (_: Throwable) {
-            // ignore — fall back to engine default
+    /** Look up res/raw/<name>.mp3 by name and preload it. Returns null on miss. */
+    private fun loadRaw(app: Context, name: String): MediaPlayer? {
+        val resId = app.resources.getIdentifier(name, "raw", app.packageName)
+        if (resId == 0) {
+            Log.w(TAG, "res/raw/$name.mp3 not found - clip will be skipped")
+            return null
+        }
+        return try {
+            MediaPlayer.create(app, resId)
+        } catch (t: Throwable) {
+            Log.w(TAG, "failed to create MediaPlayer for $name: $t")
+            null
         }
     }
 
     /** Spoken once when the overlay opens. */
-    fun speakOpening() = speak(
-        "It will be okay. I am here with you. Let us breathe together.",
-        id = "opening",
-        flush = true,
-    )
+    fun speakOpening() = play(openingPlayer)
 
-    fun speakIn() = speak("Breathe in.", id = "in", flush = false)
-    fun speakOut() = speak("Breathe out.", id = "out", flush = false)
+    fun speakIn() = play(breatheInPlayer)
+    fun speakOut() = play(breatheOutPlayer)
 
     /** Speak the next reassurance in rotation. Safe to call between phases. */
     fun speakReassurance() {
-        val text = reassurances[reassuranceIndex % reassurances.size]
-        reassuranceIndex++
-        speak(text, id = "reassure-$reassuranceIndex", flush = false)
+        if (reassurePlayers.isEmpty()) return
+        val player = reassurePlayers[reassureIndex % reassurePlayers.size]
+        reassureIndex++
+        play(player)
     }
 
-    private fun speak(text: String, id: String, flush: Boolean) {
-        val engine = tts ?: return
-        if (!isReady) return
-        val mode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-        engine.speak(text, mode, null, id)
+    private fun play(player: MediaPlayer?) {
+        if (!isReady || player == null) return
+        try {
+            if (player.isPlaying) player.pause()
+            player.seekTo(0)
+            player.start()
+        } catch (t: Throwable) {
+            Log.w(TAG, "playback error: $t")
+        }
     }
 
     fun shutdown() {
-        tts?.stop()
-        tts?.shutdown()
-        tts = null
+        val all = listOfNotNull(openingPlayer, breatheInPlayer, breatheOutPlayer) + reassurePlayers
+        all.forEach { p ->
+            try {
+                if (p.isPlaying) p.stop()
+            } catch (_: Throwable) {
+            }
+            try {
+                p.release()
+            } catch (_: Throwable) {
+            }
+        }
+        openingPlayer = null
+        breatheInPlayer = null
+        breatheOutPlayer = null
+        reassurePlayers = emptyList()
+        reassureIndex = 0
         isReady = false
-        reassuranceIndex = 0
+    }
+
+    private companion object {
+        const val TAG = "BreathingCoach"
     }
 }
