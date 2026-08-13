@@ -66,6 +66,48 @@ def _write_fallback_or_raise(what: str, e: Exception) -> None:
     print(f"[storage] Supabase {what} failed ({e}); writing JSON fallback")
 
 
+def _read_fallback_or_raise(what: str, e: Exception) -> None:
+    """The read-side twin of [_write_fallback_or_raise].
+
+    A silent read fallback is the more dangerous of the two. On a container the
+    JSON files usually do not exist, so `_json_read_from` returns [] — an empty
+    result that is indistinguishable from "no data yet". The dashboard shows
+    zero users, metrics read zero, and the model trains on nothing, all without
+    a single error. Under CALMSENSE_REQUIRE_SUPABASE a failed read must be loud.
+    """
+    if _REQUIRE_SUPABASE:
+        raise RuntimeError(
+            f"Supabase {what} failed and CALMSENSE_REQUIRE_SUPABASE is set; "
+            f"refusing to serve the ephemeral JSON store: {e}"
+        ) from e
+    print(f"[storage] Supabase {what} failed ({e}); reading JSON fallback")
+
+
+# PostgREST caps how many rows one request may return (Supabase default 1000).
+# An unpaged .select("*") therefore truncates silently — no error, just fewer
+# rows. With >10k sensor rows that quietly corrupts every count and every
+# training set, so all list reads go through _select_all below.
+_PAGE = 1000
+
+
+def _select_all(table: str, columns: str = "*", order_col: str = "id",
+                desc: bool = False, eq: tuple[str, object] | None = None) -> list[dict]:
+    """Read every row of `table`, paging past the PostgREST row cap."""
+    out: list[dict] = []
+    offset = 0
+    while True:
+        q = _supabase.table(table).select(columns)
+        if eq is not None:
+            q = q.eq(eq[0], eq[1])
+        page = q.order(order_col, desc=desc).range(offset, offset + _PAGE - 1).execute().data or []
+        out.extend(page)
+        # A short page means we've reached the end. An exactly-full page is
+        # ambiguous, so we go round once more and get an empty page.
+        if len(page) < _PAGE:
+            return out
+        offset += _PAGE
+
+
 def _init_supabase():
     global _supabase_error
     url = os.environ.get("SUPABASE_URL")
@@ -101,9 +143,31 @@ def storage_backend() -> str:
     return "supabase" if _supabase is not None else "json"
 
 
+def storage_error() -> str | None:
+    """Why Supabase isn't in use, or None. Surfaced by /health so a degraded
+    deployment is visible instead of quietly serving the JSON store."""
+    return _supabase_error if _supabase is None else None
+
+
 # --- JSON fallback (original atomic-write implementation) ------------------
 
+def _guard_json_disabled(op: str) -> None:
+    """Backstop for the JSON entry points themselves.
+
+    The per-call-site guards above are the primary defence, but they rely on
+    every future read/write path remembering to call them. This catches the one
+    that forgets: under CALMSENSE_REQUIRE_SUPABASE the JSON store is simply not
+    a place data may go.
+    """
+    if _REQUIRE_SUPABASE:
+        raise RuntimeError(
+            f"JSON store {op} attempted while CALMSENSE_REQUIRE_SUPABASE is set. "
+            "This is a bug: some code path fell through to the ephemeral store."
+        )
+
+
 def _json_append_to(path: str, record: dict) -> None:
+    _guard_json_disabled("append")
     os.makedirs(DATA_DIR, exist_ok=True)
 
     if os.path.exists(path):
@@ -126,6 +190,7 @@ def _json_append_to(path: str, record: dict) -> None:
 
 
 def _json_read_from(path: str) -> list:
+    _guard_json_disabled("read")
     if not os.path.exists(path):
         return []
     with open(path, "r", encoding="utf-8") as f:
@@ -134,6 +199,7 @@ def _json_read_from(path: str) -> list:
 
 def _json_write_all(path: str, records: list) -> None:
     """Atomically replace the whole file contents with `records`."""
+    _guard_json_disabled("write")
     os.makedirs(DATA_DIR, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=DATA_DIR, suffix=".tmp")
     try:
@@ -180,15 +246,9 @@ def read_all_records() -> list:
     """Return all stored records (Supabase if configured, else JSON)."""
     if _supabase is not None:
         try:
-            resp = (
-                _supabase.table(TABLE_NAME)
-                .select("*")
-                .order("id")
-                .execute()
-            )
-            return resp.data or []
+            return _select_all(TABLE_NAME)
         except Exception as e:
-            print(f"[storage] Supabase read failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("read", e)
 
     return _json_read_all()
 
@@ -211,15 +271,9 @@ def append_feedback(record: dict) -> None:
 def read_all_feedback() -> list:
     if _supabase is not None:
         try:
-            resp = (
-                _supabase.table(FEEDBACK_TABLE_NAME)
-                .select("*")
-                .order("id")
-                .execute()
-            )
-            return resp.data or []
+            return _select_all(FEEDBACK_TABLE_NAME)
         except Exception as e:
-            print(f"[storage] Supabase feedback read failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("feedback read", e)
 
     return _json_read_from(FEEDBACK_FILE)
 
@@ -239,15 +293,9 @@ def append_report(record: dict) -> None:
 def read_all_reports() -> list:
     if _supabase is not None:
         try:
-            resp = (
-                _supabase.table(REPORTS_TABLE_NAME)
-                .select("*")
-                .order("id")
-                .execute()
-            )
-            return resp.data or []
+            return _select_all(REPORTS_TABLE_NAME)
         except Exception as e:
-            print(f"[storage] Supabase report read failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("report read", e)
 
     return _json_read_from(REPORTS_FILE)
 
@@ -269,7 +317,7 @@ def get_admin_by_email(email: str) -> dict | None:
             rows = resp.data or []
             return rows[0] if rows else None
         except Exception as e:
-            print(f"[storage] Supabase admin read failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("admin read", e)
 
     for row in _json_read_from(ADMIN_USERS_FILE):
         if row.get("email") == email:
@@ -281,15 +329,11 @@ def list_admins() -> list:
     """All admin accounts (without password hashes)."""
     if _supabase is not None:
         try:
-            resp = (
-                _supabase.table(ADMIN_USERS_TABLE_NAME)
-                .select("id, email, name, is_active, created_at")
-                .order("id")
-                .execute()
-            )
-            return resp.data or []
+            # Column list is deliberate: never hand password_hash to a caller.
+            return _select_all(ADMIN_USERS_TABLE_NAME,
+                               columns="id, email, name, is_active, created_at")
         except Exception as e:
-            print(f"[storage] Supabase admin list failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("admin list", e)
 
     rows = _json_read_from(ADMIN_USERS_FILE)
     return [
@@ -346,16 +390,10 @@ def list_model_snapshots(user_id: str) -> list:
     """All snapshots for a user, newest first."""
     if _supabase is not None:
         try:
-            resp = (
-                _supabase.table(MODEL_WEIGHTS_TABLE_NAME)
-                .select("*")
-                .eq("user_id", user_id)
-                .order("created_at", desc=True)
-                .execute()
-            )
-            return resp.data or []
+            return _select_all(MODEL_WEIGHTS_TABLE_NAME, order_col="created_at",
+                               desc=True, eq=("user_id", user_id))
         except Exception as e:
-            print(f"[storage] Supabase snapshot list failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("snapshot list", e)
 
     rows = [r for r in _json_read_from(MODEL_WEIGHTS_FILE) if r.get("user_id") == user_id]
     rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
@@ -375,7 +413,7 @@ def get_model_snapshot(snapshot_id: int) -> dict | None:
             rows = resp.data or []
             return rows[0] if rows else None
         except Exception as e:
-            print(f"[storage] Supabase snapshot get failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("snapshot get", e)
 
     for row in _json_read_from(MODEL_WEIGHTS_FILE):
         if row.get("id") == snapshot_id:
@@ -398,7 +436,7 @@ def get_user_model_state(user_id: str) -> dict | None:
             rows = resp.data or []
             return rows[0] if rows else None
         except Exception as e:
-            print(f"[storage] Supabase state get failed ({e}); reading JSON fallback")
+            _read_fallback_or_raise("state get", e)
 
     for row in _json_read_from(USER_MODEL_STATE_FILE):
         if row.get("user_id") == user_id:
