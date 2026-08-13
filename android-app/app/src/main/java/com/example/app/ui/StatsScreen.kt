@@ -7,7 +7,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +43,7 @@ fun StatsScreen(
     reports: List<PanicReportEntity>,
     modifier: Modifier = Modifier,
     userEmail: String? = null,
-    onLogout: (() -> Unit)? = null,
+    onConnectTherapist: (() -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
 
@@ -59,7 +58,7 @@ fun StatsScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Header(userEmail = userEmail, onLogout = onLogout)
+            Header(userEmail = userEmail)
             if (reports.isEmpty()) {
                 EmptyState()
             } else {
@@ -68,6 +67,38 @@ fun StatsScreen(
                 TriggerBreakdownCard(reports)
                 SeverityDistributionCard(reports)
             }
+            if (onConnectTherapist != null) {
+                ConnectTherapistCard(onClick = onConnectTherapist)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectTherapistCard(onClick: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                "Connect a therapist",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Have a code from your therapist? Enter it here to let them see your reports.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+            )
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onClick) {
+                Text("Enter a therapist code")
+            }
         }
     }
 }
@@ -75,26 +106,11 @@ fun StatsScreen(
 /* ---------- Header + empty state ----------------------------------------- */
 
 @Composable
-private fun Header(userEmail: String?, onLogout: (() -> Unit)?) {
+private fun Header(userEmail: String?) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        // Logout icon in the top-right corner (only shown if a handler exists).
-        if (onLogout != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                IconButton(onClick = onLogout) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Logout,
-                        contentDescription = "Sign out",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                    )
-                }
-            }
-        }
         Surface(
             shape = CircleShape,
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),

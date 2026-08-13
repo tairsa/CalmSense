@@ -69,12 +69,17 @@ import com.example.app.data.PingResult
 import com.example.app.data.PostResult
 import com.example.app.data.SessionManager
 import com.example.app.data.SupabaseAuth
+import com.example.app.data.TherapistApi
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
 import com.example.app.ui.QuestionnaireAnswers
+import com.example.app.ui.ConnectTherapistScreen
 import com.example.app.ui.LoginScreen
+import com.example.app.ui.PatientDetailScreen
 import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.RolePickerScreen
 import com.example.app.ui.StatsScreen
+import com.example.app.ui.TherapistDashboardScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
 import com.example.app.ui.theme.AppTheme
@@ -127,6 +132,9 @@ private const val ROUTE_REPORTS = "reports"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
 private const val ROUTE_STATS = "stats"
+private const val ROUTE_CONNECT_THERAPIST = "connect-therapist"
+private const val ROUTE_THERAPIST_DASHBOARD = "therapist-dashboard"
+private const val ROUTE_THERAPIST_PATIENT = "therapist-patient"
 
 class HeartRateViewModel : ViewModel() {
     var currentHr by mutableStateOf<Int?>(72)
@@ -174,6 +182,34 @@ class HeartRateViewModel : ViewModel() {
     private var modelCache: PanicModelCache? = null
     private val backend = BackendApi(BACKEND_URL)
     private val pingBackend = BackendClient(BACKEND_URL)
+    private val therapistApi = TherapistApi(BACKEND_URL)
+
+    // -----------------------------------------------------------------
+    // Profile / therapist-mode state (Phase-2 features).
+    // profileLoaded flips true once we've asked the server whether this
+    // user has picked a role. profileRole == null after load = show the
+    // one-time RolePickerScreen.
+    // -----------------------------------------------------------------
+    var profileLoaded by mutableStateOf(false)
+    var profileRole by mutableStateOf<String?>(null)
+    var roleSaving by mutableStateOf(false)
+
+    // Therapist dashboard state.
+    var patients by mutableStateOf<List<TherapistApi.PatientSummary>>(emptyList())
+        private set
+    var generatingCode by mutableStateOf(false)
+    var generatedCode by mutableStateOf<TherapistApi.ConsentCodeResponse?>(null)
+    var therapistError by mutableStateOf<String?>(null)
+
+    // Currently-viewed patient's reports (therapist side).
+    var viewingPatientReports by mutableStateOf<List<TherapistApi.PatientReport>>(emptyList())
+        private set
+    var loadingPatientReports by mutableStateOf(false)
+
+    // Connect-therapist state (patient side).
+    var connectSubmitting by mutableStateOf(false)
+    var connectError by mutableStateOf<String?>(null)
+    var connectSuccess by mutableStateOf(false)
 
     fun attachHealthConnect(context: Context) {
         if (healthConnectRepo == null) {
@@ -232,6 +268,102 @@ class HeartRateViewModel : ViewModel() {
 
     fun requiredHealthPermissions(): Set<String> =
         healthConnectRepo?.requiredPermissions().orEmpty()
+
+    // -----------------------------------------------------------------
+    // Profile / therapist-mode functions.
+    // -----------------------------------------------------------------
+
+    /** Ask the server for the current user's profile. profileLoaded flips true
+     *  regardless of outcome so the UI can move past the loading indicator. */
+    fun loadProfile() {
+        viewModelScope.launch {
+            val p = therapistApi.getProfile(userId)
+            profileRole = p?.role
+            profileLoaded = true
+        }
+    }
+
+    /** Called from RolePickerScreen — persist choice, then update local state. */
+    fun setRole(role: String) {
+        roleSaving = true
+        viewModelScope.launch {
+            val ok = therapistApi.setProfile(userId = userId, role = role)
+            roleSaving = false
+            if (ok) profileRole = role
+        }
+    }
+
+    /** Reset profile state — used on logout so the next login re-fetches. */
+    fun resetProfile() {
+        profileLoaded = false
+        profileRole = null
+        patients = emptyList()
+        generatedCode = null
+        viewingPatientReports = emptyList()
+    }
+
+    // Therapist ------------------------------------------------------
+
+    fun refreshPatients() {
+        therapistError = null
+        viewModelScope.launch {
+            patients = therapistApi.listPatients(userId)
+        }
+    }
+
+    fun generateConsentCode() {
+        generatingCode = true
+        therapistError = null
+        viewModelScope.launch {
+            val resp = therapistApi.createConsentCode(userId)
+            generatingCode = false
+            if (resp != null) {
+                generatedCode = resp
+            } else {
+                therapistError = "Could not generate a code. Check the backend is running."
+            }
+        }
+    }
+
+    fun dismissGeneratedCode() {
+        generatedCode = null
+        // Give the patient a beat to redeem, then refresh the list.
+        refreshPatients()
+    }
+
+    fun loadPatientReports(patientId: String) {
+        loadingPatientReports = true
+        therapistError = null
+        viewModelScope.launch {
+            viewingPatientReports = therapistApi.getPatientReports(userId, patientId)
+            loadingPatientReports = false
+        }
+    }
+
+    // Patient --------------------------------------------------------
+
+    fun redeemConsentCode(code: String) {
+        connectSubmitting = true
+        connectError = null
+        connectSuccess = false
+        viewModelScope.launch {
+            when (val r = therapistApi.redeemConsentCode(code, userId)) {
+                TherapistApi.RedeemResult.Success -> {
+                    connectSuccess = true
+                }
+                is TherapistApi.RedeemResult.Failure -> {
+                    connectError = r.message
+                }
+            }
+            connectSubmitting = false
+        }
+    }
+
+    fun resetConnectState() {
+        connectSubmitting = false
+        connectError = null
+        connectSuccess = false
+    }
 
     fun startPolling() {
         if (pollJob != null) return
@@ -539,8 +671,95 @@ class MainActivity : ComponentActivity() {
                     return@AppTheme
                 }
                 // ------- Signed in below -------------------------------------------
-
                 val context = LocalContext.current
+
+                // Shared logout - defined up here so both the profile gate,
+                // the therapist flow, AND the patient scaffold below can use
+                // the same handler. Also wipes profile state so the next user
+                // re-fetches (see resetProfile).
+                val logoutScope = rememberCoroutineScope()
+                val handleLogout: () -> Unit = {
+                    val token = session?.accessToken.orEmpty()
+                    logoutScope.launch {
+                        if (token.isNotBlank()) SupabaseAuth.signOut(token)
+                    }
+                    viewModel.resetProfile()
+                    SessionManager.clear(this@MainActivity)
+                }
+
+                // ------- Profile gate ---------------------------------------------
+                // Once signed in we need to know whether this user is a patient
+                // or a therapist (different landing screens). Fetch the profile
+                // on entry; while it loads show a spinner. On first-ever login
+                // there's no profile row -> show RolePickerScreen.
+                LaunchedEffect(session?.userId) {
+                    if (!viewModel.profileLoaded) viewModel.loadProfile()
+                }
+                if (!viewModel.profileLoaded) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    return@AppTheme
+                }
+                if (viewModel.profileRole == null) {
+                    RolePickerScreen(
+                        onSelected = { role -> viewModel.setRole(role) },
+                        loading = viewModel.roleSaving,
+                    )
+                    return@AppTheme
+                }
+
+                // ------- Therapist flow -------------------------------------------
+                if (viewModel.profileRole == "therapist") {
+                    LaunchedEffect(Unit) { viewModel.refreshPatients() }
+                    val therapistNav = rememberNavController()
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize(),
+                        containerColor = MaterialTheme.colorScheme.background,
+                        topBar = { CalmSenseTopBar(onLogout = handleLogout) },
+                    ) { inner ->
+                        Box(modifier = Modifier.padding(inner)) {
+                            NavHost(
+                                navController = therapistNav,
+                                startDestination = ROUTE_THERAPIST_DASHBOARD,
+                            ) {
+                                composable(ROUTE_THERAPIST_DASHBOARD) {
+                                    TherapistDashboardScreen(
+                                        patients = viewModel.patients,
+                                        generatedCode = viewModel.generatedCode,
+                                        generating = viewModel.generatingCode,
+                                        error = viewModel.therapistError,
+                                        onGenerateCode = { viewModel.generateConsentCode() },
+                                        onDismissCode = { viewModel.dismissGeneratedCode() },
+                                        onPatientClick = { pid ->
+                                            therapistNav.navigate("$ROUTE_THERAPIST_PATIENT/$pid")
+                                        },
+                                    )
+                                }
+                                composable("$ROUTE_THERAPIST_PATIENT/{pid}") { backStack ->
+                                    val pid = backStack.arguments?.getString("pid").orEmpty()
+                                    LaunchedEffect(pid) {
+                                        if (pid.isNotBlank()) viewModel.loadPatientReports(pid)
+                                    }
+                                    val label = viewModel.patients
+                                        .firstOrNull { it.userId == pid }
+                                        ?.displayName?.takeIf { it.isNotBlank() }
+                                        ?: "Client"
+                                    PatientDetailScreen(
+                                        patientLabel = label,
+                                        reports = viewModel.viewingPatientReports,
+                                        loading = viewModel.loadingPatientReports,
+                                        error = viewModel.therapistError,
+                                        onBack = { therapistNav.popBackStack() },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    return@AppTheme
+                }
+
+                // ------- Patient flow (existing content) --------------------------
                 LaunchedEffect(Unit) {
                     viewModel.attachHealthConnect(context)
                     viewModel.loadModelFromBackend()
@@ -566,7 +785,8 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
                 val showBottomNav = currentRoute == ROUTE_MONITOR ||
                     currentRoute == ROUTE_REPORTS ||
-                    currentRoute == ROUTE_STATS
+                    currentRoute == ROUTE_STATS ||
+                    currentRoute == ROUTE_CONNECT_THERAPIST
 
                 // Auto-navigate to the questionnaire when a report row was
                 // just inserted post-severity.
@@ -574,17 +794,6 @@ class MainActivity : ComponentActivity() {
                     viewModel.pendingQuestionnaireId?.let { id ->
                         navController.navigate("$ROUTE_QUESTIONNAIRE/$id")
                     }
-                }
-
-                // Shared logout handler used by the top bar and any screen
-                // that also wants a logout button (e.g. StatsScreen).
-                val logoutScope = rememberCoroutineScope()
-                val handleLogout: () -> Unit = {
-                    val token = session?.accessToken.orEmpty()
-                    logoutScope.launch {
-                        if (token.isNotBlank()) SupabaseAuth.signOut(token)
-                    }
-                    SessionManager.clear(this@MainActivity)
                 }
 
                 Scaffold(
@@ -629,13 +838,24 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable(ROUTE_STATS) {
-                                // Logout also lives in the shared top bar; we
-                                // keep it available on StatsScreen itself for
-                                // discoverability next to the account email.
+                                // Logout lives in the shared top bar - no need
+                                // to duplicate it inside StatsScreen.
                                 StatsScreen(
                                     reports = viewModel.reports,
                                     userEmail = session?.email,
-                                    onLogout = handleLogout,
+                                    onConnectTherapist = {
+                                        viewModel.resetConnectState()
+                                        navController.navigate(ROUTE_CONNECT_THERAPIST)
+                                    },
+                                )
+                            }
+                            composable(ROUTE_CONNECT_THERAPIST) {
+                                ConnectTherapistScreen(
+                                    onSubmit = { code -> viewModel.redeemConsentCode(code) },
+                                    submitting = viewModel.connectSubmitting,
+                                    error = viewModel.connectError,
+                                    success = viewModel.connectSuccess,
+                                    onBack = { navController.popBackStack() },
                                 )
                             }
                             composable("$ROUTE_REPORT_DETAIL/{id}") { backStack ->
