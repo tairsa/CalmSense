@@ -69,6 +69,48 @@ create index if not exists panic_reports_user_id_idx
 create index if not exists panic_reports_timestamp_idx
     on public.panic_reports ("timestamp");
 
+-- Per-user profile row. `role` splits the app into two experiences:
+--   'patient'   - default; sees monitor / breathing / reports / stats.
+--   'therapist' - sees a dashboard of their consenting clients.
+-- Created on first login when the user picks a role.
+create table if not exists public.profiles (
+    user_id      text        primary key,
+    role         text        not null check (role in ('patient','therapist')),
+    display_name text,
+    created_at   timestamptz not null default now()
+);
+
+-- Short redeemable codes a therapist generates and shares with a client
+-- out-of-band (WhatsApp / in person). Client enters the code in their app
+-- to grant view access.
+create table if not exists public.consent_codes (
+    code         text        primary key,   -- e.g. "A7K-Q2M", human-friendly
+    therapist_id text        not null,
+    created_at   timestamptz not null default now(),
+    expires_at   timestamptz not null,
+    used_at      timestamptz,               -- null while still redeemable
+    used_by      text                       -- patient user_id after redemption
+);
+
+create index if not exists consent_codes_therapist_id_idx
+    on public.consent_codes (therapist_id);
+
+-- Consent link. A row here means the patient has granted the therapist
+-- permission to view their reports and sensor data. Deleting a row revokes
+-- access; the underlying patient data is untouched.
+create table if not exists public.therapist_patients (
+    id           bigint      generated always as identity primary key,
+    therapist_id text        not null,
+    patient_id   text        not null,
+    created_at   timestamptz not null default now(),
+    unique (therapist_id, patient_id)
+);
+
+create index if not exists therapist_patients_therapist_id_idx
+    on public.therapist_patients (therapist_id);
+create index if not exists therapist_patients_patient_id_idx
+    on public.therapist_patients (patient_id);
+
 -- NOTE on security:
 -- The backend connects with the service_role key, which bypasses Row Level
 -- Security, so no RLS policies are required for the server to work. If you
