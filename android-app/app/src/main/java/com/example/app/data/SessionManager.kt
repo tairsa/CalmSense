@@ -26,6 +26,9 @@ object SessionManager {
     private const val KEY_ACCESS_TOKEN = "access_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
 
+    /** Set once the pre-auth rows on this device have been handed to an owner. */
+    private const val KEY_LEGACY_CLAIMED = "legacy_rows_claimed"
+
     private val _session = MutableStateFlow<SupabaseAuth.Session?>(null)
     val session: StateFlow<SupabaseAuth.Session?> = _session.asStateFlow()
 
@@ -42,7 +45,12 @@ object SessionManager {
         val email = prefs.getString(KEY_EMAIL, null)
         val access = prefs.getString(KEY_ACCESS_TOKEN, null)
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, null)
-        _session.value = if (id.isNullOrBlank()) {
+        // A persisted session with no access token cannot authenticate against
+        // anything, so treat it as signed out rather than letting the user in
+        // to a session that silently fails. This happens when a signup needed
+        // email confirmation; it self-heals devices that stored one before
+        // LoginScreen started rejecting them.
+        _session.value = if (id.isNullOrBlank() || access.isNullOrBlank()) {
             null
         } else {
             SupabaseAuth.Session(
@@ -65,9 +73,44 @@ object SessionManager {
         _session.value = session
     }
 
-    /** Local logout - wipe persisted session and notify observers. */
+    /**
+     * Hand any pre-auth reports on this device to [session] - once, ever.
+     *
+     * Runs on the first successful sign-in after upgrading to the multi-user
+     * build: those rows have no owner and would otherwise be permanently
+     * invisible (see [PanicReportStore.claimUntaggedRows]). Subsequent logins,
+     * including a different account, find the flag already set and claim
+     * nothing, so a second person signing in never inherits the first one's
+     * history.
+     *
+     * Returns how many rows were claimed, for logging.
+     */
+    suspend fun claimLegacyRowsOnce(context: Context, session: SupabaseAuth.Session): Int {
+        val prefs = prefs(context)
+        if (prefs.getBoolean(KEY_LEGACY_CLAIMED, false)) return 0
+        val claimed = PanicReportStore.get(context).claimUntaggedRows(session.userId)
+        // Set the flag even when nothing was claimed: a fresh install has no
+        // legacy rows, and we do not want a later account to pick up rows the
+        // first user creates after signing out.
+        prefs.edit().putBoolean(KEY_LEGACY_CLAIMED, true).apply()
+        return claimed
+    }
+
+    /**
+     * Local logout - wipe persisted session and notify observers.
+     *
+     * Deliberately removes the session keys one by one instead of `clear()`:
+     * the legacy-claim flag must survive a sign-out, otherwise the next
+     * account to sign in on this device would re-run the migration and
+     * inherit the previous user's panic history.
+     */
     fun clear(context: Context) {
-        prefs(context).edit().clear().apply()
+        prefs(context).edit()
+            .remove(KEY_USER_ID)
+            .remove(KEY_EMAIL)
+            .remove(KEY_ACCESS_TOKEN)
+            .remove(KEY_REFRESH_TOKEN)
+            .apply()
         _session.value = null
     }
 

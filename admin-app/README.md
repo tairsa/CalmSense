@@ -25,9 +25,13 @@ the FastAPI backend.
    email to add Tair, or add her later from inside the app (Register requires an
    existing admin).
 
-2. **Apply the admin DB schema** if you're on Supabase: run
-   `../calmsense-backend/admin_schema.sql` in the Supabase SQL editor. On the
-   local JSON fallback there's nothing to do — tables are created on first write.
+2. **Apply the DB schema** if you're on Supabase: run
+   `../calmsense-backend/supabase_schema.sql` in the Supabase SQL editor. It
+   covers all six tables, admin ones included, and is the single source of
+   truth. (An older `admin_schema.sql` used to live alongside it and declared
+   the same tables with `generated always as identity`, which silently blocks
+   migrating rows that carry their own ids — it has been removed.) On the
+   local JSON fallback there's nothing to do.
 
 ## Run (dev)
 

@@ -28,6 +28,20 @@ JWT_EXPIRE_HOURS = int(os.environ.get("ADMIN_JWT_EXPIRE_HOURS", "12"))
 
 # A stable secret keeps tokens valid across restarts; fall back to a random one
 # so the app still runs locally without configuration (tokens reset on restart).
+#
+# That fallback is fine on a laptop and wrong anywhere the process restarts on
+# its own. On a scale-to-zero container every cold start would mint a new
+# secret, so admin sessions would die at random and any second instance would
+# reject the first one's tokens. Where Supabase is mandatory, so is this.
+_REQUIRE_SUPABASE = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1", "true", "yes")
+
+if _REQUIRE_SUPABASE and not os.environ.get("ADMIN_JWT_SECRET"):
+    raise RuntimeError(
+        "CALMSENSE_REQUIRE_SUPABASE is set but ADMIN_JWT_SECRET is missing. "
+        "A per-process random secret would invalidate every admin session on "
+        "each cold start; refusing to start."
+    )
+
 JWT_SECRET = os.environ.get("ADMIN_JWT_SECRET") or secrets.token_urlsafe(48)
 
 _bearer = HTTPBearer(auto_error=False)
@@ -91,3 +105,5 @@ def get_current_admin(
     if admin is None or not admin.get("is_active", True):
         raise HTTPException(status_code=401, detail="Admin no longer active")
     return {"id": admin["id"], "email": admin["email"], "name": admin.get("name")}
+
+

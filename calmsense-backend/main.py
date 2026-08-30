@@ -37,6 +37,7 @@ from storage import (
     mark_consent_code_used,
     read_all_records,
     storage_backend,
+    storage_error,
     upsert_profile,
 )
 
@@ -48,7 +49,20 @@ async def lifespan(app: FastAPI):
     auto_retrain.stop(retrain_task)
 
 
-app = FastAPI(title="CalmSense API", version="1.0.0", lifespan=lifespan)
+# CALMSENSE_REQUIRE_SUPABASE doubles as the "this is a real deployment" flag:
+# it is only ever set where the filesystem is ephemeral and the URL is public.
+# Use it to hide the interactive API docs, which FastAPI would otherwise mount
+# before the SPA catch-all and expose the whole admin surface to the internet.
+_PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1", "true", "yes")
+
+app = FastAPI(
+    title="CalmSense API",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url=None if _PROD else "/docs",
+    redoc_url=None if _PROD else "/redoc",
+    openapi_url=None if _PROD else "/openapi.json",
+)
 
 # CORS for the admin web app (Vite dev server + any configured origins).
 # Set ADMIN_CORS_ORIGINS in .env as a comma-separated list for production.
@@ -98,7 +112,14 @@ _device_auth = [Depends(require_api_key)]
 def health_check():
     """Unauthenticated on purpose: it is the container liveness probe and the
     phone's server-status chip, and it exposes no user data."""
-    return {"status": "ok", "storage": storage_backend()}
+    body = {"status": "ok", "storage": storage_backend()}
+    # Only present when we are NOT on Supabase. Says why, so "storage":"json"
+    # on a deployment that expected Supabase is diagnosable at a glance rather
+    # than requiring a log dive.
+    err = storage_error()
+    if err:
+        body["storage_error"] = err
+    return body
 
 
 @app.post("/api/v1/sensor-data", dependencies=_device_auth)
