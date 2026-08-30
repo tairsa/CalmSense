@@ -316,6 +316,17 @@ def redeem_consent_code(data: RedeemConsentRequest,
 
 # --- Therapist read views --------------------------------------------------
 
+def _require_self(path_id: str, caller_id: str) -> None:
+    """Refuse a request whose URL names someone other than the caller.
+
+    The consent-link check in each endpoint already limits which patients a
+    therapist may read, but without this a caller could put another
+    therapist's id in the path and inherit all of their consent links.
+    """
+    if path_id != caller_id:
+        raise HTTPException(status_code=403, detail="Not your therapist account")
+
+
 @app.get("/api/v1/therapist/{therapist_id}/patients")
 def therapist_patients(therapist_id: str,
                        caller_id: str = Depends(current_user_id)):
