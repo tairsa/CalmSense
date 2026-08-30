@@ -4,7 +4,9 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.hardware.Sensor
@@ -112,12 +114,32 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     // Duty-cycling state for keepAliveLock. The platform HR sensor is itself a
     // wake-up sensor on this hardware (flags 0x3 on the Watch5) batched at
-    // HR_BATCH_US, so while it is registered it wakes the SoC on exactly the
+    // the active batch latency, so while it is registered it wakes the SoC on exactly the
     // cadence we need and the keep-alive lock is redundant. The lock is only
     // required when nothing else can wake us — i.e. while the Samsung SDK has
     // displaced the platform sensor. Tracked here and reconciled by
     // updateKeepAlive() at every point either input can change.
     @Volatile private var platformHrRegistered = false
+
+    /**
+     * Whether the watch is awake (screen on). Drives both the send cadence and
+     * the sensor batch latency: live while the user can see the display, 5 s
+     * bursts once it sleeps.
+     *
+     * "Interactive" rather than a Doze check on purpose - Doze starts some
+     * minutes after the screen goes off, and waiting for it would leave a
+     * window where the screen is off but we are still streaming at full rate.
+     */
+    @Volatile private var isAwake = true
+
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_ON -> applyCadence(awake = true)
+                Intent.ACTION_SCREEN_OFF -> applyCadence(awake = false)
+            }
+        }
+    }
     private var hasWakeUpAccel = false
     private val hrIsWakeUp: Boolean get() = hrSensor?.isWakeUpSensor == true
 
@@ -130,6 +152,17 @@ class HrMonitoringService : Service(), SensorEventListener {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:HrMonitor")
             .apply { setReferenceCounted(false) }
 
+        // Seed the wake state BEFORE registering any sensor, so the first
+        // registration already uses the right batch latency. Screen on/off is
+        // not a protected-broadcast concern here: these are system broadcasts
+        // and the receiver is registered at runtime, not exported.
+        isAwake = (getSystemService(POWER_SERVICE) as PowerManager).isInteractive
+        registerReceiver(screenReceiver, IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        })
+        Log.i(TAG, "Initial cadence: ${if (isAwake) "AWAKE (live)" else "ASLEEP"}")
+
         // Prefer the wake-up variant when the hardware has one — belt and
         // braces alongside the wake lock.
         hrSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE, true)
@@ -137,7 +170,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (hrSensor != null) {
             // Batched: buffer ~1 Hz HR in the FIFO and wake the SoC only every
             // ~10 s to deliver the burst, instead of every second.
-            sensorManager.registerListener(this, hrSensor, HR_SAMPLING_US, HR_BATCH_US)
+            sensorManager.registerListener(this, hrSensor, HR_SAMPLING_US, batchUs())
             platformHrRegistered = true
             Log.i(TAG, "HR sensor listener registered (${hrSensor!!.name}, wakeUp=$hrIsWakeUp)")
         } else {
@@ -168,8 +201,8 @@ class HrMonitoringService : Service(), SensorEventListener {
 
         // Linear acceleration removes gravity, so RMS reflects actual motion.
         // Prefer the WAKE-UP variant: it is what keeps samples flowing with the
-        // screen off. Batched at ACCEL_BATCH_US, a wake-up sensor wakes the SoC
-        // itself every ~10 s to deliver its FIFO burst, and that wake is what
+        // screen off. Batched at the active latency, a wake-up sensor wakes the SoC
+        // itself on that cadence to deliver its FIFO burst, and that wake is what
         // drives the periodic send in maybeSendSample(). The non-wake-up variant
         // cannot wake the SoC, so its events (and therefore all sends) stall
         // while the watch sleeps — which is exactly the bug this replaces. This
@@ -180,9 +213,9 @@ class HrMonitoringService : Service(), SensorEventListener {
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         if (accelSensor != null) {
-            // ~5 Hz batched into ~10 s bursts: the hardware FIFO buffers samples
-            // and the SoC sleeps between bursts instead of being woken at 15 Hz.
-            sensorManager.registerListener(this, accelSensor, ACCEL_SAMPLING_US, ACCEL_BATCH_US)
+            // ~5 Hz, delivered live while awake and batched into 5 s bursts
+            // once the screen is off - see applyCadence().
+            sensorManager.registerListener(this, accelSensor, ACCEL_SAMPLING_US, batchUs())
             Log.i(TAG, "Accelerometer listener registered (${accelSensor!!.name}, wakeUp=${accelSensor!!.isWakeUpSensor})")
         } else {
             Log.w(TAG, "No accelerometer available on this device")
@@ -228,6 +261,7 @@ class HrMonitoringService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(screenReceiver) }
         shuttingDown = true
         sensorManager.unregisterListener(this)
         samsungHrTracker?.stop()
@@ -353,7 +387,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (!useSamsungHr) return
         useSamsungHr = false
         if (isOnBody && !shuttingDown) {
-            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, batchUs()) }
             platformHrRegistered = hrSensor != null
             Log.i(TAG, "Samsung stream gone — platform HR sensor re-registered")
             // Back on a wake-up sensor: drop the lock and let the watch sleep.
@@ -445,7 +479,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         isOnBody = onBody
         Log.i(TAG, if (onBody) "Watch back on wrist" else "Watch off wrist")
         if (onBody) {
-            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, HR_BATCH_US) }
+            hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, batchUs()) }
             platformHrRegistered = hrSensor != null
             heartBeatSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
             samsungHrTracker?.start()
@@ -527,7 +561,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         val now = SystemClock.elapsedRealtime()
         // Off-wrist there's nothing to monitor — just a slow "still off" beacon
         // so the phone can tell off-wrist apart from a dead connection.
-        val interval = if (isOnBody) SEND_MIN_INTERVAL_MS else OFFBODY_SEND_INTERVAL_MS
+        val interval = if (isOnBody) sendIntervalMs() else OFFBODY_SEND_INTERVAL_MS
         if (now - lastSendElapsed < interval) return
         if (!isOnBody) {
             lastSendElapsed = now
@@ -554,6 +588,42 @@ class HrMonitoringService : Service(), SensorEventListener {
      *  older than [BPM_STALE_AFTER_MS] is treated as absent: the phone judges
      *  freshness by when a sample arrived, so re-sending an old value on the
      *  periodic tick would launder it as live. */
+    /** Batch latency for the current wake state. */
+    private fun batchUs(): Int = if (isAwake) BATCH_AWAKE_US else BATCH_ASLEEP_US
+
+    /** Send interval floor for the current wake state. */
+    private fun sendIntervalMs(): Long =
+        if (isAwake) SEND_MIN_INTERVAL_AWAKE_MS else SEND_INTERVAL_ASLEEP_MS
+
+    /**
+     * Switch between the live and low-power cadences.
+     *
+     * Batch latency is baked in when a listener is registered, so the sensors
+     * have to be re-registered to change it. Re-registering the same listener
+     * replaces the old registration rather than adding a second one, so this is
+     * safe to call repeatedly - and it is idempotent on [awake] so the rapid
+     * screen on/off pairs Wear OS emits during a wrist-raise do not thrash the
+     * sensor stack.
+     */
+    private fun applyCadence(awake: Boolean) {
+        if (awake == isAwake) return
+        isAwake = awake
+        val batch = batchUs()
+        runCatching {
+            if (platformHrRegistered) {
+                hrSensor?.let { sensorManager.registerListener(this, it, HR_SAMPLING_US, batch) }
+            }
+            accelSensor?.let { sensorManager.registerListener(this, it, ACCEL_SAMPLING_US, batch) }
+        }.onFailure { Log.w(TAG, "Re-register for cadence change failed", it) }
+        // Send immediately on wake so the display is not showing a value up to
+        // 5 s old at the moment the user looks at it.
+        if (awake) {
+            lastSendElapsed = 0L
+            runCatching { maybeSendSample() }
+        }
+        Log.i(TAG, "Cadence -> ${if (awake) "AWAKE (live)" else "ASLEEP (${SEND_INTERVAL_ASLEEP_MS}ms)"}")
+    }
+
     private fun currentBpm(): Int {
         val bpm = latestBpm ?: return -1
         if (SystemClock.elapsedRealtime() - lastBpmElapsed > BPM_STALE_AFTER_MS) return -1
@@ -631,13 +701,20 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val TAG = "HrMonitoringService"
         private const val CHANNEL_ID = "calmsense_hr_monitor"
         private const val NOTIFICATION_ID = 1001
-        private const val SEND_MIN_INTERVAL_MS = 2_000L
+        // Two cadences, chosen by whether the watch is awake (see isAwake).
+        //
+        // Awake, the SoC is already running for the screen, so streaming costs
+        // almost nothing extra and the phone shows live vitals. The floor is
+        // 1 s because that is the HR sensor's own rate - sending faster would
+        // just resend the same bpm at the accelerometer's 5 Hz.
+        private const val SEND_MIN_INTERVAL_AWAKE_MS = 1_000L
+        // Asleep, every send costs a wake-up, so this is the worst-case gap
+        // the phone will see rather than a target rate.
+        private const val SEND_INTERVAL_ASLEEP_MS = 5_000L
         private const val OFFBODY_SEND_INTERVAL_MS = 15_000L
-        // Target worst-case gap between samples, screen on or off. Matches
-        // ACCEL_BATCH_US: the wake-up accelerometer's batch delivery is what wakes
-        // the SoC on that cadence, and it doubles as the fallback ticker period.
-        // (SEND_MIN_INTERVAL_MS still allows faster sends while the CPU is awake.)
-        private const val SEND_MAX_INTERVAL_MS = 10_000L
+        // Fallback ticker period on hardware with no wake-up accelerometer.
+        // Matches the asleep cadence, which is the case that needs a floor.
+        private const val SEND_MAX_INTERVAL_MS = SEND_INTERVAL_ASLEEP_MS
         // A cached bpm older than this is reported as "no reading" — see currentBpm().
         private const val BPM_STALE_AFTER_MS = 30_000L
         // The SDK streams ~1 data point/s, so this much silence means it stalled
@@ -647,13 +724,22 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val SAMSUNG_RESTART_MIN_INTERVAL_MS = 60_000L
         // Timed CPU wake lock around each send; auto-releases as a backstop.
         private const val SEND_WAKELOCK_MS = 4_000L
-        // Sensor batching (microseconds): buffer in the hardware FIFO and wake the
-        // SoC only every ~10 s, so it can deep-sleep between bursts. HR ~1 Hz,
-        // accel ~5 Hz; the ~10 s latency is the worst-case detection delay.
         private const val HR_SAMPLING_US = 1_000_000
-        private const val HR_BATCH_US = 10_000_000
         private const val ACCEL_SAMPLING_US = 200_000
-        private const val ACCEL_BATCH_US = 10_000_000
+
+        // Sensor batching (microseconds). Batch latency is fixed when a
+        // listener is registered, so changing cadence means re-registering -
+        // see applyCadence().
+        //
+        // Awake: no batching. Samples are delivered as they are produced, which
+        // is what makes the phone's reading live.
+        private const val BATCH_AWAKE_US = 0
+        // Asleep: buffer in the hardware FIFO and wake the SoC every 5 s to
+        // deliver the burst, so it can deep-sleep in between. This is the knob
+        // that trades battery against staleness: 5 s is twice the wake rate of
+        // the 10 s it replaced, chosen because a 10 s blind spot was too much
+        // to lose during a panic onset.
+        private const val BATCH_ASLEEP_US = 5_000_000
 
         // ~30 paired readings at ~1 Hz ≈ a 30-second HRV window.
         private const val HRV_WINDOW = 30
