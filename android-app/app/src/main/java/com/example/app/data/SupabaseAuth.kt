@@ -2,6 +2,7 @@ package com.example.app.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import android.util.Base64
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -58,10 +59,25 @@ object SupabaseAuth {
          */
         val expiresAtMs: Long = 0L,
     ) {
-        /** True when the token is past [skewMs] before its stated expiry. */
+        /**
+         * Effective expiry: the stored value, or the token's own `exp` claim.
+         *
+         * The fallback matters for sessions saved before this field existed.
+         * Those store 0, and treating 0 as "never expires" would mean such a
+         * session is never refreshed - the token dies quietly an hour later
+         * and every request 401s from then on, with no way back except a
+         * manual sign-out. An access token is a JWT and already carries its
+         * own expiry, so read it rather than depending on a stored field.
+         */
+        fun effectiveExpiryMs(): Long =
+            if (expiresAtMs > 0L) expiresAtMs else jwtExpiryMs(accessToken)
+
+        /** True when the token is past [skewMs] before its effective expiry. */
         fun needsRefresh(nowMs: Long = System.currentTimeMillis(),
-                         skewMs: Long = REFRESH_SKEW_MS): Boolean =
-            expiresAtMs > 0L && nowMs >= expiresAtMs - skewMs
+                         skewMs: Long = REFRESH_SKEW_MS): Boolean {
+            val exp = effectiveExpiryMs()
+            return exp > 0L && nowMs >= exp - skewMs
+        }
     }
 
     /** Wrapper so callers can pattern-match instead of catching exceptions. */
@@ -191,6 +207,28 @@ object SupabaseAuth {
         } finally {
             conn.disconnect()
         }
+    }
+
+    /**
+     * The `exp` claim of a JWT, in millis, or 0 if it cannot be read.
+     *
+     * Only the payload is decoded and the signature is ignored - deliberately.
+     * This is used to decide when to refresh our own token, not to trust
+     * anything: the server verifies the signature on every request. A tampered
+     * token would simply be rejected there.
+     */
+    fun jwtExpiryMs(token: String): Long = try {
+        val payload = token.split(".").getOrNull(1)
+        if (payload.isNullOrBlank()) {
+            0L
+        } else {
+            val json = JSONObject(
+                String(Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
+            )
+            json.optLong("exp", 0L) * 1000L
+        }
+    } catch (_: Throwable) {
+        0L
     }
 
     private fun parseSession(body: String): Session? = try {
