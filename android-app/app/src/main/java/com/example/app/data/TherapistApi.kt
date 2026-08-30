@@ -17,8 +17,9 @@ import java.net.URLEncoder
 class TherapistApi(private val baseUrl: String) {
 
     companion object {
-        private const val CONNECT_TIMEOUT_MS = 6_000
-        private const val READ_TIMEOUT_MS = 6_000
+        // See BackendApi: sized for a scale-to-zero cold start.
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 15_000
     }
 
     /* ---------- Types --------------------------------------------------- */

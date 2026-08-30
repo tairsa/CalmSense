@@ -26,8 +26,13 @@ class BackendApi(private val baseUrl: String = DEFAULT_BASE_URL) {
 
     companion object {
         const val DEFAULT_BASE_URL = "http://10.0.2.2:8000"
-        private const val CONNECT_TIMEOUT_MS = 5_000
-        private const val READ_TIMEOUT_MS = 5_000
+        // Generous because the backend scales to zero: a cold start has to
+        // boot the container, import sklearn/supabase and open a Supabase
+        // connection before it answers. 5s was fine against a Pi that was
+        // always warm; against Cloud Run it turns a slow first request into a
+        // spurious "server offline".
+        private const val CONNECT_TIMEOUT_MS = 15_000
+        private const val READ_TIMEOUT_MS = 15_000
     }
 
     /** GET /api/v1/sensor-data?user_id=... — returns the panic-detection model. */

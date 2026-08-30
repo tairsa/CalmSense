@@ -1,0 +1,47 @@
+# Builds the single-service CalmSense image (API + admin dashboard) and pushes
+# it to Artifact Registry.
+#
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions=_REGION=europe-west1
+#
+# This file exists because `gcloud run deploy --source .` only auto-detects a
+# Dockerfile named exactly "Dockerfile". Ours is Dockerfile.cloudrun - kept
+# distinct from calmsense-backend/Dockerfile, which builds the API alone for
+# the docker-compose stack - so without this config gcloud silently falls back
+# to Buildpacks, which cannot make sense of a repo holding a Python backend, a
+# React app and an Android project side by side.
+#
+# The build context is the repository root because the image needs both
+# calmsense-backend/ and admin-app/. What gets uploaded is controlled by
+# .gcloudignore; what lands in the image is controlled by .dockerignore.
+
+substitutions:
+  _REGION: europe-west1
+  _REPO: cloud-run-source-deploy
+  _SERVICE: calmsense
+  # Overridden per build with the git sha:
+  #   --substitutions=_TAG=$(git rev-parse --short HEAD)
+  # $SHORT_SHA is only populated for trigger-based builds, so it cannot be
+  # used here - it expands to an empty string and yields an invalid tag.
+  _TAG: manual
+
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest'
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    args:
+      - build
+      - '-f'
+      - Dockerfile.cloudrun
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${_TAG}'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest'
+      - '.'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

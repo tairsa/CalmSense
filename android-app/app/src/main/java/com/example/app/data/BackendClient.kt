@@ -63,8 +63,10 @@ class BackendClient(private val baseUrl: String) {
     suspend fun ping(): PingResult = withContext(Dispatchers.IO) {
         runCatching {
             val conn = URL("$baseUrl/health").openConnection() as HttpURLConnection
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
+            // The status chip's reachability probe. Long enough to survive a
+            // cold start, so "offline" means offline rather than "still waking".
+            conn.connectTimeout = 12_000
+            conn.readTimeout = 12_000
             conn.requestMethod = "GET"
             try {
                 val code = conn.responseCode
@@ -81,8 +83,8 @@ class BackendClient(private val baseUrl: String) {
             // must happen at SEND time, so a queued payload gets a live token.
             val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/sensor-data").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
@@ -113,8 +115,8 @@ class BackendClient(private val baseUrl: String) {
             // must happen at SEND time, so a queued payload gets a live token.
             val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/panic-reports").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
@@ -159,8 +161,8 @@ class BackendClient(private val baseUrl: String) {
             // must happen at SEND time, so a queued payload gets a live token.
             val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/panic-feedback").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
