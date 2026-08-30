@@ -387,6 +387,11 @@ if os.path.isdir(_ADMIN_DIST):
         can handle the route client-side (the try_files rule nginx applies)."""
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
+        # FastAPI unmounts these in production, but this catch-all would then
+        # answer them with index.html - a 200 that looks like the docs are
+        # still reachable. 404 so the gate is honest.
+        if _PROD and full_path in ("docs", "redoc", "openapi.json"):
+            raise HTTPException(status_code=404, detail="Not found")
         candidate = os.path.realpath(os.path.join(_ADMIN_DIST, full_path))
         if candidate.startswith(_ADMIN_DIST + os.sep) and os.path.isfile(candidate):
             return FileResponse(candidate)
