@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -739,24 +740,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppTheme {
-                // ------- Auth gate -------------------------------------------------
-                // If no session on disk, block the app behind LoginScreen.
-                // On successful sign in / sign up, persist the session and rewire
-                // the ViewModel's userId so all subsequent uploads carry the
-                // authenticated ID.
-                val session by SessionManager.session.collectAsState()
-                if (session == null) {
-                    LoginScreen(
-                        onAuthenticated = { s: SupabaseAuth.Session ->
-                            SessionManager.save(this@MainActivity, s)
-                            viewModel.userId = s.userId
-                        }
-                    )
-                    return@AppTheme
-                }
                 // ------- Consent gate ----------------------------------------------
-                // Signed in but not yet asked whether they consent to data
-                // tracking. Monitoring stays off until they answer.
+                // Deliberately ahead of the auth gate. Consent covers collecting
+                // the data at all, so it is answered before we ask anyone to hand
+                // over an email address. Monitoring stays off until they answer.
                 val consentPrompted by SettingsStore.consentPrompted.collectAsState()
                 if (!consentPrompted) {
                     ConsentScreen(
@@ -766,6 +753,34 @@ class MainActivity : ComponentActivity() {
                             startMonitorService()
                         },
                         onDecline = { SettingsStore.setConsent(false) },
+                    )
+                    return@AppTheme
+                }
+                // ------- Auth gate -------------------------------------------------
+                // If no session on disk, block the app behind LoginScreen.
+                // On successful sign in / sign up, persist the session and rewire
+                // the ViewModel's userId so all subsequent uploads carry the
+                // authenticated ID.
+                val session by SessionManager.session.collectAsState()
+                if (session == null) {
+                    val claimScope = rememberCoroutineScope()
+                    LoginScreen(
+                        onAuthenticated = { s: SupabaseAuth.Session ->
+                            SessionManager.save(this@MainActivity, s)
+                            viewModel.userId = s.userId
+                            // Upgrade path: reports logged before accounts
+                            // existed have no owner and are filtered out of
+                            // every view. The first account to sign in on this
+                            // device inherits them, once.
+                            claimScope.launch {
+                                val claimed = SessionManager.claimLegacyRowsOnce(
+                                    this@MainActivity, s,
+                                )
+                                if (claimed > 0) {
+                                    Log.i("CalmSense", "Claimed $claimed legacy report(s)")
+                                }
+                            }
+                        }
                     )
                     return@AppTheme
                 }
