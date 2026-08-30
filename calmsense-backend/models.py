@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 class SensorData(BaseModel):
@@ -64,6 +64,33 @@ class PanicReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Therapist mode: profiles, consent codes, therapist-patient links.
+# ---------------------------------------------------------------------------
+
+class Profile(BaseModel):
+    """One row per authenticated user. Chosen once at first login."""
+    user_id: str
+    role: Literal["patient", "therapist"]
+    display_name: Optional[str] = None
+
+
+class ConsentCodeRequest(BaseModel):
+    """Therapist asks the server for a short, redeemable code to hand out."""
+    therapist_id: str
+
+
+class ConsentCodeResponse(BaseModel):
+    code: str
+    expires_at: str  # ISO 8601, UTC
+
+
+class RedeemConsentRequest(BaseModel):
+    """Patient submits a code they received from a therapist."""
+    code: str
+    patient_id: str
+
+
+# ---------------------------------------------------------------------------
 # Admin web-app models (auth + model management). These back the JWT-protected
 # /api/v1/admin endpoints used by the React admin app — not the phone.
 # ---------------------------------------------------------------------------
@@ -92,17 +119,6 @@ class TokenResponse(BaseModel):
     admin: AdminPublic
 
 
-class SetRoleRequest(BaseModel):
-    """Change one Supabase account's role from the admin dashboard.
-
-    Validated again in supabase_admin.set_role against VALID_ROLES before it
-    reaches Supabase, so an unexpected value can never be written into
-    user_metadata.
-    """
-
-    role: str  # "user" | "therapist" | "developer"
-
-
 class RollbackRequest(BaseModel):
     """Roll a user's model back to the snapshot active as of `cutoff`.
 
@@ -123,4 +139,3 @@ class RetrainRequest(BaseModel):
 
     respect_cutoff: bool = True
     cutoff: Optional[str] = None
-

@@ -1,177 +1,242 @@
 package com.example.app.data
 
-import com.example.app.BACKEND_URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-import java.time.Instant
-import java.time.format.DateTimeParseException
-import kotlin.math.roundToInt
 
 /**
- * Read-only client for the therapist views: the patient list and one
- * patient's panic reports.
+ * HTTP client for the therapist-mode endpoints on the CalmSense backend.
  *
- * Both endpoints live under /api/v1/admin because the admin dashboard already
- * serves exactly this data; the backend accepts a Supabase access token there
- * when the account's role is therapist/developer (see backend auth.py,
- * get_clinical_viewer). Plain HttpURLConnection to match BackendApi and
- * SupabaseAuth - no new dependency.
- *
- * Every call needs the caller's Supabase access token. The role check is
- * server-side: a regular user's token gets a 403 here no matter what the app's
- * own UserRole gate believes.
+ * Kept separate from [BackendApi] and [BackendClient] so the therapist
+ * feature can evolve without touching the patient hot path. Same plain
+ * HttpURLConnection style - no new dependencies.
  */
-object TherapistApi {
+class TherapistApi(private val baseUrl: String) {
 
-    private const val CONNECT_TIMEOUT_MS = 8_000
-    private const val READ_TIMEOUT_MS = 8_000
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 6_000
+        private const val READ_TIMEOUT_MS = 6_000
+    }
 
-    /** One row in the patient picker. */
-    data class Patient(
+    /* ---------- Types --------------------------------------------------- */
+
+    data class ProfileDto(
         val userId: String,
-        val reportCount: Int,
-        val lastSeen: String?,
+        val role: String,               // "patient" | "therapist"
+        val displayName: String?,
     )
 
-    /** Outcome wrapper so the UI can show a real message instead of a spinner. */
-    sealed interface Result<out T> {
-        data class Ok<T>(val value: T) : Result<T>
-        data class Err(val message: String, val httpCode: Int? = null) : Result<Nothing>
+    data class ConsentCodeResponse(
+        val code: String,
+        val expiresAt: String,          // ISO 8601 UTC
+    )
+
+    sealed interface RedeemResult {
+        data object Success : RedeemResult
+        data class Failure(val message: String, val httpCode: Int?) : RedeemResult
     }
 
-    /** GET /api/v1/admin/users - accounts that have any data on the backend. */
-    suspend fun listPatients(accessToken: String): Result<List<Patient>> =
-        get("/api/v1/admin/users", accessToken) { body ->
-            val arr = JSONObject(body).optJSONArray("users")
-            buildList {
-                for (i in 0 until (arr?.length() ?: 0)) {
-                    val o = arr!!.getJSONObject(i)
-                    add(
-                        Patient(
-                            userId = o.optString("user_id"),
-                            reportCount = o.optInt("report_count"),
-                            lastSeen = o.optString("last_seen").takeIf {
-                                it.isNotBlank() && it != "null"
-                            },
-                        )
+    data class PatientSummary(
+        val userId: String,
+        val displayName: String?,
+    )
+
+    /** Lightweight view used only by the therapist's "patient detail" screen. */
+    data class PatientReport(
+        val severity: Int,
+        val timestamp: String?,
+        val detectedByModel: Boolean,
+        val feeling: String?,
+        val activityBefore: String?,
+        val whatHelped: String?,
+        val currentHr: Double?,
+        val currentHrv: Double?,
+        val currentMotionIntensity: Double?,
+        val symptoms: List<String>,
+    )
+
+    /* ---------- Profile ------------------------------------------------- */
+
+    /** POST /api/v1/profile - create or update. Returns true on 2xx. */
+    suspend fun setProfile(userId: String, role: String, displayName: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().apply {
+                put("user_id", userId)
+                put("role", role)
+                put("display_name", displayName ?: JSONObject.NULL)
+            }
+            val code = postJson("$baseUrl/api/v1/profile", payload.toString())
+            code in 200..299
+        }
+
+    /** GET /api/v1/profile?user_id=... - null if no row (or on network error). */
+    suspend fun getProfile(userId: String): ProfileDto? = withContext(Dispatchers.IO) {
+        val url = URL("$baseUrl/api/v1/profile?user_id=${URLEncoder.encode(userId, "UTF-8")}")
+        val body = simpleGet(url) ?: return@withContext null
+        runCatching {
+            val json = JSONObject(body)
+            val p = json.optJSONObject("profile") ?: return@runCatching null
+            ProfileDto(
+                userId = p.optString("user_id"),
+                role = p.optString("role"),
+                displayName = p.optString("display_name").takeIf { !p.isNull("display_name") },
+            )
+        }.getOrNull()
+    }
+
+    /* ---------- Consent codes ------------------------------------------ */
+
+    /** POST /api/v1/consent-codes - therapist generates a code to hand out. */
+    suspend fun createConsentCode(therapistId: String): ConsentCodeResponse? =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().apply { put("therapist_id", therapistId) }
+            val body = postJsonForBody("$baseUrl/api/v1/consent-codes", payload.toString())
+                ?: return@withContext null
+            runCatching {
+                val json = JSONObject(body)
+                ConsentCodeResponse(
+                    code = json.getString("code"),
+                    expiresAt = json.getString("expires_at"),
+                )
+            }.getOrNull()
+        }
+
+    /** POST /api/v1/consent-codes/redeem - patient submits a code. */
+    suspend fun redeemConsentCode(code: String, patientId: String): RedeemResult =
+        withContext(Dispatchers.IO) {
+            val payload = JSONObject().apply {
+                put("code", code)
+                put("patient_id", patientId)
+            }
+            val url = URL("$baseUrl/api/v1/consent-codes/redeem")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            try {
+                conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                val code2 = conn.responseCode
+                if (code2 in 200..299) {
+                    RedeemResult.Success
+                } else {
+                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    val msg = runCatching { JSONObject(err).optString("detail") }.getOrNull()
+                        ?.takeIf { it.isNotBlank() } ?: "HTTP $code2"
+                    RedeemResult.Failure(msg, code2)
+                }
+            } catch (t: Throwable) {
+                RedeemResult.Failure(t.message ?: "network error", null)
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+    /* ---------- Therapist read views ----------------------------------- */
+
+    /** GET /api/v1/therapist/{id}/patients - who's granted this therapist access. */
+    suspend fun listPatients(therapistId: String): List<PatientSummary> =
+        withContext(Dispatchers.IO) {
+            val url = URL("$baseUrl/api/v1/therapist/${URLEncoder.encode(therapistId, "UTF-8")}/patients")
+            val body = simpleGet(url) ?: return@withContext emptyList()
+            runCatching {
+                val arr = JSONObject(body).getJSONArray("patients")
+                List(arr.length()) { i ->
+                    val p = arr.getJSONObject(i)
+                    PatientSummary(
+                        userId = p.getString("user_id"),
+                        displayName = p.optString("display_name").takeIf { !p.isNull("display_name") },
                     )
                 }
-            }.sortedByDescending { it.reportCount }
+            }.getOrDefault(emptyList())
         }
 
-    /**
-     * GET /api/v1/admin/users/{id}/reports, mapped into the same entity the
-     * local charts already render so StatsScreen needs no second code path.
-     *
-     * The backend rows have no local row id, so ids are synthesised from the
-     * index. They are display-only here - nothing navigates to a report detail
-     * from the therapist view.
-     */
-    suspend fun patientReports(
-        accessToken: String,
-        userId: String,
-    ): Result<List<PanicReportEntity>> {
-        val encoded = URLEncoder.encode(userId, "UTF-8")
-        return get("/api/v1/admin/users/$encoded/reports", accessToken) { body ->
-            val arr = JSONObject(body).optJSONArray("reports")
-            buildList {
-                for (i in 0 until (arr?.length() ?: 0)) {
-                    add(toEntity(arr!!.getJSONObject(i), syntheticId = i.toLong()))
+    /** GET /api/v1/therapist/{id}/patients/{pid}/reports - server enforces the link. */
+    suspend fun getPatientReports(therapistId: String, patientId: String): List<PatientReport> =
+        withContext(Dispatchers.IO) {
+            val t = URLEncoder.encode(therapistId, "UTF-8")
+            val p = URLEncoder.encode(patientId, "UTF-8")
+            val url = URL("$baseUrl/api/v1/therapist/$t/patients/$p/reports")
+            val body = simpleGet(url) ?: return@withContext emptyList()
+            runCatching {
+                val arr = JSONObject(body).getJSONArray("reports")
+                List(arr.length()) { i ->
+                    val r = arr.getJSONObject(i)
+                    val symptoms = r.optJSONArray("symptoms")
+                    PatientReport(
+                        severity = r.optInt("severity", 0),
+                        timestamp = r.optString("timestamp").takeIf { !r.isNull("timestamp") },
+                        detectedByModel = r.optBoolean("detected_by_model", false),
+                        feeling = r.optString("feeling").takeIf { !r.isNull("feeling") },
+                        activityBefore = r.optString("activity_before").takeIf { !r.isNull("activity_before") },
+                        whatHelped = r.optString("what_helped").takeIf { !r.isNull("what_helped") },
+                        currentHr = if (r.has("current_hr") && !r.isNull("current_hr")) r.getDouble("current_hr") else null,
+                        currentHrv = if (r.has("current_hrv") && !r.isNull("current_hrv")) r.getDouble("current_hrv") else null,
+                        currentMotionIntensity = if (r.has("current_motion_intensity") && !r.isNull("current_motion_intensity"))
+                            r.getDouble("current_motion_intensity") else null,
+                        symptoms = if (symptoms != null) List(symptoms.length()) { symptoms.getString(it) } else emptyList(),
+                    )
                 }
-            }
+            }.getOrDefault(emptyList())
         }
-    }
 
-    private fun toEntity(o: JSONObject, syntheticId: Long): PanicReportEntity {
-        val symptoms = o.optJSONArray("symptoms")?.let { a ->
-            (0 until a.length()).map { a.optString(it) }
-        }.orEmpty()
+    /* ---------- Internals ---------------------------------------------- */
 
-        return PanicReportEntity(
-            id = syntheticId,
-            userId = o.optString("user_id"),
-            timestampMs = parseIsoToMillis(o.optString("timestamp")),
-            severity = o.optInt("severity"),
-            detectedByModel = o.optBoolean("detected_by_model"),
-            feeling = o.optStringOrNull("feeling"),
-            symptoms = symptoms,
-            activityBefore = o.optStringOrNull("activity_before"),
-            whatHelped = o.optStringOrNull("what_helped"),
-            durationMinutes = if (o.has("duration_minutes") && !o.isNull("duration_minutes")) {
-                o.optInt("duration_minutes")
-            } else null,
-            latitude = o.optDoubleOrNull("latitude"),
-            longitude = o.optDoubleOrNull("longitude"),
-            locationAccuracyM = o.optDoubleOrNull("location_accuracy_m")?.toFloat(),
-            // Backend stores HR as a float; the entity keeps it as Int BPM.
-            currentHr = o.optDoubleOrNull("current_hr")?.roundToInt(),
-            currentHrv = o.optDoubleOrNull("current_hrv"),
-            currentMotionIntensity = o.optDoubleOrNull("current_motion_intensity")?.toFloat(),
-            // during_sleep is not part of the backend PanicReport schema yet,
-            // so therapist-side rows show it as unknown rather than false.
-            duringSleep = if (o.has("during_sleep") && !o.isNull("during_sleep")) {
-                o.optBoolean("during_sleep")
-            } else null,
-            syncedToBackend = true,
-        )
-    }
-
-    /** Backend timestamps are ISO 8601; fall back to 0 so a bad row still renders. */
-    private fun parseIsoToMillis(raw: String?): Long {
-        if (raw.isNullOrBlank()) return 0L
+    private fun postJson(url: String, body: String): Int {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
         return try {
-            Instant.parse(raw).toEpochMilli()
-        } catch (_: DateTimeParseException) {
-            // Postgres often hands back "…+00:00" without the trailing Z.
-            try {
-                Instant.parse(raw.replace(" ", "T").removeSuffix("+00:00") + "Z").toEpochMilli()
-            } catch (_: DateTimeParseException) {
-                0L
-            }
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            conn.responseCode
+        } catch (_: Throwable) {
+            -1
+        } finally {
+            conn.disconnect()
         }
     }
 
-    private fun JSONObject.optStringOrNull(key: String): String? =
-        if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotBlank() } else null
-
-    private fun JSONObject.optDoubleOrNull(key: String): Double? =
-        if (has(key) && !isNull(key)) optDouble(key).takeIf { !it.isNaN() } else null
-
-    private suspend fun <T> get(
-        path: String,
-        accessToken: String,
-        parse: (String) -> T,
-    ): Result<T> = withContext(Dispatchers.IO) {
-        if (accessToken.isBlank()) {
-            return@withContext Result.Err("Not signed in")
+    private fun postJsonForBody(url: String, body: String): String? {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
-        val conn = (URL("$BACKEND_URL$path").openConnection() as HttpURLConnection).apply {
+        return try {
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } else null
+        } catch (_: Throwable) {
+            null
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun simpleGet(url: URL): String? {
+        val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
-            setRequestProperty("Authorization", "Bearer $accessToken")
-            setRequestProperty("Accept", "application/json")
         }
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                return@withContext Result.Err(
-                    when (code) {
-                        401 -> "Session expired - sign in again"
-                        403 -> "This account is not allowed to view patient data"
-                        else -> "Server error (HTTP $code)"
-                    },
-                    code,
-                )
-            }
-            val body = conn.inputStream.bufferedReader().use { it.readText() }
-            Result.Ok(parse(body))
-        } catch (t: Throwable) {
-            Result.Err(t.message ?: "Could not reach the backend")
+        return try {
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } else null
+        } catch (_: Throwable) {
+            null
         } finally {
             conn.disconnect()
         }

@@ -25,7 +25,6 @@ object SessionManager {
     private const val KEY_EMAIL = "email"
     private const val KEY_ACCESS_TOKEN = "access_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
-    private const val KEY_ROLE = "role"
 
     /** Set once the pre-auth rows on this device have been handed to an owner. */
     private const val KEY_LEGACY_CLAIMED = "legacy_rows_claimed"
@@ -36,10 +35,6 @@ object SessionManager {
     /** Convenience shortcut used all over the app in place of the old USER_ID. */
     val userId: String?
         get() = _session.value?.userId
-
-    /** Role of the signed-in account; [UserRole.USER] when signed out. */
-    val role: UserRole
-        get() = _session.value?.role ?: UserRole.USER
 
     fun isLoggedIn(): Boolean = _session.value != null
 
@@ -63,7 +58,6 @@ object SessionManager {
                 email = email.orEmpty(),
                 accessToken = access.orEmpty(),
                 refreshToken = refresh.orEmpty(),
-                role = UserRole.fromWire(prefs.getString(KEY_ROLE, null)),
             )
         }
     }
@@ -75,7 +69,6 @@ object SessionManager {
             .putString(KEY_EMAIL, session.email)
             .putString(KEY_ACCESS_TOKEN, session.accessToken)
             .putString(KEY_REFRESH_TOKEN, session.refreshToken)
-            .putString(KEY_ROLE, session.role.wireValue)
             .apply()
         _session.value = session
     }
@@ -117,7 +110,6 @@ object SessionManager {
             .remove(KEY_EMAIL)
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
-            .remove(KEY_ROLE)
             .apply()
         _session.value = null
     }

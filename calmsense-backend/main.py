@@ -1,7 +1,9 @@
 import hmac
 import os
+import random
+import string
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,14 +13,32 @@ from fastapi.staticfiles import StaticFiles
 import auto_retrain
 import model_service
 from admin_routes import router as admin_router
-from models import PanicFeedback, PanicReport, SensorData
+from models import (
+    ConsentCodeRequest,
+    ConsentCodeResponse,
+    PanicFeedback,
+    PanicReport,
+    Profile,
+    RedeemConsentRequest,
+    SensorData,
+)
 from storage import (
     append_feedback,
     append_record,
     append_report,
+    create_consent_code,
+    create_therapist_patient_link,
+    find_consent_code,
+    get_profile,
+    get_reports_for_patient,
+    get_sensor_data_for_patient,
+    is_link_active,
+    list_patients_for_therapist,
+    mark_consent_code_used,
     read_all_records,
     storage_backend,
     storage_error,
+    upsert_profile,
 )
 
 
@@ -183,6 +203,134 @@ def get_weights_for_user(user_id: str = Query(..., description="The user whose w
 
 
 # ---------------------------------------------------------------------------
+# Therapist mode: profiles, consent codes, therapist views.
+#
+# Auth is trust-based right now (server accepts whatever user_id the client
+# claims). Fine for the class demo; documented as "Future Work" to verify
+# the Supabase JWT server-side before shipping to real patients.
+# ---------------------------------------------------------------------------
+
+# --- Profile ---------------------------------------------------------------
+
+@app.post("/api/v1/profile")
+def set_profile(data: Profile):
+    """Create or update a user's role (patient/therapist) + display name."""
+    record = data.model_dump()
+    try:
+        upsert_profile(record)
+        return {"success": True, "profile": record}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Failed to save profile: {e}"},
+        )
+
+
+@app.get("/api/v1/profile")
+def read_profile(user_id: str = Query(..., description="Look up this user's profile")):
+    profile = get_profile(user_id)
+    return {"profile": profile}
+
+
+# --- Consent codes ---------------------------------------------------------
+
+CONSENT_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # skip O/0, I/1, l
+CONSENT_CODE_TTL_MINUTES = 30
+
+
+def _generate_consent_code() -> str:
+    """Short human-friendly code like 'A7K-Q2M'. Ambiguous chars removed."""
+    body = "".join(random.choices(CONSENT_CODE_ALPHABET, k=6))
+    return f"{body[:3]}-{body[3:]}"
+
+
+@app.post("/api/v1/consent-codes", response_model=ConsentCodeResponse)
+def generate_consent_code(data: ConsentCodeRequest):
+    """Therapist generates a code to hand to a client (in person / message)."""
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=CONSENT_CODE_TTL_MINUTES)
+    code = _generate_consent_code()
+    record = {
+        "code": code,
+        "therapist_id": data.therapist_id,
+        "created_at": now.isoformat(),
+        "expires_at": expires.isoformat(),
+        "used_at": None,
+        "used_by": None,
+    }
+    try:
+        create_consent_code(record)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed to create code: {e}")
+    return ConsentCodeResponse(code=code, expires_at=expires.isoformat())
+
+
+@app.post("/api/v1/consent-codes/redeem")
+def redeem_consent_code(data: RedeemConsentRequest):
+    """Patient submits a code. If valid + unused + unexpired, creates the link."""
+    row = find_consent_code(data.code)
+    if row is None:
+        raise HTTPException(status_code=404, detail="unknown code")
+    if row.get("used_at"):
+        raise HTTPException(status_code=409, detail="code already used")
+
+    now = datetime.now(timezone.utc)
+    expires_iso = row.get("expires_at")
+    try:
+        expires = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
+    except Exception:
+        raise HTTPException(status_code=500, detail="corrupt expires_at on code")
+    if now > expires:
+        raise HTTPException(status_code=410, detail="code expired")
+
+    therapist_id = row["therapist_id"]
+
+    mark_consent_code_used(data.code, data.patient_id, now.isoformat())
+    create_therapist_patient_link({
+        "therapist_id": therapist_id,
+        "patient_id": data.patient_id,
+        "created_at": now.isoformat(),
+    })
+    return {
+        "success": True,
+        "therapist_id": therapist_id,
+        "patient_id": data.patient_id,
+    }
+
+
+# --- Therapist read views --------------------------------------------------
+
+@app.get("/api/v1/therapist/{therapist_id}/patients")
+def therapist_patients(therapist_id: str):
+    """List of patient user_ids the therapist has been granted access to."""
+    ids = list_patients_for_therapist(therapist_id)
+    patients = []
+    for pid in ids:
+        profile = get_profile(pid) or {}
+        patients.append({
+            "user_id": pid,
+            "display_name": profile.get("display_name"),
+        })
+    return {"therapist_id": therapist_id, "patients": patients}
+
+
+@app.get("/api/v1/therapist/{therapist_id}/patients/{patient_id}/reports")
+def therapist_patient_reports(therapist_id: str, patient_id: str):
+    """Panic reports for a client. Requires an active consent link."""
+    if not is_link_active(therapist_id, patient_id):
+        raise HTTPException(status_code=403, detail="no consent link for this patient")
+    return {"reports": get_reports_for_patient(patient_id)}
+
+
+@app.get("/api/v1/therapist/{therapist_id}/patients/{patient_id}/sensor-data")
+def therapist_patient_sensor(therapist_id: str, patient_id: str):
+    """Sensor stream for a client. Requires an active consent link."""
+    if not is_link_active(therapist_id, patient_id):
+        raise HTTPException(status_code=403, detail="no consent link for this patient")
+    return {"sensor_data": get_sensor_data_for_patient(patient_id)}
+
+
+# ---------------------------------------------------------------------------
 # Admin dashboard (single-service deployment)
 #
 # When a built copy of the React admin app is present at ./admin_dist, serve it
@@ -204,12 +352,9 @@ if os.path.isdir(_ADMIN_DIST):
     def serve_admin_spa(full_path: str):
         """Serve the built file when it exists, else index.html so React Router
         can handle the route client-side (the try_files rule nginx applies)."""
-        # Never swallow unmatched API paths — they must still 404 as JSON rather
-        # than silently returning the dashboard HTML.
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not found")
         candidate = os.path.realpath(os.path.join(_ADMIN_DIST, full_path))
-        # realpath + prefix check keeps "../" out of the served tree.
         if candidate.startswith(_ADMIN_DIST + os.sep) and os.path.isfile(candidate):
             return FileResponse(candidate)
         return FileResponse(os.path.join(_ADMIN_DIST, "index.html"))

@@ -1,10 +1,5 @@
 """Admin web-app API. All routes are under /api/v1/admin and (except login)
 require a valid admin JWT. Backs the React admin app.
-
-Two read-only routes - the user list and a user's panic reports - additionally
-accept a Supabase JWT from a therapist/developer account, because the phone
-app's therapist Stats view reads the same data. Those use get_clinical_viewer
-instead of get_current_admin; everything else stays admin-only.
 """
 
 from __future__ import annotations
@@ -14,10 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 import auto_retrain
 import model_service
 import storage
-import supabase_admin
 from auth import (
     create_access_token,
-    get_clinical_viewer,
     get_current_admin,
     hash_password,
     verify_password,
@@ -27,7 +20,6 @@ from models import (
     AdminRegisterRequest,
     RetrainRequest,
     RollbackRequest,
-    SetRoleRequest,
     TokenResponse,
 )
 
@@ -73,48 +65,11 @@ def list_admins(admin: dict = Depends(get_current_admin)):
     return {"admins": storage.list_admins()}
 
 
-# --- Accounts (Supabase auth users + roles) ---------------------------------
-#
-# Distinct from /users below: that list is derived from data rows and still
-# contains pre-auth ids like "tairsa-dev", which are not Supabase accounts and
-# cannot hold a role. Role management therefore works off the auth service.
-#
-# Admin-only. A therapist must not be able to promote themselves, so these use
-# get_current_admin rather than get_clinical_viewer.
-
-@router.get("/accounts")
-def list_accounts(admin: dict = Depends(get_current_admin)):
-    """Supabase auth accounts with their current role."""
-    try:
-        return {"accounts": supabase_admin.list_accounts()}
-    except supabase_admin.SupabaseAdminError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-
-@router.put("/accounts/{user_id}/role")
-def set_account_role(
-    user_id: str,
-    body: SetRoleRequest,
-    admin: dict = Depends(get_current_admin),
-):
-    """Set one account's role (user / therapist / developer)."""
-    try:
-        return {"account": supabase_admin.set_role(user_id, body.role)}
-    except supabase_admin.SupabaseAdminError as e:
-        # An unknown role is the caller's fault; anything else is upstream.
-        code = 400 if "Unknown role" in str(e) else 503
-        raise HTTPException(status_code=code, detail=str(e))
-
-
 # --- Users -----------------------------------------------------------------
 
 @router.get("/users")
-def list_users(viewer: dict = Depends(get_clinical_viewer)):
-    """Distinct app users (by user_id) with per-source row counts.
-
-    Also serves the phone app's therapist patient picker, hence
-    get_clinical_viewer rather than get_current_admin.
-    """
+def list_users(admin: dict = Depends(get_current_admin)):
+    """Distinct app users (by user_id) with per-source row counts."""
     sensors = storage.read_all_records()
     feedback = storage.read_all_feedback()
     reports = storage.read_all_reports()
@@ -167,8 +122,7 @@ def user_detail(user_id: str, admin: dict = Depends(get_current_admin)):
 
 
 @router.get("/users/{user_id}/reports")
-def user_reports(user_id: str, viewer: dict = Depends(get_clinical_viewer)):
-    """One user's panic reports. Backs both the dashboard and therapist Stats."""
+def user_reports(user_id: str, admin: dict = Depends(get_current_admin)):
     rows = [r for r in storage.read_all_reports() if r.get("user_id") == user_id]
     rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
     return {"reports": rows}

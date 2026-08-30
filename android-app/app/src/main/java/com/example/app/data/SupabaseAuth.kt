@@ -42,8 +42,6 @@ object SupabaseAuth {
         val email: String,
         val accessToken: String,
         val refreshToken: String,
-        /** From `user_metadata.role`; [UserRole.USER] when absent or unknown. */
-        val role: UserRole = UserRole.USER,
     )
 
     /** Wrapper so callers can pattern-match instead of catching exceptions. */
@@ -140,12 +138,7 @@ object SupabaseAuth {
         val email = user.optString("email", "")
         val accessToken = json.optString("access_token", "")
         val refreshToken = json.optString("refresh_token", "")
-        // Role lives in user_metadata, set from the Supabase dashboard. Absent
-        // for every normal signup, which is exactly the USER default.
-        val role = UserRole.fromWire(
-            user.optJSONObject("user_metadata")?.optString("role")
-        )
-        if (id.isBlank()) null else Session(id, email, accessToken, refreshToken, role)
+        if (id.isBlank()) null else Session(id, email, accessToken, refreshToken)
     } catch (_: Throwable) {
         null
     }

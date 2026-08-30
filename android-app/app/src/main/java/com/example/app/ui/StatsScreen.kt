@@ -7,7 +7,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,19 +38,12 @@ import java.util.Locale
  * Plus a summary card up top: total episodes, average severity, top trigger.
  * ------------------------------------------------------------------------- */
 
-/**
- * Charts for one patient's panic history.
- *
- * Identity and sign-out used to live in this screen's header; they moved to
- * [ProfileScreen] when Stats went behind the therapist role gate, so this is
- * now purely a charts view. [patientLabel] names whose data is on screen -
- * the therapist picked it in [PatientPickerScreen].
- */
 @Composable
 fun StatsScreen(
     reports: List<PanicReportEntity>,
     modifier: Modifier = Modifier,
-    patientLabel: String? = null,
+    userEmail: String? = null,
+    onConnectTherapist: (() -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
 
@@ -66,7 +58,7 @@ fun StatsScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Header(patientLabel = patientLabel)
+            Header(userEmail = userEmail)
             if (reports.isEmpty()) {
                 EmptyState()
             } else {
@@ -75,6 +67,38 @@ fun StatsScreen(
                 TriggerBreakdownCard(reports)
                 SeverityDistributionCard(reports)
             }
+            if (onConnectTherapist != null) {
+                ConnectTherapistCard(onClick = onConnectTherapist)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectTherapistCard(onClick: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                "Connect a therapist",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Have a code from your therapist? Enter it here to let them see your reports.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+            )
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onClick) {
+                Text("Enter a therapist code")
+            }
         }
     }
 }
@@ -82,7 +106,7 @@ fun StatsScreen(
 /* ---------- Header + empty state ----------------------------------------- */
 
 @Composable
-private fun Header(patientLabel: String?) {
+private fun Header(userEmail: String?) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.fillMaxWidth(),
@@ -103,17 +127,17 @@ private fun Header(patientLabel: String?) {
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            "Patterns",
+            "Your patterns",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = if (patientLabel.isNullOrBlank()) {
-                "When attacks happen and what triggers them."
+            text = if (userEmail.isNullOrBlank()) {
+                "See when attacks happen and what triggers them."
             } else {
-                patientLabel
+                "Signed in as $userEmail"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
