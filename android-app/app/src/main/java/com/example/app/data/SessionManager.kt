@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Persists the currently signed-in user's session across app launches.
@@ -25,6 +27,7 @@ object SessionManager {
     private const val KEY_EMAIL = "email"
     private const val KEY_ACCESS_TOKEN = "access_token"
     private const val KEY_REFRESH_TOKEN = "refresh_token"
+    private const val KEY_EXPIRES_AT = "expires_at"
 
     /** Set once the pre-auth rows on this device have been handed to an owner. */
     private const val KEY_LEGACY_CLAIMED = "legacy_rows_claimed"
@@ -45,6 +48,7 @@ object SessionManager {
         val email = prefs.getString(KEY_EMAIL, null)
         val access = prefs.getString(KEY_ACCESS_TOKEN, null)
         val refresh = prefs.getString(KEY_REFRESH_TOKEN, null)
+        val expiresAt = prefs.getLong(KEY_EXPIRES_AT, 0L)
         // A persisted session with no access token cannot authenticate against
         // anything, so treat it as signed out rather than letting the user in
         // to a session that silently fails. This happens when a signup needed
@@ -58,6 +62,7 @@ object SessionManager {
                 email = email.orEmpty(),
                 accessToken = access.orEmpty(),
                 refreshToken = refresh.orEmpty(),
+                expiresAtMs = expiresAt,
             )
         }
     }
@@ -69,6 +74,7 @@ object SessionManager {
             .putString(KEY_EMAIL, session.email)
             .putString(KEY_ACCESS_TOKEN, session.accessToken)
             .putString(KEY_REFRESH_TOKEN, session.refreshToken)
+            .putLong(KEY_EXPIRES_AT, session.expiresAtMs)
             .apply()
         _session.value = session
     }
@@ -110,8 +116,70 @@ object SessionManager {
             .remove(KEY_EMAIL)
             .remove(KEY_ACCESS_TOKEN)
             .remove(KEY_REFRESH_TOKEN)
+            .remove(KEY_EXPIRES_AT)
+            // Left behind by a removed role implementation; clear it so the
+            // prefs file does not keep a stale value forever.
+            .remove("role")
             .apply()
         _session.value = null
+    }
+
+    /**
+     * Serialises refreshes. Without it, several coroutines waking together -
+     * MonitorService posting, the dashboard polling, the upload queue draining -
+     * would each spend the same single-use refresh token, and all but one would
+     * be rejected.
+     */
+    private val refreshMutex = Mutex()
+
+    /**
+     * The access token to put on a request, refreshed first if it is close to
+     * expiry. Call this at SEND time, never at enqueue time: UploadQueue can
+     * replay a payload days after it was created, and a token captured then
+     * would be long dead.
+     *
+     * Returns null only when there is no session at all, or when the refresh
+     * token was definitively rejected (in which case the session is cleared and
+     * the user is asked to sign in again).
+     *
+     * Deliberately tolerant of being offline: a network failure returns the
+     * existing token rather than signing anyone out. The request it is attached
+     * to will fail on its own and be retried, which is recoverable; wrongly
+     * destroying a session because the wifi dropped is not.
+     */
+    suspend fun validAccessToken(context: Context): String? {
+        val current = _session.value ?: return null
+        if (!current.needsRefresh()) return current.accessToken.takeIf { it.isNotBlank() }
+
+        return refreshMutex.withLock {
+            // Re-read inside the lock: another caller may have refreshed while
+            // we waited, in which case there is nothing left to do.
+            val latest = _session.value ?: return@withLock null
+            if (!latest.needsRefresh()) {
+                return@withLock latest.accessToken.takeIf { it.isNotBlank() }
+            }
+            when (val result = SupabaseAuth.refresh(latest.refreshToken)) {
+                is SupabaseAuth.AuthResult.Success -> {
+                    // Supabase rotates the refresh token, so persist the whole
+                    // session, not just the access token.
+                    save(context, result.session)
+                    result.session.accessToken.takeIf { it.isNotBlank() }
+                }
+                is SupabaseAuth.AuthResult.Error -> {
+                    val rejected = result.httpCode != null && result.httpCode in 400..499
+                    if (rejected) {
+                        // The refresh token is spent or revoked; nothing but a
+                        // fresh sign-in will fix it.
+                        clear(context)
+                        null
+                    } else {
+                        // Offline or a server blip. Keep the session and let the
+                        // caller try the old token.
+                        latest.accessToken.takeIf { it.isNotBlank() }
+                    }
+                }
+            }
+        }
     }
 
     private fun prefs(context: Context): SharedPreferences =

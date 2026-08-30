@@ -36,13 +36,33 @@ object SupabaseAuth {
     private const val CONNECT_TIMEOUT_MS = 8_000
     private const val READ_TIMEOUT_MS = 8_000
 
-    /** Result of a successful signup or sign-in. */
+    /**
+     * Refresh this far before the token actually expires.
+     *
+     * Two minutes rather than seconds because MonitorService posts from the
+     * background on its own schedule: a token that is technically still valid
+     * when we check can expire while the request is in flight.
+     */
+    const val REFRESH_SKEW_MS = 2 * 60 * 1000L
+
+    /** Result of a successful signup, sign-in or refresh. */
     data class Session(
         val userId: String,
         val email: String,
         val accessToken: String,
         val refreshToken: String,
-    )
+        /**
+         * When [accessToken] stops being accepted, as epoch millis. 0 when the
+         * server did not say - treated as "unknown", never as "expired", so a
+         * missing field can't log anyone out.
+         */
+        val expiresAtMs: Long = 0L,
+    ) {
+        /** True when the token is past [skewMs] before its stated expiry. */
+        fun needsRefresh(nowMs: Long = System.currentTimeMillis(),
+                         skewMs: Long = REFRESH_SKEW_MS): Boolean =
+            expiresAtMs > 0L && nowMs >= expiresAtMs - skewMs
+    }
 
     /** Wrapper so callers can pattern-match instead of catching exceptions. */
     sealed interface AuthResult {
@@ -66,6 +86,49 @@ object SupabaseAuth {
             email = email,
             password = password,
         )
+
+    /**
+     * Exchange a refresh token for a fresh access token.
+     *
+     * Supabase access tokens last about an hour. Nothing renewed them before,
+     * so any long-lived caller - MonitorService in particular - would simply
+     * start getting 401s an hour after sign-in and stop syncing, silently.
+     *
+     * A refresh token is single-use: Supabase returns a new one each time, so
+     * the whole session must be persisted, not just the access token.
+     */
+    suspend fun refresh(refreshToken: String): AuthResult = withContext(Dispatchers.IO) {
+        if (refreshToken.isBlank()) {
+            return@withContext AuthResult.Error("no refresh token", 400)
+        }
+        val body = JSONObject().put("refresh_token", refreshToken).toString()
+        val url = URL("$PROJECT_URL/auth/v1/token?grant_type=refresh_token")
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("apikey", ANON_KEY)
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        try {
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            if (code !in 200..299) {
+                return@withContext AuthResult.Error(parseErrorMessage(text) ?: "HTTP $code", code)
+            }
+            parseSession(text)?.let { AuthResult.Success(it) }
+                ?: AuthResult.Error("unexpected refresh response")
+        } catch (t: Throwable) {
+            // Network failure, not a rejection. Reported with no httpCode so the
+            // caller can tell "offline" from "this token is dead".
+            AuthResult.Error(t.message ?: "network error")
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     /**
      * Sign the current session out on the server. Best-effort - clearing
@@ -138,7 +201,16 @@ object SupabaseAuth {
         val email = user.optString("email", "")
         val accessToken = json.optString("access_token", "")
         val refreshToken = json.optString("refresh_token", "")
-        if (id.isBlank()) null else Session(id, email, accessToken, refreshToken)
+        // Supabase sends expires_at (epoch seconds) and/or expires_in
+        // (seconds from now). Prefer the absolute value; fall back to the
+        // relative one; 0 means "unknown", which never counts as expired.
+        val expiresAtMs = when {
+            json.has("expires_at") -> json.optLong("expires_at") * 1000L
+            json.has("expires_in") -> System.currentTimeMillis() + json.optLong("expires_in") * 1000L
+            else -> 0L
+        }
+        if (id.isBlank()) null
+        else Session(id, email, accessToken, refreshToken, expiresAtMs)
     } catch (_: Throwable) {
         null
     }
