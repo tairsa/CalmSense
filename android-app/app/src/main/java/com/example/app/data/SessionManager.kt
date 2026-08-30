@@ -32,6 +32,15 @@ object SessionManager {
     /** Set once the pre-auth rows on this device have been handed to an owner. */
     private const val KEY_LEGACY_CLAIMED = "legacy_rows_claimed"
 
+    /**
+     * Application context, captured by [init]. Safe to hold: it is the
+     * application instance, not an Activity, so there is nothing to leak.
+     *
+     * It exists so [validAccessToken] can be called from the HTTP layer, which
+     * builds connections in places that have no Context to hand.
+     */
+    private var appContext: Context? = null
+
     private val _session = MutableStateFlow<SupabaseAuth.Session?>(null)
     val session: StateFlow<SupabaseAuth.Session?> = _session.asStateFlow()
 
@@ -43,6 +52,7 @@ object SessionManager {
 
     /** Load any persisted session into memory. Safe to call multiple times. */
     fun init(context: Context) {
+        appContext = context.applicationContext
         val prefs = prefs(context)
         val id = prefs.getString(KEY_USER_ID, null)
         val email = prefs.getString(KEY_EMAIL, null)
@@ -147,6 +157,15 @@ object SessionManager {
      * to will fail on its own and be retried, which is recoverable; wrongly
      * destroying a session because the wifi dropped is not.
      */
+    /**
+     * As [validAccessToken], for callers with no Context. Returns null if
+     * [init] has not run yet, which cannot happen after Activity onCreate.
+     */
+    suspend fun validAccessToken(): String? {
+        val ctx = appContext ?: return null
+        return validAccessToken(ctx)
+    }
+
     suspend fun validAccessToken(context: Context): String? {
         val current = _session.value ?: return null
         if (!current.needsRefresh()) return current.accessToken.takeIf { it.isNotBlank() }

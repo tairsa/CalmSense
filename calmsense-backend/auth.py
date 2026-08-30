@@ -107,3 +107,104 @@ def get_current_admin(
     return {"id": admin["id"], "email": admin["email"], "name": admin.get("name")}
 
 
+# ---------------------------------------------------------------------------
+# Supabase user tokens (the phone app)
+#
+# Separate from the admin JWTs above: those are minted here and signed with a
+# shared secret, whereas Supabase signs user tokens with its own key.
+#
+# This project signs with ES256 and publishes the public key at the JWKS
+# endpoint below, so verification needs that key, not a secret. There is no
+# shared secret to configure and none to leak. (An earlier plan assumed HS256
+# and a SUPABASE_JWT_SECRET; that could never have worked here. If you have a
+# value in that variable it is almost certainly the key id, which is public.)
+# ---------------------------------------------------------------------------
+
+SUPABASE_URL = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+
+# PyJWT caches fetched keys, so this is one HTTP call per key rotation rather
+# than per request. Created lazily so importing this module never needs the
+# network.
+_jwks_client = None
+
+
+class SupabaseAuthUnavailable(RuntimeError):
+    """Raised when tokens cannot be verified at all (config or network)."""
+
+
+def _jwks() -> "jwt.PyJWKClient":
+    global _jwks_client
+    if _jwks_client is None:
+        if not SUPABASE_URL:
+            raise SupabaseAuthUnavailable(
+                "SUPABASE_URL is not set, so Supabase tokens cannot be verified."
+            )
+        _jwks_client = jwt.PyJWKClient(
+            f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+            cache_keys=True,
+        )
+    return _jwks_client
+
+
+def verify_supabase_token(token: str) -> dict:
+    """Return the verified claims of a Supabase access token.
+
+    Raises jwt.PyJWTError when the token is bad, or SupabaseAuthUnavailable
+    when we cannot reach the keys - the two are different failures and the
+    caller maps them to 401 and 503 respectively. Treating an outage as "token
+    invalid" would silently sign every user out.
+    """
+    try:
+        signing_key = _jwks().get_signing_key_from_jwt(token)
+    except SupabaseAuthUnavailable:
+        raise
+    except jwt.PyJWTError:
+        # A malformed token, or a kid that is not in the key set.
+        raise
+    except Exception as e:
+        raise SupabaseAuthUnavailable(f"could not fetch Supabase signing keys: {e}") from e
+
+    return jwt.decode(
+        token,
+        signing_key.key,
+        # ES256 is what this project uses; RS256 is accepted so a future key
+        # rotation to RSA does not lock every client out.
+        algorithms=["ES256", "RS256"],
+        audience="authenticated",
+    )
+
+
+def get_supabase_claims(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> dict:
+    """FastAPI dependency: verified claims from the caller's Supabase token."""
+    if creds is None or not creds.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        claims = verify_supabase_token(creds.credentials)
+    except SupabaseAuthUnavailable as e:
+        # Our problem, not the caller's. 503 so clients retry rather than
+        # discarding a session that is actually fine.
+        raise HTTPException(status_code=503, detail=str(e))
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.PyJWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+    if not claims.get("sub"):
+        raise HTTPException(status_code=401, detail="Token has no subject")
+    return claims
+
+
+def current_user_id(claims: dict = Depends(get_supabase_claims)) -> str:
+    """The authenticated user's id, taken from the verified token.
+
+    Endpoints must use this instead of a user_id from the request body, query
+    string or path - otherwise any caller can read or write anyone's data by
+    changing a string.
+    """
+    return claims["sub"]

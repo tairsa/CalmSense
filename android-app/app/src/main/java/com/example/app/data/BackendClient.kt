@@ -77,11 +77,15 @@ class BackendClient(private val baseUrl: String) {
 
     suspend fun postSensorData(payload: SensorPayload): PostResult = withContext(Dispatchers.IO) {
         runCatching {
+            // Fetched before the connection is built: the call is suspending and
+            // must happen at SEND time, so a queued payload gets a live token.
+            val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/sensor-data").openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
             conn.readTimeout = 5000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
             conn.doOutput = true
 
             val body = JSONObject().apply {
@@ -105,11 +109,15 @@ class BackendClient(private val baseUrl: String) {
 
     suspend fun submitPanicReport(payload: PanicReportPayload): PostResult = withContext(Dispatchers.IO) {
         runCatching {
+            // Fetched before the connection is built: the call is suspending and
+            // must happen at SEND time, so a queued payload gets a live token.
+            val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/panic-reports").openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
             conn.readTimeout = 5000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
             conn.doOutput = true
 
             val symptomsArr = JSONArray()
@@ -147,11 +155,15 @@ class BackendClient(private val baseUrl: String) {
 
     suspend fun submitPanicFeedback(payload: PanicFeedbackPayload): PostResult = withContext(Dispatchers.IO) {
         runCatching {
+            // Fetched before the connection is built: the call is suspending and
+            // must happen at SEND time, so a queued payload gets a live token.
+            val token = SessionManager.validAccessToken()
             val conn = URL("$baseUrl/api/v1/panic-feedback").openConnection() as HttpURLConnection
             conn.connectTimeout = 5000
             conn.readTimeout = 5000
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
             conn.doOutput = true
 
             val body = JSONObject().apply {

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 import auto_retrain
 import model_service
 from admin_routes import router as admin_router
+from auth import current_user_id
 from models import (
     ConsentCodeRequest,
     ConsentCodeResponse,
@@ -123,8 +124,11 @@ def health_check():
 
 
 @app.post("/api/v1/sensor-data", dependencies=_device_auth)
-def receive_sensor_data(data: SensorData):
+def receive_sensor_data(data: SensorData, user_id: str = Depends(current_user_id)):
     record = data.model_dump()
+    # Identity comes from the verified token, never from the body, so a caller
+    # cannot write rows against someone else's user_id.
+    record["user_id"] = user_id
 
     # Auto-fill timestamp if the mobile device did not provide one
     if record["timestamp"] is None:
@@ -141,7 +145,7 @@ def receive_sensor_data(data: SensorData):
 
 
 @app.post("/api/v1/panic-feedback", dependencies=_device_auth)
-def receive_panic_feedback(data: PanicFeedback):
+def receive_panic_feedback(data: PanicFeedback, user_id: str = Depends(current_user_id)):
     """Record a labeled training signal from the user.
 
     Used to retrain the panic classifier and to keep a model hit/miss log.
@@ -150,6 +154,7 @@ def receive_panic_feedback(data: PanicFeedback):
     logged it manually because the model missed it.
     """
     record = data.model_dump()
+    record["user_id"] = user_id
     if record["timestamp"] is None:
         record["timestamp"] = datetime.now(timezone.utc).isoformat()
     try:
@@ -163,7 +168,7 @@ def receive_panic_feedback(data: PanicFeedback):
 
 
 @app.post("/api/v1/panic-reports", dependencies=_device_auth)
-def receive_panic_report(data: PanicReport):
+def receive_panic_report(data: PanicReport, user_id: str = Depends(current_user_id)):
     """Mirror a journaled panic-attack report to the server.
 
     Phone is the source of truth (Room DB) — the server copy enables future
@@ -171,6 +176,7 @@ def receive_panic_report(data: PanicReport):
     GPS are sensitive; consider that before exposing this data widely.
     """
     record = data.model_dump()
+    record["user_id"] = user_id
     if record["timestamp"] is None:
         record["timestamp"] = datetime.now(timezone.utc).isoformat()
     try:
@@ -184,7 +190,7 @@ def receive_panic_report(data: PanicReport):
 
 
 @app.get("/api/v1/sensor-data", dependencies=_device_auth)
-def get_weights_for_user(user_id: str = Query(..., description="The user whose weights to retrieve")):
+def get_weights_for_user(user_id: str = Depends(current_user_id)):
     """Return the active model weights for the given user_id.
 
     Serves the user's active snapshot (from retrain / rollback / reset via the
@@ -205,17 +211,24 @@ def get_weights_for_user(user_id: str = Query(..., description="The user whose w
 # ---------------------------------------------------------------------------
 # Therapist mode: profiles, consent codes, therapist views.
 #
-# Auth is trust-based right now (server accepts whatever user_id the client
-# claims). Fine for the class demo; documented as "Future Work" to verify
-# the Supabase JWT server-side before shipping to real patients.
+# Every identity here comes from the verified Supabase token (current_user_id),
+# never from the body, query string or path. Before that, a caller could read
+# any therapist's patient list - and therefore those patients' reports and GPS
+# - just by putting a different id in the URL.
+#
+# The therapist_id path segment is kept so the URLs still read sensibly, but it
+# is checked against the token and a mismatch is refused rather than trusted.
 # ---------------------------------------------------------------------------
 
 # --- Profile ---------------------------------------------------------------
 
 @app.post("/api/v1/profile")
-def set_profile(data: Profile):
-    """Create or update a user's role (patient/therapist) + display name."""
+def set_profile(data: Profile, user_id: str = Depends(current_user_id)):
+    """Create or update the caller's own role + display name."""
     record = data.model_dump()
+    # You may only write your own profile; otherwise anyone could promote
+    # themselves, or overwrite someone else's role.
+    record["user_id"] = user_id
     try:
         upsert_profile(record)
         return {"success": True, "profile": record}
@@ -227,7 +240,8 @@ def set_profile(data: Profile):
 
 
 @app.get("/api/v1/profile")
-def read_profile(user_id: str = Query(..., description="Look up this user's profile")):
+def read_profile(user_id: str = Depends(current_user_id)):
+    """The caller's own profile. Reading someone else's is not offered."""
     profile = get_profile(user_id)
     return {"profile": profile}
 
@@ -245,14 +259,15 @@ def _generate_consent_code() -> str:
 
 
 @app.post("/api/v1/consent-codes", response_model=ConsentCodeResponse)
-def generate_consent_code(data: ConsentCodeRequest):
+def generate_consent_code(data: ConsentCodeRequest,
+                          therapist_id: str = Depends(current_user_id)):
     """Therapist generates a code to hand to a client (in person / message)."""
     now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=CONSENT_CODE_TTL_MINUTES)
     code = _generate_consent_code()
     record = {
         "code": code,
-        "therapist_id": data.therapist_id,
+        "therapist_id": therapist_id,
         "created_at": now.isoformat(),
         "expires_at": expires.isoformat(),
         "used_at": None,
@@ -266,7 +281,8 @@ def generate_consent_code(data: ConsentCodeRequest):
 
 
 @app.post("/api/v1/consent-codes/redeem")
-def redeem_consent_code(data: RedeemConsentRequest):
+def redeem_consent_code(data: RedeemConsentRequest,
+                        patient_id: str = Depends(current_user_id)):
     """Patient submits a code. If valid + unused + unexpired, creates the link."""
     row = find_consent_code(data.code)
     if row is None:
@@ -285,23 +301,25 @@ def redeem_consent_code(data: RedeemConsentRequest):
 
     therapist_id = row["therapist_id"]
 
-    mark_consent_code_used(data.code, data.patient_id, now.isoformat())
+    mark_consent_code_used(data.code, patient_id, now.isoformat())
     create_therapist_patient_link({
         "therapist_id": therapist_id,
-        "patient_id": data.patient_id,
+        "patient_id": patient_id,
         "created_at": now.isoformat(),
     })
     return {
         "success": True,
         "therapist_id": therapist_id,
-        "patient_id": data.patient_id,
+        "patient_id": patient_id,
     }
 
 
 # --- Therapist read views --------------------------------------------------
 
 @app.get("/api/v1/therapist/{therapist_id}/patients")
-def therapist_patients(therapist_id: str):
+def therapist_patients(therapist_id: str,
+                       caller_id: str = Depends(current_user_id)):
+    _require_self(therapist_id, caller_id)
     """List of patient user_ids the therapist has been granted access to."""
     ids = list_patients_for_therapist(therapist_id)
     patients = []
@@ -315,7 +333,9 @@ def therapist_patients(therapist_id: str):
 
 
 @app.get("/api/v1/therapist/{therapist_id}/patients/{patient_id}/reports")
-def therapist_patient_reports(therapist_id: str, patient_id: str):
+def therapist_patient_reports(therapist_id: str, patient_id: str,
+                              caller_id: str = Depends(current_user_id)):
+    _require_self(therapist_id, caller_id)
     """Panic reports for a client. Requires an active consent link."""
     if not is_link_active(therapist_id, patient_id):
         raise HTTPException(status_code=403, detail="no consent link for this patient")
@@ -323,7 +343,9 @@ def therapist_patient_reports(therapist_id: str, patient_id: str):
 
 
 @app.get("/api/v1/therapist/{therapist_id}/patients/{patient_id}/sensor-data")
-def therapist_patient_sensor(therapist_id: str, patient_id: str):
+def therapist_patient_sensor(therapist_id: str, patient_id: str,
+                             caller_id: str = Depends(current_user_id)):
+    _require_self(therapist_id, caller_id)
     """Sensor stream for a client. Requires an active consent link."""
     if not is_link_active(therapist_id, patient_id):
         raise HTTPException(status_code=403, detail="no consent link for this patient")

@@ -68,14 +68,14 @@ class TherapistApi(private val baseUrl: String) {
                 put("role", role)
                 put("display_name", displayName ?: JSONObject.NULL)
             }
-            val code = postJson("$baseUrl/api/v1/profile", payload.toString())
+            val code = postJson("$baseUrl/api/v1/profile", payload.toString(), SessionManager.validAccessToken())
             code in 200..299
         }
 
     /** GET /api/v1/profile?user_id=... - null if no row (or on network error). */
     suspend fun getProfile(userId: String): ProfileDto? = withContext(Dispatchers.IO) {
         val url = URL("$baseUrl/api/v1/profile?user_id=${URLEncoder.encode(userId, "UTF-8")}")
-        val body = simpleGet(url) ?: return@withContext null
+        val body = simpleGet(url, SessionManager.validAccessToken()) ?: return@withContext null
         runCatching {
             val json = JSONObject(body)
             val p = json.optJSONObject("profile") ?: return@runCatching null
@@ -93,7 +93,7 @@ class TherapistApi(private val baseUrl: String) {
     suspend fun createConsentCode(therapistId: String): ConsentCodeResponse? =
         withContext(Dispatchers.IO) {
             val payload = JSONObject().apply { put("therapist_id", therapistId) }
-            val body = postJsonForBody("$baseUrl/api/v1/consent-codes", payload.toString())
+            val body = postJsonForBody("$baseUrl/api/v1/consent-codes", payload.toString(), SessionManager.validAccessToken())
                 ?: return@withContext null
             runCatching {
                 val json = JSONObject(body)
@@ -143,7 +143,7 @@ class TherapistApi(private val baseUrl: String) {
     suspend fun listPatients(therapistId: String): List<PatientSummary> =
         withContext(Dispatchers.IO) {
             val url = URL("$baseUrl/api/v1/therapist/${URLEncoder.encode(therapistId, "UTF-8")}/patients")
-            val body = simpleGet(url) ?: return@withContext emptyList()
+            val body = simpleGet(url, SessionManager.validAccessToken()) ?: return@withContext emptyList()
             runCatching {
                 val arr = JSONObject(body).getJSONArray("patients")
                 List(arr.length()) { i ->
@@ -162,7 +162,7 @@ class TherapistApi(private val baseUrl: String) {
             val t = URLEncoder.encode(therapistId, "UTF-8")
             val p = URLEncoder.encode(patientId, "UTF-8")
             val url = URL("$baseUrl/api/v1/therapist/$t/patients/$p/reports")
-            val body = simpleGet(url) ?: return@withContext emptyList()
+            val body = simpleGet(url, SessionManager.validAccessToken()) ?: return@withContext emptyList()
             runCatching {
                 val arr = JSONObject(body).getJSONArray("reports")
                 List(arr.length()) { i ->
@@ -187,13 +187,14 @@ class TherapistApi(private val baseUrl: String) {
 
     /* ---------- Internals ---------------------------------------------- */
 
-    private fun postJson(url: String, body: String): Int {
+    private fun postJson(url: String, body: String, token: String?): Int {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
         }
         return try {
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
@@ -205,13 +206,14 @@ class TherapistApi(private val baseUrl: String) {
         }
     }
 
-    private fun postJsonForBody(url: String, body: String): String? {
+    private fun postJsonForBody(url: String, body: String, token: String?): String? {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
         }
         return try {
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
@@ -225,11 +227,12 @@ class TherapistApi(private val baseUrl: String) {
         }
     }
 
-    private fun simpleGet(url: URL): String? {
+    private fun simpleGet(url: URL, token: String?): String? {
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
         }
         return try {
             if (conn.responseCode in 200..299) {

@@ -34,8 +34,10 @@ class BackendApi(private val baseUrl: String = DEFAULT_BASE_URL) {
     suspend fun fetchWeights(userId: String): PanicModel = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(userId, "UTF-8")
         val url = URL("$baseUrl/api/v1/sensor-data?user_id=$encoded")
+        val token = SessionManager.validAccessToken()
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
         }
@@ -69,12 +71,14 @@ class BackendApi(private val baseUrl: String = DEFAULT_BASE_URL) {
             put("timestamp", timestampIso ?: JSONObject.NULL)
         }
         val url = URL("$baseUrl/api/v1/sensor-data")
+        val token = SessionManager.validAccessToken()
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
         }
         try {
             conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }

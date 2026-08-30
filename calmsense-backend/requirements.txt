@@ -10,6 +10,12 @@ python-dotenv
 # hashing uses the stdlib (hashlib.pbkdf2_hmac), so no bcrypt/passlib needed.
 pyjwt
 
+# Required by PyJWT to verify the ES256 tokens Supabase issues to the phone
+# (auth.verify_supabase_token). It arrives transitively via `supabase` today,
+# but this is a direct dependency now - pin it here so a change upstream
+# cannot silently break token verification.
+cryptography
+
 # ML training pipeline (used by ml/generate_data.py and ml/train_model.py).
 # The runtime API does not import these — it only reads ml/model_weights.json,
 # so a deployment that never retrains can skip these. Listed here for the
