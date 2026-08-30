@@ -119,7 +119,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 // connected node gets — verified 2026-08-02 to return 100.76.34.20. Requires Tailscale
 // to be connected on the device (it already was, for the tailnet IP to be reachable).
 // Equivalent raw IP as of 2026-08-02, if you ever need to fall back: http://100.76.34.20:8000
-private const val BACKEND_LAN_URL = "http://pi5-home-server-ts.tail4f470e.ts.net:8000"
+// Cloud Run, europe-west1. HTTPS and publicly reachable, so the app works on
+// any network without Tailscale - which the Pi URL below always required.
+//
+// The service scales to zero, so the first request after an idle period pays a
+// cold start; the HTTP timeouts in BackendApi/BackendClient are sized for it.
+//
+// Rollback: point this back at the Pi and rebuild. It is kept running in
+// parallel and serves the same Supabase data.
+//   Pi over Tailscale: http://pi5-home-server-ts.tail4f470e.ts.net:8000
+//   Pi raw tailnet IP: http://100.76.34.20:8000
+private const val BACKEND_LAN_URL = "https://calmsense-wzkmopdeua-ew.a.run.app"
 private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
 
 private val isEmulator: Boolean by lazy {
