@@ -230,15 +230,29 @@ class HrMonitoringService : Service(), SensorEventListener {
         // simply doesn't run, and the HR sensor's batch wakes drive sends instead.
         hasWakeUpAccel = accelSensor?.isWakeUpSensor == true
         if (!hasWakeUpAccel) {
-            Log.w(TAG, "No wake-up accelerometer — keep-alive lock available, duty-cycled against the platform HR sensor")
-            keepAliveLock = (getSystemService(POWER_SERVICE) as PowerManager)
-                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:KeepAlive")
-                .apply { setReferenceCounted(false) }
-            tickerFuture = ticker.scheduleWithFixedDelay(
-                { runCatching { maybeSendSample() }.onFailure { Log.w(TAG, "Ticker send failed", it) } },
-                SEND_MAX_INTERVAL_MS, SEND_MAX_INTERVAL_MS, TimeUnit.MILLISECONDS,
-            )
+            Log.w(TAG, "No wake-up accelerometer — keep-alive lock is the only cadence source")
         }
+        // The keep-alive lock and ticker are now set up regardless of whether a
+        // wake-up accelerometer exists.
+        //
+        // They used to be the fallback for hardware without one, on the
+        // assumption that a wake-up sensor's FIFO burst would always wake the
+        // SoC on schedule. Doze breaks that assumption: measured on the Watch5,
+        // the 5 s cadence held at the median but stalled for 44-142 s at a
+        // time. The sensor is still the cheap path that does the work almost
+        // always; this is the floor underneath it.
+        //
+        // It is not simply "hold the CPU awake": updateKeepAlive() duty-cycles
+        // the lock, and while the lock is off and the SoC is suspended the
+        // ticker does not run, so on a healthy device this costs close to
+        // nothing and the sensor keeps driving sends.
+        keepAliveLock = (getSystemService(POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "CalmSense:KeepAlive")
+            .apply { setReferenceCounted(false) }
+        tickerFuture = ticker.scheduleWithFixedDelay(
+            { runCatching { maybeSendSample() }.onFailure { Log.w(TAG, "Ticker send failed", it) } },
+            SEND_MAX_INTERVAL_MS, SEND_MAX_INTERVAL_MS, TimeUnit.MILLISECONDS,
+        )
         updateKeepAlive()
 
         offBodySensor = sensorManager.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT)
@@ -519,8 +533,16 @@ class HrMonitoringService : Service(), SensorEventListener {
      *  wake-up HR sensor both tick us for free; the lock is needed only in the
      *  gap where the Samsung SDK owns the PPG, and off-wrist we deliberately let
      *  the watch sleep and rely on the wake-up off-body sensor to bring us back.
-     *  No-op on hardware that has a wake-up accelerometer — keepAliveLock is
-     *  never created there. */
+     *  Effectively a no-op on hardware with a wake-up accelerometer: that
+     *  counts as a free wake source, so `need` stays false and the lock is
+     *  never acquired. That is deliberate - pinning the CPU awake on-body is
+     *  what the duty-cycling was introduced to stop.
+     *
+     *  It does mean the ticker is not a safety net against Doze on such
+     *  hardware; the battery-optimisation exemption requested by
+     *  WearMainActivity is what keeps the cadence honest there. If that
+     *  exemption is ever declined, this policy is the place to add an
+     *  escalation (e.g. hold the lock after N missed intervals). */
     private fun updateKeepAlive() {
         val lock = keepAliveLock ?: return
         val haveFreeTicker = hasWakeUpAccel || (platformHrRegistered && hrIsWakeUp)

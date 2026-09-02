@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Without this the watch app is subject to Doze, which defers delivery of
+         the wake-up sensor batches the 5 s cadence depends on. Measured effect:
+         the 5 s target held at the median but stalled for 44-142 s at a time. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
