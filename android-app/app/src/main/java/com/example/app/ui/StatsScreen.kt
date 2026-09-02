@@ -22,6 +22,8 @@ import com.example.app.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
+import com.example.app.R
 
 /* ---------------------------------------------------------------------------
  * StatsScreen
@@ -84,20 +86,20 @@ private fun ConnectTherapistCard(onClick: () -> Unit) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                "Connect a therapist",
+                stringResource(R.string.connect_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Have a code from your therapist? Enter it here to let them see your reports.",
+                stringResource(R.string.connect_card_prompt),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
             )
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onClick) {
-                Text("Enter a therapist code")
+                Text(stringResource(R.string.connect_enter_code))
             }
         }
     }
@@ -127,7 +129,7 @@ private fun Header(userEmail: String?) {
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            "Your patterns",
+            stringResource(R.string.stats_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground,
@@ -135,7 +137,7 @@ private fun Header(userEmail: String?) {
         Spacer(Modifier.height(4.dp))
         Text(
             text = if (userEmail.isNullOrBlank()) {
-                "See when attacks happen and what triggers them."
+                stringResource(R.string.stats_subtitle)
             } else {
                 "Signed in as $userEmail"
             },
@@ -148,7 +150,7 @@ private fun Header(userEmail: String?) {
 
 @Composable
 private fun EmptyState() {
-    ChartCard(title = "Nothing to show yet") {
+    ChartCard(title = stringResource(R.string.stats_empty_title)) {
         Text(
             "Once you log a few panic attacks in the questionnaire, patterns and " +
                 "statistics will appear here.",
@@ -173,14 +175,14 @@ private fun SummaryCard(reports: List<PanicReportEntity>) {
         ?.let { prettyTrigger(it) }
         ?: "-"
 
-    ChartCard(title = "At a glance") {
+    ChartCard(title = stringResource(R.string.stats_at_a_glance)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            StatCell(total.toString(), "episodes", Modifier.weight(1f))
-            StatCell(String.format(Locale.US, "%.1f", avgSeverity), "avg severity", Modifier.weight(1f))
-            StatCell(topTrigger, "top trigger", Modifier.weight(1f))
+            StatCell(total.toString(), stringResource(R.string.stats_episodes), Modifier.weight(1f))
+            StatCell(String.format(Locale.US, "%.1f", avgSeverity), stringResource(R.string.stats_avg_severity), Modifier.weight(1f))
+            StatCell(topTrigger, stringResource(R.string.stats_top_trigger), Modifier.weight(1f))
         }
     }
 }
@@ -231,8 +233,8 @@ private fun FrequencyChartCard(reports: List<PanicReportEntity>) {
     val maxCount = counts.max().coerceAtLeast(1)
 
     ChartCard(
-        title = "Panic frequency",
-        subtitle = "Last 14 days",
+        title = stringResource(R.string.stats_frequency),
+        subtitle = stringResource(R.string.stats_last_14_days),
     ) {
         Row(
             modifier = Modifier
@@ -291,7 +293,7 @@ private fun TriggerBreakdownCard(reports: List<PanicReportEntity>) {
         .toList()
         .sortedByDescending { it.second }
 
-    ChartCard(title = "Top triggers") {
+    ChartCard(title = stringResource(R.string.stats_top_triggers)) {
         if (counts.isEmpty()) {
             Text(
                 "No trigger data yet - fill in \"What were you doing?\" in the questionnaire.",
@@ -350,8 +352,8 @@ private fun SeverityDistributionCard(reports: List<PanicReportEntity>) {
     val maxCount = counts.max().coerceAtLeast(1)
 
     ChartCard(
-        title = "How intense",
-        subtitle = "Severity 1 (mild) - 10 (severe)",
+        title = stringResource(R.string.stats_how_intense),
+        subtitle = stringResource(R.string.stats_severity_scale),
     ) {
         Row(
             modifier = Modifier

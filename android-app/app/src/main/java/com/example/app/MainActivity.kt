@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -1115,7 +1116,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 icon = { Icon(Icons.Default.MonitorHeart, contentDescription = null) },
-                label = { Text("Monitor") },
+                label = { Text(stringResource(R.string.nav_monitor)) },
             )
             NavigationBarItem(
                 selected = currentRoute == ROUTE_REPORTS,
@@ -1129,7 +1130,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
-                label = { Text("Reports") },
+                label = { Text(stringResource(R.string.nav_reports)) },
             )
             NavigationBarItem(
                 selected = currentRoute == ROUTE_STATS,
@@ -1143,7 +1144,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 icon = { Icon(Icons.Default.Insights, contentDescription = null) },
-                label = { Text("Stats") },
+                label = { Text(stringResource(R.string.nav_stats)) },
             )
             NavigationBarItem(
                 selected = currentRoute == ROUTE_SETTINGS,
@@ -1157,7 +1158,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                label = { Text("Settings") },
+                label = { Text(stringResource(R.string.nav_settings)) },
             )
         }
     }

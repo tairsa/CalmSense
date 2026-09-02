@@ -107,4 +107,88 @@
     <string name="role_im_therapist">אני מטפל</string>
     <string name="role_im_therapist_desc">צפייה באירועים ובדפוסים של מטופל, בהסכמתו.</string>
     <string name="role_change_later">ניתן לבקש שינוי סוג חשבון מהתמיכה בהמשך.</string>
+
+    <!-- ===== דוחות ===== -->
+    <string name="reports_title">דוחות</string>
+    <string name="reports_window_24h">24 שע׳</string>
+    <string name="reports_window_7d">7 ימים</string>
+    <string name="reports_window_30d">30 יום</string>
+    <string name="reports_filter_all">הכול</string>
+    <string name="reports_none_in_period">אין דוחות בתקופה זו.</string>
+    <string name="reports_empty_hint">התקפי חרדה שתתעדו יופיעו כאן, כדי שתוכלו לעקוב אחריהם לאורך זמן.</string>
+    <string name="reports_detected_by_app">זוהה על ידי האפליקציה</string>
+    <string name="reports_manually_logged">תועד ידנית</string>
+    <string name="reports_location_captured">המיקום נשמר</string>
+    <string name="reports_delete_title">למחוק את הדוח הזה?</string>
+    <string name="reports_delete_body">הפעולה מסירה אותו מההיסטוריה שלכם. אות האימון המתויג נשאר בשרת.</string>
+    <string name="reports_delete_confirm">כן, מחקו</string>
+    <string name="reports_delete_cancel">השאירו</string>
+    <string name="time_just_now">הרגע</string>
+    <string name="time_minutes_ago">לפני %1$d דק׳</string>
+    <string name="time_hours_ago">לפני %1$d שע׳</string>
+    <string name="time_days_ago">לפני %1$d ימים</string>
+
+    <!-- ===== סטטיסטיקות ===== -->
+    <string name="stats_title">הדפוסים שלכם</string>
+    <string name="stats_subtitle">מתי מתרחשים ההתקפים ומה מעורר אותם.</string>
+    <string name="stats_empty_title">אין עדיין מה להציג</string>
+    <string name="stats_empty_body">אחרי שתתעדו כמה התקפי חרדה בשאלון, יופיעו כאן דפוסים וסטטיסטיקות.</string>
+    <string name="stats_at_a_glance">במבט מהיר</string>
+    <string name="stats_episodes">אירועים</string>
+    <string name="stats_avg_severity">חומרה ממוצעת</string>
+    <string name="stats_top_trigger">הטריגר הנפוץ</string>
+    <string name="stats_frequency">תדירות ההתקפים</string>
+    <string name="stats_last_14_days">14 הימים האחרונים</string>
+    <string name="stats_top_triggers">הטריגרים הנפוצים</string>
+    <string name="stats_no_trigger_data">אין עדיין נתוני טריגרים \u2014 מלאו את \u201dמה עשיתם לפני שזה התחיל?\u201c בשאלון.</string>
+    <string name="stats_how_intense">עוצמת ההתקפים</string>
+    <string name="stats_severity_scale">חומרה 1 (קלה) \u2013 10 (חמורה)</string>
+    <string name="stats_signed_in_as">מחוברים כ\u2011%1$s</string>
+
+    <!-- ===== חיבור מטפל ===== -->
+    <string name="connect_title">חיבור מטפל</string>
+    <string name="connect_intro">המטפל שלכם ייתן לכם קוד קצר. הזינו אותו כאן כדי לאפשר לו לצפות בדוחות שלכם.</string>
+    <string name="connect_code_label">קוד (לדוגמה A7K-Q2M)</string>
+    <string name="connect_action">חיבור</string>
+    <string name="connect_success">מחובר. המטפל שלכם יכול לראות את הנתונים מעכשיו.</string>
+    <string name="connect_privacy">אפשר לבטל את הגישה בכל עת. רק המטפל שתחברו יוכל לראות את הנתונים שלכם \u2014 אף אחד אחר.</string>
+    <string name="connect_card_prompt">יש לכם קוד מהמטפל? הזינו אותו כאן כדי לאפשר לו לראות את הדוחות שלכם.</string>
+    <string name="connect_enter_code">הזנת קוד מטפל</string>
+    <string name="action_back">חזרה</string>
+
+    <!-- ===== שאלון ===== -->
+    <string name="quest_title">איך היה?</string>
+    <string name="quest_all_optional">כל השאלות אינן חובה \u2014 מלאו רק מה שעוזר לכם.</string>
+    <string name="quest_symptoms">אילו תסמינים חוויתם?</string>
+    <string name="quest_feeling">מה הרגשתם?</string>
+    <string name="quest_feeling_hint">לדוגמה: גלי אימה, לחץ בחזה, מחשבות מרוצות\u2026</string>
+    <string name="quest_activity">מה עשיתם לפני שזה התחיל?</string>
+    <string name="quest_activity_hint">לדוגמה: בנסיעה הביתה מהעבודה, בחנות עמוסה\u2026</string>
+    <string name="quest_helped">מה עזר לכם לצאת מזה?</string>
+    <string name="quest_helped_hint">לדוגמה: נשימות מווסתות, שיחה עם אחותי, מים קרים\u2026</string>
+    <string name="quest_duration">כמה זמן זה נמשך? (בדקות)</string>
+    <string name="quest_save">שמירת הדוח</string>
+    <string name="quest_skip">דילוג</string>
+
+    <string name="symptom_shortness_of_breath">קוצר נשימה</string>
+    <string name="symptom_racing_heart">דופק מואץ</string>
+    <string name="symptom_chest_tightness">לחץ בחזה</string>
+    <string name="symptom_cold_sweats">זיעה קרה</string>
+    <string name="symptom_trembling">רעד</string>
+    <string name="symptom_dizziness">סחרחורת</string>
+    <string name="symptom_nausea">בחילה</string>
+    <string name="symptom_numbness">נימול או עקצוץ</string>
+    <string name="symptom_choking">תחושת חנק</string>
+    <string name="symptom_unreality">תחושת אי\u2011מציאות</string>
+    <string name="symptom_losing_control">פחד לאבד שליטה</string>
+    <string name="symptom_hot_flashes">גלי חום או צמרמורות</string>
+    <string name="action_delete">מחיקה</string>
+    <string name="action_cancel">ביטול</string>
+    <string name="reports_confirm_title">אתם בטוחים?</string>
+    <string name="reports_confirm_body">לא ניתן לבטל את הפעולה.</string>
+    <string name="quest_duration_placeholder">לדוגמה 12</string>
+    <string name="nav_monitor">ניטור</string>
+    <string name="nav_reports">דוחות</string>
+    <string name="nav_stats">סטטיסטיקות</string>
+    <string name="nav_settings">הגדרות</string>
 </resources>

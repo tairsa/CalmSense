@@ -37,6 +37,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.ui.res.stringResource
+import com.example.app.R
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -53,9 +55,9 @@ fun QuestionnaireScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("How was it?") },
+                title = { Text(stringResource(R.string.quest_title)) },
                 actions = {
-                    TextButton(onClick = onSkip) { Text("Skip") }
+                    TextButton(onClick = onSkip) { Text(stringResource(R.string.quest_skip)) }
                 },
             )
         },
@@ -82,7 +84,7 @@ fun QuestionnaireScreen(
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null)
                     Spacer(modifier = Modifier.padding(end = 6.dp))
-                    Text("Save report")
+                    Text(stringResource(R.string.quest_save))
                 }
             }
         },
@@ -95,17 +97,17 @@ fun QuestionnaireScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             Text(
-                "All questions are optional — fill in only what helps you.",
+                stringResource(R.string.quest_all_optional),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
             )
 
-            SectionLabel("What were you feeling?")
+            SectionLabel(stringResource(R.string.quest_feeling))
             OutlinedTextField(
                 value = feeling,
                 onValueChange = { feeling = it },
-                placeholder = { Text("e.g. waves of dread, chest tight, mind racing…") },
+                placeholder = { Text(stringResource(R.string.quest_feeling_hint)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp),
@@ -113,20 +115,23 @@ fun QuestionnaireScreen(
             )
 
             Spacer(modifier = Modifier.height(20.dp))
-            SectionLabel("Which symptoms did you have?")
+            SectionLabel(stringResource(R.string.quest_symptoms))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                DefaultSymptoms.forEach { s ->
-                    val selected = s in selectedSymptoms
+                DefaultSymptoms.forEach { option ->
+                    // Selection is tracked by the stable key, not the label, so
+                    // what is stored does not depend on the display language.
+                    val selected = option.key in selectedSymptoms
                     FilterChip(
                         selected = selected,
                         onClick = {
-                            selectedSymptoms = if (selected) selectedSymptoms - s else selectedSymptoms + s
+                            selectedSymptoms = if (selected) selectedSymptoms - option.key
+                                               else selectedSymptoms + option.key
                         },
-                        label = { Text(s) },
+                        label = { Text(stringResource(option.labelRes)) },
                         leadingIcon = if (selected) {
                             { Icon(Icons.Default.Check, contentDescription = null) }
                         } else null,
@@ -136,31 +141,31 @@ fun QuestionnaireScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            SectionLabel("What were you doing before it started?")
+            SectionLabel(stringResource(R.string.quest_activity))
             OutlinedTextField(
                 value = activityBefore,
                 onValueChange = { activityBefore = it },
-                placeholder = { Text("e.g. driving home from work, in a crowded store…") },
+                placeholder = { Text(stringResource(R.string.quest_activity_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
             )
 
             Spacer(modifier = Modifier.height(20.dp))
-            SectionLabel("What helped you snap out of it?")
+            SectionLabel(stringResource(R.string.quest_helped))
             OutlinedTextField(
                 value = whatHelped,
                 onValueChange = { whatHelped = it },
-                placeholder = { Text("e.g. paced breathing, called my sister, cold water…") },
+                placeholder = { Text(stringResource(R.string.quest_helped_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
             )
 
             Spacer(modifier = Modifier.height(20.dp))
-            SectionLabel("How long did it last? (minutes)")
+            SectionLabel(stringResource(R.string.quest_duration))
             OutlinedTextField(
                 value = durationText,
                 onValueChange = { v -> durationText = v.filter { it.isDigit() }.take(4) },
-                placeholder = { Text("e.g. 12") },
+                placeholder = { Text(stringResource(R.string.quest_duration_placeholder)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),

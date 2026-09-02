@@ -47,12 +47,20 @@ import androidx.compose.ui.unit.sp
 import com.example.app.data.PanicReportEntity
 import java.time.Duration
 import java.time.Instant
+import android.content.Context
+import androidx.annotation.StringRes
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.example.app.R
 
-enum class TimeWindow(val label: String, val durationMs: Long?) {
-    LAST_24H("24h", 24L * 60 * 60 * 1000),
-    LAST_7D("7d", 7L * 24 * 60 * 60 * 1000),
-    LAST_30D("30d", 30L * 24 * 60 * 60 * 1000),
-    ALL("All", null),
+// Labels are resource ids, not strings: an enum constructor runs long before
+// any composition exists and so cannot call stringResource. Resolving at the
+// call site also means the chips follow a language change without a restart.
+enum class TimeWindow(@StringRes val labelRes: Int, val durationMs: Long?) {
+    LAST_24H(R.string.reports_window_24h, 24L * 60 * 60 * 1000),
+    LAST_7D(R.string.reports_window_7d, 7L * 24 * 60 * 60 * 1000),
+    LAST_30D(R.string.reports_window_30d, 30L * 24 * 60 * 60 * 1000),
+    ALL(R.string.reports_filter_all, null),
 }
 
 @Composable
@@ -67,13 +75,13 @@ fun ReportsScreen(
         reports.filter { it.timestampMs >= cutoff }
     }
 
-    // Two-stage delete: long-press → "Delete this report?" → "Are you sure?"
+    // Two-stage delete: long-press → stringResource(R.string.reports_delete_title) → "Are you sure?"
     var stage1ReportId by remember { mutableStateOf<Long?>(null) }
     var stage2ReportId by remember { mutableStateOf<Long?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
-            "Reports",
+            stringResource(R.string.reports_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 8.dp),
@@ -87,7 +95,7 @@ fun ReportsScreen(
                 FilterChip(
                     selected = window == w,
                     onClick = { window = w },
-                    label = { Text(w.label) },
+                    label = { Text(stringResource(w.labelRes)) },
                 )
             }
         }
@@ -114,18 +122,18 @@ fun ReportsScreen(
         AlertDialog(
             onDismissRequest = { stage1ReportId = null },
             icon = { Icon(Icons.Default.Delete, contentDescription = null) },
-            title = { Text("Delete this report?") },
+            title = { Text(stringResource(R.string.reports_delete_title)) },
             text = {
-                Text("This removes it from your history. The labeled training signal stays on the server.")
+                Text(stringResource(R.string.reports_delete_body))
             },
             confirmButton = {
                 TextButton(onClick = {
                     stage1ReportId = null
                     stage2ReportId = id
-                }) { Text("Delete") }
+                }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { stage1ReportId = null }) { Text("Cancel") }
+                TextButton(onClick = { stage1ReportId = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -140,16 +148,16 @@ fun ReportsScreen(
                     tint = Color(0xFFEF5350),
                 )
             },
-            title = { Text("Are you sure?") },
-            text = { Text("This can't be undone.") },
+            title = { Text(stringResource(R.string.reports_confirm_title)) },
+            text = { Text(stringResource(R.string.reports_confirm_body)) },
             confirmButton = {
                 TextButton(onClick = {
                     onReportDelete(id)
                     stage2ReportId = null
-                }) { Text("Yes, delete") }
+                }) { Text(stringResource(R.string.reports_delete_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { stage2ReportId = null }) { Text("Keep it") }
+                TextButton(onClick = { stage2ReportId = null }) { Text(stringResource(R.string.reports_delete_cancel)) }
             },
         )
     }
@@ -162,9 +170,9 @@ private fun EmptyState() {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("No reports in this period.", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.reports_none_in_period), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Logged panic attacks will appear here so you can review them over time.",
+                stringResource(R.string.reports_empty_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
@@ -180,6 +188,7 @@ private fun ReportCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val ctx = LocalContext.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -195,13 +204,18 @@ private fun ReportCard(
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    relativeTime(report.timestampMs),
+                    relativeTime(ctx, report.timestampMs),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 )
                 val summary = report.feeling
-                    ?: report.symptoms.take(2).joinToString(" · ").takeIf { it.isNotBlank() }
-                    ?: if (report.detectedByModel) "Detected by app" else "Manually logged"
+                    ?: report.symptoms.take(2)
+                        // Reports store a stable English key; look up the
+                        // translated label, falling back to the key itself for
+                        // symptoms no longer in the preset list.
+                        .map { key -> symptomLabelResOrNull(key)?.let { ctx.getString(it) } ?: key }
+                        .joinToString(" · ").takeIf { it.isNotBlank() }
+                    ?: if (report.detectedByModel) stringResource(R.string.reports_detected_by_app) else stringResource(R.string.reports_manually_logged)
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodyMedium,
@@ -212,7 +226,7 @@ private fun ReportCard(
             if (report.latitude != null && report.longitude != null) {
                 Icon(
                     Icons.Default.LocationOn,
-                    contentDescription = "Location captured",
+                    contentDescription = stringResource(R.string.reports_location_captured),
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier.size(18.dp),
                 )
@@ -244,13 +258,16 @@ private fun SeverityBadge(severity: Int) {
     }
 }
 
-private fun relativeTime(timestampMs: Long): String {
+private fun relativeTime(context: Context, timestampMs: Long): String {
     val d = Duration.between(Instant.ofEpochMilli(timestampMs), Instant.now())
     val mins = d.toMinutes()
+    // Context.getString rather than stringResource: this is a plain function,
+    // not a composable, and the strings carry their own number placeholder so
+    // a translation can put the count wherever its grammar needs it.
     return when {
-        mins < 1 -> "just now"
-        mins < 60 -> "$mins min ago"
-        mins < 60 * 24 -> "${mins / 60} h ago"
-        else -> "${mins / (60 * 24)} d ago"
+        mins < 1 -> context.getString(R.string.time_just_now)
+        mins < 60 -> context.getString(R.string.time_minutes_ago, mins.toInt())
+        mins < 60 * 24 -> context.getString(R.string.time_hours_ago, (mins / 60).toInt())
+        else -> context.getString(R.string.time_days_ago, (mins / (60 * 24)).toInt())
     }
 }

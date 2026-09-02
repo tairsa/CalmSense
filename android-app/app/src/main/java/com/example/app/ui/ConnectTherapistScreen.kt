@@ -19,6 +19,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.app.ui.theme.AppTheme
+import androidx.compose.ui.res.stringResource
+import com.example.app.R
 
 /**
  * Patient-side screen for redeeming a consent code from a therapist.
@@ -59,7 +61,7 @@ fun ConnectTherapistScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.action_back),
                             tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                         )
                     }
@@ -83,14 +85,14 @@ fun ConnectTherapistScreen(
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "Connect a therapist",
+                stringResource(R.string.connect_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Your therapist will give you a short code. Enter it below to grant them view access to your reports.",
+                stringResource(R.string.connect_intro),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
@@ -100,7 +102,7 @@ fun ConnectTherapistScreen(
             OutlinedTextField(
                 value = code,
                 onValueChange = { code = it.uppercase().replace(" ", "") },
-                label = { Text("Code (e.g. A7K-Q2M)") },
+                label = { Text(stringResource(R.string.connect_code_label)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(
@@ -120,7 +122,7 @@ fun ConnectTherapistScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "Connected. Your therapist can now see your data.",
+                        stringResource(R.string.connect_success),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -152,13 +154,13 @@ fun ConnectTherapistScreen(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                 } else {
-                    Text("Connect", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.connect_action), fontWeight = FontWeight.SemiBold)
                 }
             }
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "You can revoke access at any time. Only the therapist you connect can see your data - no one else.",
+                stringResource(R.string.connect_privacy),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,

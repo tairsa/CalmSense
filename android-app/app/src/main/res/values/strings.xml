@@ -102,4 +102,92 @@
     <string name="role_im_therapist">I\'m a therapist</string>
     <string name="role_im_therapist_desc">See a client\'s episodes and patterns, with their consent.</string>
     <string name="role_change_later">You can request an account-type change from support later.</string>
+
+    <!-- ===== Reports ===== -->
+    <string name="reports_title">Reports</string>
+    <string name="reports_window_24h">24h</string>
+    <string name="reports_window_7d">7d</string>
+    <string name="reports_window_30d">30d</string>
+    <string name="reports_filter_all">All</string>
+    <string name="reports_none_in_period">No reports in this period.</string>
+    <string name="reports_empty_hint">Logged panic attacks will appear here so you can review them over time.</string>
+    <string name="reports_detected_by_app">Detected by app</string>
+    <string name="reports_manually_logged">Manually logged</string>
+    <string name="reports_location_captured">Location captured</string>
+    <string name="reports_delete_title">Delete this report?</string>
+    <string name="reports_delete_body">This removes it from your history. The labeled training signal stays on the server.</string>
+    <string name="reports_delete_confirm">Yes, delete</string>
+    <string name="reports_delete_cancel">Keep it</string>
+    <string name="time_just_now">just now</string>
+    <!-- %1$d is a count of minutes / hours / days -->
+    <string name="time_minutes_ago">%1$d min ago</string>
+    <string name="time_hours_ago">%1$d h ago</string>
+    <string name="time_days_ago">%1$d d ago</string>
+
+    <!-- ===== Stats ===== -->
+    <string name="stats_title">Your patterns</string>
+    <string name="stats_subtitle">See when attacks happen and what triggers them.</string>
+    <string name="stats_empty_title">Nothing to show yet</string>
+    <string name="stats_empty_body">Once you log a few panic attacks in the questionnaire, patterns and statistics will appear here.</string>
+    <string name="stats_at_a_glance">At a glance</string>
+    <string name="stats_episodes">episodes</string>
+    <string name="stats_avg_severity">avg severity</string>
+    <string name="stats_top_trigger">top trigger</string>
+    <string name="stats_frequency">Panic frequency</string>
+    <string name="stats_last_14_days">Last 14 days</string>
+    <string name="stats_top_triggers">Top triggers</string>
+    <string name="stats_no_trigger_data">No trigger data yet \u2014 fill in \u201cWhat were you doing before it started?\u201d in the questionnaire.</string>
+    <string name="stats_how_intense">How intense</string>
+    <string name="stats_severity_scale">Severity 1 (mild) \u2013 10 (severe)</string>
+    <!-- %1$s is an email address -->
+    <string name="stats_signed_in_as">Signed in as %1$s</string>
+
+    <!-- ===== Connect a therapist ===== -->
+    <string name="connect_title">Connect a therapist</string>
+    <string name="connect_intro">Your therapist will give you a short code. Enter it below to grant them view access to your reports.</string>
+    <string name="connect_code_label">Code (e.g. A7K-Q2M)</string>
+    <string name="connect_action">Connect</string>
+    <string name="connect_success">Connected. Your therapist can now see your data.</string>
+    <string name="connect_privacy">You can revoke access at any time. Only the therapist you connect can see your data \u2014 no one else.</string>
+    <string name="connect_card_prompt">Have a code from your therapist? Enter it here to let them see your reports.</string>
+    <string name="connect_enter_code">Enter a therapist code</string>
+    <string name="action_back">Back</string>
+
+    <!-- ===== Questionnaire ===== -->
+    <string name="quest_title">How was it?</string>
+    <string name="quest_all_optional">All questions are optional \u2014 fill in only what helps you.</string>
+    <string name="quest_symptoms">Which symptoms did you have?</string>
+    <string name="quest_feeling">What were you feeling?</string>
+    <string name="quest_feeling_hint">e.g. waves of dread, chest tight, mind racing\u2026</string>
+    <string name="quest_activity">What were you doing before it started?</string>
+    <string name="quest_activity_hint">e.g. driving home from work, in a crowded store\u2026</string>
+    <string name="quest_helped">What helped you snap out of it?</string>
+    <string name="quest_helped_hint">e.g. paced breathing, called my sister, cold water\u2026</string>
+    <string name="quest_duration">How long did it last? (minutes)</string>
+    <string name="quest_save">Save report</string>
+    <string name="quest_skip">Skip</string>
+
+    <!-- Symptom labels. The English text doubles as the stored key so reports
+         stay comparable across languages - see Symptoms.kt. -->
+    <string name="symptom_shortness_of_breath">Shortness of breath</string>
+    <string name="symptom_racing_heart">Racing heart</string>
+    <string name="symptom_chest_tightness">Chest tightness</string>
+    <string name="symptom_cold_sweats">Cold sweats</string>
+    <string name="symptom_trembling">Trembling</string>
+    <string name="symptom_dizziness">Dizziness</string>
+    <string name="symptom_nausea">Nausea</string>
+    <string name="symptom_numbness">Numbness or tingling</string>
+    <string name="symptom_choking">Choking sensation</string>
+    <string name="symptom_unreality">Feeling of unreality</string>
+    <string name="symptom_losing_control">Fear of losing control</string>
+    <string name="symptom_hot_flashes">Hot flashes or chills</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="reports_confirm_title">Are you sure?</string>
+    <string name="reports_confirm_body">This can\'t be undone.</string>
+    <string name="quest_duration_placeholder">e.g. 12</string>
+    <string name="nav_monitor">Monitor</string>
+    <string name="nav_reports">Reports</string>
+    <string name="nav_stats">Stats</string>
+    <string name="nav_settings">Settings</string>
 </resources>
