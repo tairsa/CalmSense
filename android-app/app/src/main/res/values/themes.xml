@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.App" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Must descend from Theme.AppCompat: MainActivity is an AppCompatActivity
+         so that AppCompatDelegate can apply the per-app language below Android
+         13, and AppCompat throws at runtime under a plain platform theme.
+
+         Light, and with no dark variant, because the app deliberately locks to
+         light mode - the palette is tuned for it and a half-applied dark theme
+         reads worse than none. Colours come from Compose (ui/theme), so this
+         only governs the window before the first frame. -->
+    <style name="Theme.App" parent="Theme.AppCompat.Light.NoActionBar" />
 </resources>
