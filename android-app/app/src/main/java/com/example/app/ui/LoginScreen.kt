@@ -11,6 +11,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.autofill.AutofillType
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 
 private enum class AuthMode { SIGN_IN, SIGN_UP }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
     onAuthenticated: (SupabaseAuth.Session) -> Unit,
@@ -135,31 +138,49 @@ fun LoginScreen(
             }
             Spacer(Modifier.height(20.dp))
 
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it; error = null },
-                label = { Text("Email") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // EmailAddress and Username both listed: password managers key
+            // saved logins on one or the other depending on how the entry was
+            // created, and offering both means an existing CalmSense entry is
+            // found either way.
+            Autofillable(
+                types = listOf(AutofillType.EmailAddress, AutofillType.Username),
+                onFill = { email = it; error = null },
+            ) { autofillModifier ->
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it; error = null },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = autofillModifier.fillMaxWidth(),
+                )
+            }
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; error = null },
-                label = { Text("Password") },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                supportingText = {
-                    if (mode == AuthMode.SIGN_UP) {
-                        Text("At least 6 characters.", style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // NewPassword on sign-up so the manager offers to generate and
+            // save one; Password on sign-in so it offers the saved value.
+            Autofillable(
+                types = listOf(
+                    if (mode == AuthMode.SIGN_UP) AutofillType.NewPassword else AutofillType.Password
+                ),
+                onFill = { password = it; error = null },
+            ) { autofillModifier ->
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    supportingText = {
+                        if (mode == AuthMode.SIGN_UP) {
+                            Text("At least 6 characters.", style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    modifier = autofillModifier.fillMaxWidth(),
+                )
+            }
 
             if (error != null) {
                 Spacer(Modifier.height(8.dp))

@@ -35,6 +35,7 @@ from storage import (
     get_sensor_data_for_patient,
     is_link_active,
     list_patients_for_therapist,
+    list_therapists_for_patient,
     mark_consent_code_used,
     read_all_records,
     storage_backend,
@@ -315,6 +316,26 @@ def redeem_consent_code(data: RedeemConsentRequest,
 
 
 # --- Therapist read views --------------------------------------------------
+
+@app.get("/api/v1/my-therapists")
+def my_therapists(user_id: str = Depends(current_user_id)):
+    """The therapists the caller has granted access to, with display names.
+
+    Scoped to the caller by the token: there is no path or query parameter, so
+    this cannot be used to discover who anyone else is linked to.
+
+    Returns display_name as null when the therapist has a link but no profile
+    row yet; the client shows the id in that case rather than an empty string.
+    """
+    out = []
+    for tid in list_therapists_for_patient(user_id):
+        profile = get_profile(tid)
+        out.append({
+            "therapist_id": tid,
+            "display_name": (profile or {}).get("display_name"),
+        })
+    return {"therapists": out}
+
 
 def _require_self(path_id: str, caller_id: str) -> None:
     """Refuse a request whose URL names someone other than the caller.

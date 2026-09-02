@@ -231,6 +231,11 @@ class HeartRateViewModel : ViewModel() {
     // -----------------------------------------------------------------
     var profileLoaded by mutableStateOf(false)
     var profileRole by mutableStateOf<String?>(null)
+    /** Display name from the profile row; null when the user left it blank. */
+    var profileName by mutableStateOf<String?>(null)
+    /** Therapists this patient has granted access to. Empty for a therapist
+     *  account, and for a patient who has not redeemed a code yet. */
+    var myTherapists by mutableStateOf<List<TherapistApi.LinkedTherapist>>(emptyList())
     var roleSaving by mutableStateOf(false)
 
     // Therapist dashboard state.
@@ -319,7 +324,20 @@ class HeartRateViewModel : ViewModel() {
         viewModelScope.launch {
             val p = therapistApi.getProfile(userId)
             profileRole = p?.role
+            profileName = p?.displayName
             profileLoaded = true
+            // Only patients have therapists to list; asking as a therapist
+            // would always come back empty.
+            if (p?.role == "patient") refreshMyTherapists()
+        }
+    }
+
+    /** Refresh the connected-therapist list. Safe to call repeatedly - the
+     *  profile screen calls it on entry so a code redeemed on another device
+     *  shows up without a restart. */
+    fun refreshMyTherapists() {
+        viewModelScope.launch {
+            myTherapists = therapistApi.myTherapists()
         }
     }
 
@@ -334,12 +352,17 @@ class HeartRateViewModel : ViewModel() {
             val name = displayName.trim().ifBlank { null }
             val ok = therapistApi.setProfile(userId = userId, role = role, displayName = name)
             roleSaving = false
-            if (ok) profileRole = role
+            if (ok) {
+                profileRole = role
+                profileName = name
+            }
         }
     }
 
     /** Reset profile state — used on logout so the next login re-fetches. */
     fun resetProfile() {
+        profileName = null
+        myTherapists = emptyList()
         profileLoaded = false
         profileRole = null
         patients = emptyList()
@@ -924,14 +947,6 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background,
-                    topBar = {
-                        // Only shown on the three main tab screens; pushed
-                        // detail screens (questionnaire, report detail) have
-                        // their own top bars.
-                        if (showBottomNav) {
-                            CalmSenseTopBar(onLogout = handleLogout)
-                        }
-                    },
                     bottomBar = {
                         if (showBottomNav) {
                             CalmSenseBottomNav(navController, currentRoute)
@@ -954,7 +969,18 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             composable(ROUTE_SETTINGS) {
-                                SettingsScreen()
+                                // Refresh on entry so a code redeemed on
+                                // another device shows up without a restart.
+                                LaunchedEffect(Unit) {
+                                    if (viewModel.profileRole == "patient") viewModel.refreshMyTherapists()
+                                }
+                                SettingsScreen(
+                                    email = session?.email,
+                                    displayName = viewModel.profileName,
+                                    role = viewModel.profileRole,
+                                    therapists = viewModel.myTherapists,
+                                    onLogout = handleLogout,
+                                )
                             }
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
@@ -1044,6 +1070,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Bar carrying only the sign-out action.
+     *
+     * Patients no longer use this - their sign-out lives in Settings > Profile
+     * alongside their email, name and connected therapist, so the bar was pure
+     * chrome on every tab and a mistap risk on the monitoring screen.
+     *
+     * Therapists still do: their flow is a separate scaffold with no Settings
+     * tab, so removing it here would leave them no way to sign out at all.
+     */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun CalmSenseTopBar(onLogout: () -> Unit) {

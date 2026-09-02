@@ -30,6 +30,17 @@ class TherapistApi(private val baseUrl: String) {
         val displayName: String?,
     )
 
+    /** A therapist this patient has granted access to. */
+    data class LinkedTherapist(
+        val therapistId: String,
+        val displayName: String?,
+    ) {
+        /** What to show the patient: their therapist's name, or a short id
+         *  when the therapist has a link but no profile row yet. */
+        val label: String get() = displayName?.takeIf { it.isNotBlank() }
+            ?: "Therapist ${therapistId.take(8)}"
+    }
+
     data class ConsentCodeResponse(
         val code: String,
         val expiresAt: String,          // ISO 8601 UTC
@@ -86,6 +97,25 @@ class TherapistApi(private val baseUrl: String) {
                 displayName = p.optString("display_name").takeIf { !p.isNull("display_name") },
             )
         }.getOrNull()
+    }
+
+    /**
+     * GET /api/v1/my-therapists - who the signed-in patient has granted
+     * access to. Scoped by the token, so there is no id to pass.
+     */
+    suspend fun myTherapists(): List<LinkedTherapist> = withContext(Dispatchers.IO) {
+        val body = simpleGet(URL("$baseUrl/api/v1/my-therapists"), SessionManager.validAccessToken())
+            ?: return@withContext emptyList()
+        runCatching {
+            val arr = JSONObject(body).optJSONArray("therapists") ?: return@runCatching emptyList()
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                LinkedTherapist(
+                    therapistId = o.optString("therapist_id"),
+                    displayName = o.optString("display_name").takeIf { !o.isNull("display_name") },
+                )
+            }
+        }.getOrDefault(emptyList())
     }
 
     /* ---------- Consent codes ------------------------------------------ */

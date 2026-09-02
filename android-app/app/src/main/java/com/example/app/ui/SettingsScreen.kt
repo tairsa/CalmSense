@@ -1,5 +1,6 @@
 package com.example.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,17 +10,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -41,18 +50,28 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
 import com.example.app.data.SettingsStore
+import com.example.app.data.TherapistApi
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Settings tab: detection (sensitivity dial + alert cooldown), display
- * (advanced mode) and the monitoring on/off switch. Profile settings (name,
- * language, password) will join once user accounts land.
+ * Settings tab: the signed-in account, detection (sensitivity dial + alert
+ * cooldown), display (advanced mode) and the monitoring on/off switch.
+ *
+ * Profile sits first and owns identity: who you are signed in as, who can see
+ * your data, and signing out. Sign out used to be an icon in the top app bar,
+ * where it was one mistap away on every screen.
  */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    email: String?,
+    displayName: String?,
+    role: String?,
+    therapists: List<TherapistApi.LinkedTherapist> = emptyList(),
+    onLogout: () -> Unit = {},
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -64,6 +83,21 @@ fun SettingsScreen() {
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 8.dp),
+        )
+
+        Text(
+            "Profile",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
+        )
+
+        ProfileCard(
+            email = email,
+            displayName = displayName,
+            role = role,
+            therapists = therapists,
+            onLogout = onLogout,
         )
 
         Text(
@@ -109,6 +143,137 @@ fun SettingsScreen() {
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
+
+/**
+ * Who you are, who can see your data, and the way out.
+ *
+ * The therapist list is only meaningful for a patient: it is the visible
+ * counterpart of the consent they granted by redeeming a code, so they can
+ * check at a glance who currently has access. A therapist sees their own role
+ * instead - their client list already lives on their dashboard.
+ */
+@Composable
+private fun ProfileCard(
+    email: String?,
+    displayName: String?,
+    role: String?,
+    therapists: List<TherapistApi.LinkedTherapist>,
+    onLogout: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    // Name is the friendlier label, so it leads when set and
+                    // the email drops to a subtitle. With no name the email
+                    // takes the title slot rather than leaving a blank line.
+                    Text(
+                        displayName?.takeIf { it.isNotBlank() } ?: email ?: "Signed in",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (!displayName.isNullOrBlank() && !email.isNullOrBlank()) {
+                        Text(
+                            email,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        )
+                    }
+                    Text(
+                        when (role) {
+                            "therapist" -> "Therapist"
+                            "patient" -> "Patient"
+                            else -> "Account"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+            }
+
+            if (role == "patient") {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    if (therapists.isEmpty()) "Therapist" else
+                        if (therapists.size == 1) "Your therapist" else "Your therapists",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                if (therapists.isEmpty()) {
+                    Text(
+                        "No therapist connected. Enter a code from your therapist " +
+                            "on the Stats tab to share your reports.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                } else {
+                    therapists.forEach { t ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.MedicalServices,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                t.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "They can see your panic reports and vitals.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            TextButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "Sign out",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun ConsentCard() {

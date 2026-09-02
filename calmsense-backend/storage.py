@@ -445,6 +445,27 @@ def list_patients_for_therapist(therapist_id: str) -> list[str]:
     return [r["patient_id"] for r in rows if r.get("therapist_id") == therapist_id]
 
 
+def list_therapists_for_patient(patient_id: str) -> list[str]:
+    """Return the therapist_ids this patient has granted access to.
+
+    The mirror of list_patients_for_therapist. The link table is queried in
+    both directions and has an index on each column, so neither is a scan.
+
+    A patient can in principle have several therapists - the table is unique on
+    the (therapist_id, patient_id) pair, not on patient_id alone - so this
+    returns a list rather than an optional single id.
+    """
+    if _supabase is not None:
+        try:
+            rows = _select_all(LINKS_TABLE_NAME, columns="therapist_id",
+                               eq=("patient_id", patient_id))
+            return [r["therapist_id"] for r in rows if "therapist_id" in r]
+        except Exception as e:
+            _read_fallback_or_raise("reverse link read", e)
+    rows = _json_read_from(LINKS_FILE)
+    return [r["therapist_id"] for r in rows if r.get("patient_id") == patient_id]
+
+
 def is_link_active(therapist_id: str, patient_id: str) -> bool:
     """Guard used by therapist-scoped read endpoints."""
     return patient_id in list_patients_for_therapist(therapist_id)
