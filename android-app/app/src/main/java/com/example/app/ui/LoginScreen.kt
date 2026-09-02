@@ -15,8 +15,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.platform.LocalAutofillManager
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -39,7 +41,6 @@ import kotlinx.coroutines.launch
 
 private enum class AuthMode { SIGN_IN, SIGN_UP }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LoginScreen(
     onAuthenticated: (SupabaseAuth.Session) -> Unit,
@@ -59,6 +60,11 @@ fun LoginScreen(
     var error by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
+    // Compose 1.8+. commit() tells the autofill service the form was submitted,
+    // which is what makes it offer to SAVE the credentials. Without it a
+    // manager can fill but never learns the login in the first place - the
+    // gap that made autofill look unsupported on the old API.
+    val autofillManager = LocalAutofillManager.current
 
     val canSubmit = email.isNotBlank() && password.length >= 6 && !loading
 
@@ -88,6 +94,9 @@ fun LoginScreen(
                         SessionManager.setRememberedEmail(
                             context, if (rememberMe) result.session.email.ifBlank { email } else null
                         )
+                        // Offer to save these credentials. Only on success, so
+                        // a manager is never asked to store a rejected password.
+                        autofillManager?.commit()
                         onAuthenticated(result.session)
                     }
                 }
@@ -156,54 +165,44 @@ fun LoginScreen(
             }
             Spacer(Modifier.height(20.dp))
 
-            // EmailAddress and Username both listed: password managers key
-            // saved logins on one or the other depending on how the entry was
-            // created, and offering both means an existing CalmSense entry is
-            // found either way.
-            Autofillable(
-                types = listOf(AutofillType.EmailAddress, AutofillType.Username),
-                onFill = { email = it; error = null },
-            ) { autofillModifier ->
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it; error = null },
-                    label = { Text("Email") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    modifier = autofillModifier.fillMaxWidth(),
-                )
-            }
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it; error = null },
+                label = { Text("Email") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                // Both types: password managers key saved logins on one or the
+                // other depending on how the entry was created, so advertising
+                // both finds an existing CalmSense entry either way.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        contentType = ContentType.EmailAddress + ContentType.Username
+                    },
+            )
             Spacer(Modifier.height(12.dp))
-            // NewPassword on sign-up so the manager offers to generate and
-            // save one; Password on sign-in so it offers the saved value.
-            Autofillable(
-                types = listOf(
-                    if (mode == AuthMode.SIGN_UP) AutofillType.NewPassword else AutofillType.Password
-                ),
-                onFill = { password = it; error = null },
-            ) { autofillModifier ->
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
-                    label = { Text("Password") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    visualTransformation = if (showPassword) VisualTransformation.None
-                                           else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        IconButton(onClick = { showPassword = !showPassword }) {
-                            Icon(
-                                imageVector = if (showPassword) Icons.Filled.VisibilityOff
-                                              else Icons.Filled.Visibility,
-                                // Describes the ACTION, which is what a screen
-                                // reader user needs, and it doubles as the
-                                // tooltip.
-                                contentDescription = if (showPassword) "Hide password"
-                                                     else "Show password",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it; error = null },
+                label = { Text("Password") },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                visualTransformation = if (showPassword) VisualTransformation.None
+                                       else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                trailingIcon = {
+                    IconButton(onClick = { showPassword = !showPassword }) {
+                        Icon(
+                            imageVector = if (showPassword) Icons.Filled.VisibilityOff
+                                          else Icons.Filled.Visibility,
+                            // Describes the ACTION, which is what a screen
+                            // reader user needs, and it doubles as the
+                            // tooltip.
+                            contentDescription = if (showPassword) "Hide password"
+                                                 else "Show password",
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        )
                         }
                     },
                     supportingText = {
@@ -211,9 +210,16 @@ fun LoginScreen(
                             Text("At least 6 characters.", style = MaterialTheme.typography.bodySmall)
                         }
                     },
-                    modifier = autofillModifier.fillMaxWidth(),
+                    // NewPassword while signing up so a manager offers to
+                    // generate and store one; Password while signing in so it
+                    // offers the saved value.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentType = if (mode == AuthMode.SIGN_UP) ContentType.NewPassword
+                                          else ContentType.Password
+                        },
                 )
-            }
 
             // Only meaningful when signing in: on sign-up the address is being
             // typed for the first time, so there is nothing yet to remember.
