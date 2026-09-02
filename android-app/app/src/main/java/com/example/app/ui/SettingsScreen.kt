@@ -1,6 +1,7 @@
 package com.example.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,10 +47,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
+import com.example.app.R
+import com.example.app.data.LanguageManager
 import com.example.app.data.SettingsStore
 import com.example.app.data.TherapistApi
 import java.text.DateFormat
@@ -79,14 +84,14 @@ fun SettingsScreen(
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Text(
-            "Settings",
+            stringResource(R.string.settings_title),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 8.dp, top = 16.dp, bottom = 8.dp),
         )
 
         Text(
-            "Profile",
+            stringResource(R.string.settings_profile),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -101,7 +106,16 @@ fun SettingsScreen(
         )
 
         Text(
-            "Detection",
+            stringResource(R.string.settings_language),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
+        )
+
+        LanguageCard()
+
+        Text(
+            stringResource(R.string.settings_detection),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 8.dp),
@@ -114,7 +128,7 @@ fun SettingsScreen(
         CooldownCard()
 
         Text(
-            "Display",
+            stringResource(R.string.settings_display),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
@@ -123,7 +137,7 @@ fun SettingsScreen(
         AdvancedModeCard()
 
         Text(
-            "Monitoring",
+            stringResource(R.string.settings_monitoring),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
@@ -132,7 +146,7 @@ fun SettingsScreen(
         MonitoringCard()
 
         Text(
-            "Privacy",
+            stringResource(R.string.settings_privacy),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
@@ -185,7 +199,7 @@ private fun ProfileCard(
                     // the email drops to a subtitle. With no name the email
                     // takes the title slot rather than leaving a blank line.
                     Text(
-                        displayName?.takeIf { it.isNotBlank() } ?: email ?: "Signed in",
+                        displayName?.takeIf { it.isNotBlank() } ?: email ?: stringResource(R.string.profile_signed_in),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -198,9 +212,9 @@ private fun ProfileCard(
                     }
                     Text(
                         when (role) {
-                            "therapist" -> "Therapist"
-                            "patient" -> "Patient"
-                            else -> "Account"
+                            "therapist" -> stringResource(R.string.role_therapist)
+                            "patient" -> stringResource(R.string.role_patient)
+                            else -> stringResource(R.string.settings_account)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
@@ -213,16 +227,15 @@ private fun ProfileCard(
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    if (therapists.isEmpty()) "Therapist" else
-                        if (therapists.size == 1) "Your therapist" else "Your therapists",
+                    if (therapists.isEmpty()) stringResource(R.string.profile_therapist_label) else
+                        if (therapists.size == 1) stringResource(R.string.profile_your_therapist) else stringResource(R.string.profile_your_therapists),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 if (therapists.isEmpty()) {
                     Text(
-                        "No therapist connected. Enter a code from your therapist " +
-                            "on the Stats tab to share your reports.",
+                        stringResource(R.string.profile_no_therapist),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     )
@@ -245,7 +258,7 @@ private fun ProfileCard(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "They can see your panic reports and vitals.",
+                        stringResource(R.string.profile_therapist_can_see),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     )
@@ -265,11 +278,75 @@ private fun ProfileCard(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    "Sign out",
+                    stringResource(R.string.profile_sign_out),
                     color = MaterialTheme.colorScheme.error,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * Language picker.
+ *
+ * Placed directly under Profile rather than in a submenu: someone who has
+ * landed in a language they cannot read needs to find this without navigating
+ * through more of it.
+ *
+ * The choice is applied by AppCompatDelegate, which recreates the activity, so
+ * there is nothing to save and no restart to prompt for.
+ */
+@Composable
+private fun LanguageCard() {
+    // Re-read on each composition rather than holding state: after a change
+    // the activity is recreated, so this is always the live value and cannot
+    // drift from what is actually applied.
+    val current = LanguageManager.current()
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            LanguageManager.Language.entries.forEach { lang ->
+                val label = when (lang) {
+                    LanguageManager.Language.SYSTEM -> stringResource(R.string.language_system)
+                    LanguageManager.Language.ENGLISH -> stringResource(R.string.language_english)
+                    LanguageManager.Language.HEBREW -> stringResource(R.string.language_hebrew)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { LanguageManager.set(lang) }
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                ) {
+                    RadioButton(
+                        selected = lang == current,
+                        // Row handles the click so the whole row is the target;
+                        // a radio-sized hit area is an accessibility problem.
+                        onClick = null,
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        // English and Hebrew names are shown in their own
+                        // script, so they stay recognisable whichever language
+                        // the rest of the UI is currently in.
+                        fontWeight = if (lang == current) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.settings_language_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
         }
     }
 }
@@ -291,14 +368,12 @@ private fun ConsentCard() {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Heart-rate data consent",
+                    stringResource(R.string.consent_card_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "CalmSense reads heart rate and HRV from your watch to detect " +
-                        "panic attacks. Turning this off revokes consent and stops " +
-                        "all monitoring.",
+                    stringResource(R.string.consent_card_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
@@ -336,13 +411,12 @@ private fun CooldownCard() {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Alert cooldown",
+                    stringResource(R.string.cooldown_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "Minimum minutes between panic alerts, so one long episode " +
-                        "doesn't notify over and over. 0 alerts on every check.",
+                    stringResource(R.string.cooldown_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
@@ -355,7 +429,7 @@ private fun CooldownCard() {
                     text = digits
                     digits.toIntOrNull()?.let { SettingsStore.setPanicCooldownMinutes(it) }
                 },
-                label = { Text("min") },
+                label = { Text(stringResource(R.string.cooldown_unit)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.width(88.dp),
@@ -364,14 +438,18 @@ private fun CooldownCard() {
     }
 }
 
-// Label → snooze duration; null = off until turned back on manually.
-private val SNOOZE_OPTIONS: List<Pair<String, Long?>> = listOf(
-    "For 30 minutes" to 30L * 60_000L,
-    "For 1 hour" to 60L * 60_000L,
-    "For 2 hours" to 2L * 60L * 60_000L,
-    "For 8 hours" to 8L * 60L * 60_000L,
-    "For 24 hours" to 24L * 60L * 60_000L,
-    "Until I turn it back on" to null,
+// Label resource → snooze duration; null = off until turned back on manually.
+// Resource ids rather than strings: this is a top-level val, so it is built
+// before any composition exists and cannot call stringResource itself. The
+// label is resolved where the menu is rendered, which also means it follows a
+// language change without the app restarting.
+private val SNOOZE_OPTIONS: List<Pair<Int, Long?>> = listOf(
+    R.string.snooze_30_minutes to 30L * 60_000L,
+    R.string.snooze_1_hour to 60L * 60_000L,
+    R.string.snooze_2_hours to 2L * 60L * 60_000L,
+    R.string.snooze_8_hours to 8L * 60L * 60_000L,
+    R.string.snooze_24_hours to 24L * 60L * 60_000L,
+    R.string.snooze_indefinite to null,
 )
 
 @Composable
@@ -388,22 +466,18 @@ private fun MonitoringCard() {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                if (enabled) "CalmSense is on" else "CalmSense is off",
+                if (enabled) stringResource(R.string.monitoring_on) else stringResource(R.string.monitoring_off),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
                 when {
                     enabled ->
-                        "Turning it off stops panic detection and the background " +
-                            "monitoring service — for a set time, or until you " +
-                            "turn it back on here."
+                        stringResource(R.string.monitoring_on_desc)
                     offUntil > 0L ->
-                        "Detection is stopped and nothing runs in the background. " +
-                            "Monitoring turns back on by itself at ${formatOffUntil(offUntil)}."
+                        stringResource(R.string.monitoring_off_until, formatOffUntil(offUntil))
                     else ->
-                        "Detection is stopped and nothing runs in the background. " +
-                            "Turn it back on to resume monitoring."
+                        stringResource(R.string.monitoring_off_desc)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
@@ -418,12 +492,12 @@ private fun MonitoringCard() {
                             contentColor = MaterialTheme.colorScheme.onError,
                         ),
                     ) {
-                        Text("Turn off CalmSense…")
+                        Text(stringResource(R.string.monitoring_turn_off))
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        SNOOZE_OPTIONS.forEach { (label, duration) ->
+                        SNOOZE_OPTIONS.forEach { (labelRes, duration) ->
                             DropdownMenuItem(
-                                text = { Text(label) },
+                                text = { Text(stringResource(labelRes)) },
                                 onClick = {
                                     menuOpen = false
                                     MonitoringSnooze.turnOff(context, duration)
@@ -437,7 +511,7 @@ private fun MonitoringCard() {
                     onClick = { MonitoringSnooze.turnOn(context) },
                     modifier = Modifier.padding(top = 12.dp),
                 ) {
-                    Text("Turn monitoring back on")
+                    Text(stringResource(R.string.monitoring_turn_on))
                 }
             }
         }
@@ -463,14 +537,12 @@ private fun AdvancedModeCard() {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Advanced mode",
+                    stringResource(R.string.advanced_mode),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    "Show the developer view of the dashboard: simulation tools, " +
-                        "server and model status, p(panic), motion, threshold and " +
-                        "data delay. Turn off for a clean everyday view.",
+                    stringResource(R.string.advanced_mode_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
@@ -525,13 +597,12 @@ private fun SensitivityCard() {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
-                "Detection sensitivity",
+                stringResource(R.string.detection_sensitivity),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                "How easily CalmSense decides something is a panic attack. " +
-                    "Higher sensitivity catches more events but raises more false alarms.",
+                stringResource(R.string.detection_sensitivity_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 modifier = Modifier.padding(top = 4.dp),
@@ -549,13 +620,13 @@ private fun SensitivityCard() {
             )
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "Fewer alerts",
+                    stringResource(R.string.detection_fewer_alerts),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    "More alerts",
+                    stringResource(R.string.detection_more_alerts),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
                 )
@@ -569,14 +640,14 @@ private fun SensitivityCard() {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "Alerts when the model is ≥ ${(shownThreshold * 100).roundToInt()}% sure",
+                    stringResource(R.string.detection_threshold_summary, (shownThreshold * 100).roundToInt()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
                 )
                 if (!isDefault) {
                     TextButton(onClick = {
                         SettingsStore.resetDetectionThreshold()
-                    }) { Text("Reset") }
+                    }) { Text(stringResource(R.string.detection_reset)) }
                 }
             }
         }

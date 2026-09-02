@@ -28,8 +28,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.app.R
 
 /**
  * First-launch data-tracking consent gate. Monitoring stays off until the user
@@ -56,15 +58,14 @@ fun ConsentScreen(
             )
             Spacer(Modifier.height(20.dp))
             Text(
-                "Allow heart-rate monitoring",
+                stringResource(R.string.consent_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "To detect panic attacks early, CalmSense needs to read sensor data " +
-                    "from your watch. Here's exactly what and why:",
+                stringResource(R.string.consent_intro),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
             )
@@ -77,25 +78,24 @@ fun ConsentScreen(
             ) {
                 ConsentRow(
                     Icons.Default.Favorite,
-                    "Heart rate & beat-to-beat interval (IBI)",
-                    "Continuously, while you wear the watch — to measure heart-rate variability (HRV)."
+                    stringResource(R.string.consent_what_title),
+                    stringResource(R.string.consent_what_desc)
                 )
                 ConsentRow(
                     Icons.Default.MonitorHeart,
-                    "Used only to detect a panic attack",
-                    "A high heart rate with low HRV is an early sign. Motion tells panic apart from exercise."
+                    stringResource(R.string.consent_why_title),
+                    stringResource(R.string.consent_why_desc)
                 )
                 ConsentRow(
                     Icons.Default.Lock,
-                    "Processed on your devices",
-                    "Analysis runs on your watch and phone. You can stop monitoring anytime in Settings."
+                    stringResource(R.string.consent_where_title),
+                    stringResource(R.string.consent_where_desc)
                 )
             }
 
             Spacer(Modifier.height(16.dp))
             Text(
-                "By continuing you consent to CalmSense reading your heart-rate and HRV " +
-                    "data for panic-attack detection. CalmSense is not a medical device.",
+                stringResource(R.string.consent_disclaimer),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
             )
@@ -106,13 +106,13 @@ fun ConsentScreen(
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("I consent — start monitoring", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.consent_accept), fontWeight = FontWeight.SemiBold)
             }
             TextButton(
                 onClick = onDecline,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             ) {
-                Text("Not now", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                Text(stringResource(R.string.consent_decline), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
             }
         }
     }

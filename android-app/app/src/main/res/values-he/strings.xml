@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">קאלם‏סנס</string>
-    <!-- Probe string, used to prove the locale switch reaches resources. -->
-    <string name="lang_probe">עברית פעילה</string>
-</resources>

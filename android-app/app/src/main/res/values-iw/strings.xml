@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NOTE the folder is values-iw, not values-he.
+         Hebrew's ISO 639-1 code was changed from "iw" to "he" in 1989, but
+         Java (and therefore Android) still normalises it back to the obsolete
+         "iw" when resolving resources. A values-he folder is silently ignored:
+         the locale applies - layout even flips to RTL - while every string
+         quietly falls back to English, which looks like a translation bug
+         rather than a folder-name one.
+
+         app_name is deliberately absent: the brand stays "CalmSense" in Latin
+         script, which is normal for software brands in Israel and avoids an
+         awkward transliteration. Android falls back to values/strings.xml. -->
+
+    <!-- ===== בורר שפה (הגדרות) ===== -->
+    <string name="settings_language">שפה</string>
+    <string name="language_system">ברירת המחדל של המכשיר</string>
+    <string name="language_english">English</string>
+    <string name="language_hebrew">עברית</string>
+    <string name="settings_language_hint">משנה את האפליקציה מיד. עברית נקראת מימין לשמאל.</string>
+
+    <!-- ===== הגדרות ===== -->
+    <string name="settings_title">הגדרות</string>
+    <string name="settings_profile">פרופיל</string>
+    <string name="settings_account">חשבון</string>
+    <string name="settings_detection">זיהוי</string>
+    <string name="settings_display">תצוגה</string>
+    <string name="settings_monitoring">ניטור</string>
+    <string name="settings_privacy">פרטיות</string>
+
+    <string name="profile_signed_in">מחובר</string>
+    <string name="role_patient">מטופל</string>
+    <string name="role_therapist">מטפל</string>
+    <string name="profile_sign_out">התנתקות</string>
+    <string name="profile_therapist_label">מטפל</string>
+    <string name="profile_your_therapist">המטפל שלך</string>
+    <string name="profile_your_therapists">המטפלים שלך</string>
+    <string name="profile_no_therapist">לא מחובר מטפל. הזינו קוד שקיבלתם מהמטפל בלשונית הסטטיסטיקות כדי לשתף את הדוחות שלכם.</string>
+    <string name="profile_therapist_can_see">הם יכולים לראות את דוחות ההתקפים והמדדים שלכם.</string>
+
+    <string name="detection_sensitivity">רגישות הזיהוי</string>
+    <string name="detection_sensitivity_desc">עד כמה קאלם‑סנס ממהר לקבוע שמדובר בהתקף חרדה. רגישות גבוהה מזהה יותר אירועים, אך גם מייצרת יותר התראות שווא.</string>
+    <string name="detection_fewer_alerts">פחות התראות</string>
+    <string name="detection_more_alerts">יותר התראות</string>
+    <string name="detection_reset">איפוס</string>
+    <string name="detection_threshold_summary">מתריע כשהמודל בטוח ב‑%1$d%% ומעלה</string>
+
+    <string name="cooldown_title">השהיה בין התראות</string>
+    <string name="cooldown_desc">מספר הדקות המזערי בין התראות, כדי שאירוע ארוך אחד לא יתריע שוב ושוב. 0 מתריע בכל בדיקה.</string>
+    <string name="cooldown_unit">דק׳</string>
+
+    <string name="advanced_mode">מצב מתקדם</string>
+    <string name="advanced_mode_desc">הצגת תצוגת המפתח של לוח הבקרה: כלי הדמיה, מצב השרת והמודל, p(panic), תנועה, סף והשהיית נתונים. כבו לתצוגה יומיומית נקייה.</string>
+
+    <string name="monitoring_on">קאלם‑סנס פעיל</string>
+    <string name="monitoring_off">קאלם‑סנס כבוי</string>
+    <string name="monitoring_on_desc">כיבוי עוצר את זיהוי ההתקפים ואת שירות הניטור שברקע — לזמן קצוב, או עד שתפעילו אותו כאן מחדש.</string>
+    <string name="monitoring_off_desc">הזיהוי מופסק ודבר אינו פועל ברקע. הפעילו מחדש כדי לחדש את הניטור.</string>
+    <string name="monitoring_resumes_at">הניטור יופעל מחדש מעצמו בשעה %1$s.</string>
+        <string name="monitoring_off_until">הזיהוי מופסק ודבר אינו פועל ברקע. הניטור יופעל מחדש מעצמו בשעה %1$s.</string>
+    <string name="monitoring_turn_off">כיבוי קאלם‑סנס…</string>
+    <string name="monitoring_turn_on">הפעלת הניטור מחדש</string>
+    <string name="snooze_30_minutes">ל‑30 דקות</string>
+    <string name="snooze_1_hour">לשעה</string>
+    <string name="snooze_2_hours">לשעתיים</string>
+    <string name="snooze_8_hours">ל‑8 שעות</string>
+    <string name="snooze_24_hours">ל‑24 שעות</string>
+    <string name="snooze_indefinite">עד שאפעיל מחדש</string>
+
+    <string name="consent_card_title">הסכמה לאיסוף נתוני דופק</string>
+    <string name="consent_card_desc">קאלם‑סנס קורא דופק ו‑HRV מהשעון שלכם כדי לזהות התקפי חרדה. כיבוי מבטל את ההסכמה ועוצר את כל הניטור.</string>
+
+    <!-- ===== התחברות ===== -->
+    <string name="login_welcome_back">ברוכים השבים.</string>
+    <string name="login_get_set_up">בואו נסדר לכם חשבון.</string>
+    <string name="login_sign_in">כניסה</string>
+    <string name="login_create_account">יצירת חשבון</string>
+    <string name="login_email">אימייל</string>
+    <string name="login_password">סיסמה</string>
+    <string name="login_password_hint">לפחות 6 תווים.</string>
+    <string name="login_show_password">הצגת הסיסמה</string>
+    <string name="login_hide_password">הסתרת הסיסמה</string>
+    <string name="login_remember_email">זכרו את האימייל שלי</string>
+    <string name="login_privacy_note">הנתונים שלכם נשארים פרטיים. רק אתם והמטפל שלכם יכולים לראות אותם.</string>
+    <string name="login_confirm_email">בדקו את האימייל שלכם כדי לאשר את החשבון, ואז היכנסו.</string>
+
+    <!-- ===== הסכמה ===== -->
+    <string name="consent_title">אישור ניטור דופק</string>
+    <string name="consent_intro">כדי לזהות התקפי חרדה מוקדם, קאלם‑סנס צריך לקרוא נתוני חיישנים מהשעון שלכם. הנה בדיוק מה ולמה:</string>
+    <string name="consent_what_title">דופק ומרווחים בין פעימות (IBI)</string>
+    <string name="consent_what_desc">ברציפות, כל עוד אתם עונדים את השעון — כדי למדוד שונות בקצב הלב (HRV).</string>
+    <string name="consent_why_title">משמש רק לזיהוי התקף חרדה</string>
+    <string name="consent_why_desc">דופק גבוה יחד עם HRV נמוך הוא סימן מוקדם. נתוני התנועה מבחינים בין התקף חרדה למאמץ גופני.</string>
+    <string name="consent_where_title">מעובד במכשירים שלכם</string>
+    <string name="consent_where_desc">הניתוח מתבצע בשעון ובטלפון שלכם. אפשר להפסיק את הניטור בכל רגע דרך ההגדרות.</string>
+    <string name="consent_disclaimer">בהמשך אתם מסכימים לכך שקאלם‑סנס יקרא את נתוני הדופק וה‑HRV שלכם לצורך זיהוי התקפי חרדה. קאלם‑סנס אינו מכשיר רפואי.</string>
+    <string name="consent_accept">אני מסכים — התחילו בניטור</string>
+    <string name="consent_decline">לא עכשיו</string>
+
+    <!-- ===== בחירת תפקיד ===== -->
+    <string name="role_welcome">ברוכים הבאים לקאלם‑סנס</string>
+    <string name="role_question">אתם משתמשים בקאלם‑סנס כדי לטפל בעצמכם, או כדי לטפל במטופלים שלכם?</string>
+    <string name="role_name_label">השם המלא שלכם</string>
+    <string name="role_name_hint">כדי שהמטפל (או המטופל) שלכם יזהה אתכם.</string>
+    <string name="role_im_patient">אני מטופל</string>
+    <string name="role_im_patient_desc">מעקב אחר הלב, תיעוד התקפי חרדה, והנחיה מרגיעה.</string>
+    <string name="role_im_therapist">אני מטפל</string>
+    <string name="role_im_therapist_desc">צפייה באירועים ובדפוסים של מטופל, בהסכמתו.</string>
+    <string name="role_change_later">ניתן לבקש שינוי סוג חשבון מהתמיכה בהמשך.</string>
+</resources>

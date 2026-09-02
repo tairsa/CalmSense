@@ -1,4 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Brand name. Deliberately NOT translated: it is the product name and
+         stays in Latin script in the Hebrew build too, which is the norm for
+         software brands in Israel. -->
     <string name="app_name">CalmSense</string>
-    <string name="lang_probe">English active</string>
+
+    <!-- ===== Language picker (Settings) ===== -->
+    <string name="settings_language">Language</string>
+    <string name="language_system">System default</string>
+    <string name="language_english">English</string>
+    <string name="language_hebrew">Hebrew</string>
+    <string name="settings_language_hint">Changes the app immediately. Hebrew is right-to-left.</string>
+
+    <!-- ===== Settings ===== -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_profile">Profile</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_detection">Detection</string>
+    <string name="settings_display">Display</string>
+    <string name="settings_monitoring">Monitoring</string>
+    <string name="settings_privacy">Privacy</string>
+
+    <string name="profile_signed_in">Signed in</string>
+    <string name="role_patient">Patient</string>
+    <string name="role_therapist">Therapist</string>
+    <string name="profile_sign_out">Sign out</string>
+    <string name="profile_therapist_label">Therapist</string>
+    <string name="profile_your_therapist">Your therapist</string>
+    <string name="profile_your_therapists">Your therapists</string>
+    <string name="profile_no_therapist">No therapist connected. Enter a code from your therapist on the Stats tab to share your reports.</string>
+    <string name="profile_therapist_can_see">They can see your panic reports and vitals.</string>
+
+    <string name="detection_sensitivity">Detection sensitivity</string>
+    <string name="detection_sensitivity_desc">How easily CalmSense decides something is a panic attack. Higher sensitivity catches more events but raises more false alarms.</string>
+    <string name="detection_fewer_alerts">Fewer alerts</string>
+    <string name="detection_more_alerts">More alerts</string>
+    <string name="detection_reset">Reset</string>
+    <!-- %1$d is a percentage, e.g. "Alerts when the model is >= 70% sure" -->
+    <string name="detection_threshold_summary">Alerts when the model is ≥ %1$d%% sure</string>
+
+    <string name="cooldown_title">Alert cooldown</string>
+    <string name="cooldown_desc">Minimum minutes between panic alerts, so one long episode doesn\'t notify over and over. 0 alerts on every check.</string>
+    <string name="cooldown_unit">min</string>
+
+    <string name="advanced_mode">Advanced mode</string>
+    <string name="advanced_mode_desc">Show the developer view of the dashboard: simulation tools, server and model status, p(panic), motion, threshold and data delay. Turn off for a clean everyday view.</string>
+
+    <string name="monitoring_on">CalmSense is on</string>
+    <string name="monitoring_off">CalmSense is off</string>
+    <string name="monitoring_on_desc">Turning it off stops panic detection and the background monitoring service — for a set time, or until you turn it back on here.</string>
+    <string name="monitoring_off_desc">Detection is stopped and nothing runs in the background. Turn it back on to resume monitoring.</string>
+    <!-- %1$s is a formatted time, e.g. "14:30" -->
+    <string name="monitoring_resumes_at">Monitoring turns back on by itself at %1$s.</string>
+        <string name="monitoring_off_until">Detection is stopped and nothing runs in the background. Monitoring turns back on by itself at %1$s.</string>
+    <string name="monitoring_turn_off">Turn off CalmSense…</string>
+    <string name="monitoring_turn_on">Turn monitoring back on</string>
+    <string name="snooze_30_minutes">For 30 minutes</string>
+    <string name="snooze_1_hour">For 1 hour</string>
+    <string name="snooze_2_hours">For 2 hours</string>
+    <string name="snooze_8_hours">For 8 hours</string>
+    <string name="snooze_24_hours">For 24 hours</string>
+    <string name="snooze_indefinite">Until I turn it back on</string>
+
+    <string name="consent_card_title">Heart-rate data consent</string>
+    <string name="consent_card_desc">CalmSense reads heart rate and HRV from your watch to detect panic attacks. Turning this off revokes consent and stops all monitoring.</string>
+
+    <!-- ===== Login ===== -->
+    <string name="login_welcome_back">Welcome back.</string>
+    <string name="login_get_set_up">Let\'s get you set up.</string>
+    <string name="login_sign_in">Sign in</string>
+    <string name="login_create_account">Create account</string>
+    <string name="login_email">Email</string>
+    <string name="login_password">Password</string>
+    <string name="login_password_hint">At least 6 characters.</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
+    <string name="login_remember_email">Remember my email</string>
+    <string name="login_privacy_note">Your data stays private. Only you and your therapist can see it.</string>
+    <string name="login_confirm_email">Check your email to confirm your account, then sign in.</string>
+
+    <!-- ===== Consent ===== -->
+    <string name="consent_title">Allow heart-rate monitoring</string>
+    <string name="consent_intro">To detect panic attacks early, CalmSense needs to read sensor data from your watch. Here\'s exactly what and why:</string>
+    <string name="consent_what_title">Heart rate &amp; beat-to-beat interval (IBI)</string>
+    <string name="consent_what_desc">Continuously, while you wear the watch — to measure heart-rate variability (HRV).</string>
+    <string name="consent_why_title">Used only to detect a panic attack</string>
+    <string name="consent_why_desc">A high heart rate with low HRV is an early sign. Motion tells panic apart from exercise.</string>
+    <string name="consent_where_title">Processed on your devices</string>
+    <string name="consent_where_desc">Analysis runs on your watch and phone. You can stop monitoring anytime in Settings.</string>
+    <string name="consent_disclaimer">By continuing you consent to CalmSense reading your heart-rate and HRV data for panic-attack detection. CalmSense is not a medical device.</string>
+    <string name="consent_accept">I consent — start monitoring</string>
+    <string name="consent_decline">Not now</string>
+
+    <!-- ===== Role picker ===== -->
+    <string name="role_welcome">Welcome to CalmSense</string>
+    <string name="role_question">Are you using CalmSense to look after yourself, or to look after your clients?</string>
+    <string name="role_name_label">Your full name</string>
+    <string name="role_name_hint">So your therapist (or client) can recognize you.</string>
+    <string name="role_im_patient">I\'m a patient</string>
+    <string name="role_im_patient_desc">Track my heart, log panic attacks, get calming guidance.</string>
+    <string name="role_im_therapist">I\'m a therapist</string>
+    <string name="role_im_therapist_desc">See a client\'s episodes and patterns, with their consent.</string>
+    <string name="role_change_later">You can request an account-type change from support later.</string>
 </resources>

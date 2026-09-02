@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.platform.LocalAutofillManager
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.app.R
 import com.example.app.data.SessionManager
 import com.example.app.data.SupabaseAuth
 import com.example.app.ui.theme.AppTheme
@@ -85,8 +87,7 @@ fun LoginScreen(
                     // against the backend - the failure then surfaces much
                     // later, somewhere unrelated. Keep them on this screen.
                     if (result.session.accessToken.isBlank()) {
-                        error = "Check your email to confirm your account, " +
-                            "then sign in."
+                        error = context.getString(R.string.login_confirm_email)
                         mode = AuthMode.SIGN_IN
                     } else {
                         // Only on success: remembering an address that failed
@@ -141,8 +142,8 @@ fun LoginScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = when (mode) {
-                    AuthMode.SIGN_IN -> "Welcome back."
-                    AuthMode.SIGN_UP -> "Let's get you set up."
+                    AuthMode.SIGN_IN -> stringResource(R.string.login_welcome_back)
+                    AuthMode.SIGN_UP -> stringResource(R.string.login_get_set_up)
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
@@ -156,19 +157,19 @@ fun LoginScreen(
                     selected = mode == AuthMode.SIGN_IN,
                     onClick = { mode = AuthMode.SIGN_IN; error = null },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                ) { Text("Sign in") }
+                ) { Text(stringResource(R.string.login_sign_in)) }
                 SegmentedButton(
                     selected = mode == AuthMode.SIGN_UP,
                     onClick = { mode = AuthMode.SIGN_UP; error = null },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                ) { Text("Create account") }
+                ) { Text(stringResource(R.string.login_create_account)) }
             }
             Spacer(Modifier.height(20.dp))
 
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it; error = null },
-                label = { Text("Email") },
+                label = { Text(stringResource(R.string.login_email)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -185,7 +186,7 @@ fun LoginScreen(
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it; error = null },
-                label = { Text("Password") },
+                label = { Text(stringResource(R.string.login_password)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 visualTransformation = if (showPassword) VisualTransformation.None
@@ -199,15 +200,15 @@ fun LoginScreen(
                             // Describes the ACTION, which is what a screen
                             // reader user needs, and it doubles as the
                             // tooltip.
-                            contentDescription = if (showPassword) "Hide password"
-                                                 else "Show password",
+                            contentDescription = if (showPassword) stringResource(R.string.login_hide_password)
+                                else stringResource(R.string.login_show_password),
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         )
                         }
                     },
                     supportingText = {
                         if (mode == AuthMode.SIGN_UP) {
-                            Text("At least 6 characters.", style = MaterialTheme.typography.bodySmall)
+                            Text(stringResource(R.string.login_password_hint), style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     // NewPassword while signing up so a manager offers to
@@ -235,7 +236,7 @@ fun LoginScreen(
                 ) {
                     Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it })
                     Text(
-                        "Remember my email",
+                        stringResource(R.string.login_remember_email),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onBackground,
                     )
@@ -281,7 +282,7 @@ fun LoginScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "Your data stays private. Only you and your therapist can see it.",
+                text = stringResource(R.string.login_privacy_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,

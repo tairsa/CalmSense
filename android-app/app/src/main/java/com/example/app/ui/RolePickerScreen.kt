@@ -13,12 +13,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.app.ui.theme.AppTheme
+import com.example.app.R
 
 /**
  * Shown once, right after the user's first sign-in, to determine whether
@@ -61,14 +63,14 @@ fun RolePickerScreen(
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "Welcome to CalmSense",
+                stringResource(R.string.role_welcome),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Are you using CalmSense to look after yourself, or to look after your clients?",
+                stringResource(R.string.role_question),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center,
@@ -81,13 +83,13 @@ fun RolePickerScreen(
             OutlinedTextField(
                 value = displayName,
                 onValueChange = { displayName = it },
-                label = { Text("Your full name") },
+                label = { Text(stringResource(R.string.role_name_label)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                 supportingText = {
                     Text(
-                        "So your therapist (or client) can recognize you.",
+                        stringResource(R.string.role_name_hint),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 },
@@ -97,16 +99,16 @@ fun RolePickerScreen(
 
             RoleCard(
                 icon = Icons.Filled.Person,
-                title = "I'm a patient",
-                subtitle = "Track my heart, log panic attacks, get calming guidance.",
+                title = stringResource(R.string.role_im_patient),
+                subtitle = stringResource(R.string.role_im_patient_desc),
                 enabled = !loading,
                 onClick = { onSelected("patient", displayName.trim()) },
             )
             Spacer(Modifier.height(16.dp))
             RoleCard(
                 icon = Icons.Filled.MedicalServices,
-                title = "I'm a therapist",
-                subtitle = "See a client's episodes and patterns, with their consent.",
+                title = stringResource(R.string.role_im_therapist),
+                subtitle = stringResource(R.string.role_im_therapist_desc),
                 enabled = !loading,
                 onClick = { onSelected("therapist", displayName.trim()) },
             )
@@ -121,7 +123,7 @@ fun RolePickerScreen(
 
             Spacer(Modifier.height(24.dp))
             Text(
-                "You can request an account-type change from support later.",
+                stringResource(R.string.role_change_later),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,
