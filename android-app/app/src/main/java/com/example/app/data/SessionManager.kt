@@ -32,6 +32,11 @@ object SessionManager {
     /** Set once the pre-auth rows on this device have been handed to an owner. */
     private const val KEY_LEGACY_CLAIMED = "legacy_rows_claimed"
 
+    /** Email to prefill on the sign-in form. Deliberately OUTLIVES sign-out -
+     *  remembering it past a sign-out is the entire point of "Remember me" -
+     *  so it is not touched by [clear]. Only ever an address, never a password. */
+    private const val KEY_REMEMBERED_EMAIL = "remembered_email"
+
     /**
      * Application context, captured by [init]. Safe to hold: it is the
      * application instance, not an Activity, so there is nothing to leak.
@@ -49,6 +54,18 @@ object SessionManager {
         get() = _session.value?.userId
 
     fun isLoggedIn(): Boolean = _session.value != null
+
+    /** The email to prefill on the login form, or null when the user opted out. */
+    fun rememberedEmail(context: Context): String? =
+        prefs(context).getString(KEY_REMEMBERED_EMAIL, null)?.takeIf { it.isNotBlank() }
+
+    /** Remember [email] for next time, or forget it when null. */
+    fun setRememberedEmail(context: Context, email: String?) {
+        val e = email?.trim()?.takeIf { it.isNotBlank() }
+        prefs(context).edit().apply {
+            if (e == null) remove(KEY_REMEMBERED_EMAIL) else putString(KEY_REMEMBERED_EMAIL, e)
+        }.apply()
+    }
 
     /** Load any persisted session into memory. Safe to call multiple times. */
     fun init(context: Context) {

@@ -1,15 +1,19 @@
 package com.example.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.autofill.AutofillType
@@ -17,7 +21,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.app.data.SessionManager
 import com.example.app.data.SupabaseAuth
 import com.example.app.ui.theme.AppTheme
 import kotlinx.coroutines.launch
@@ -39,9 +45,16 @@ fun LoginScreen(
     onAuthenticated: (SupabaseAuth.Session) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    // Prefill from the last "Remember me" sign-in. Read once: re-reading on
+    // recomposition would fight the user as they edit the field.
+    val savedEmail = remember { SessionManager.rememberedEmail(context) }
+
     var mode by remember { mutableStateOf(AuthMode.SIGN_IN) }
-    var email by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf(savedEmail.orEmpty()) }
     var password by remember { mutableStateOf("") }
+    var rememberMe by remember { mutableStateOf(savedEmail != null) }
+    var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -70,6 +83,11 @@ fun LoginScreen(
                             "then sign in."
                         mode = AuthMode.SIGN_IN
                     } else {
+                        // Only on success: remembering an address that failed
+                        // to sign in would prefill a typo forever.
+                        SessionManager.setRememberedEmail(
+                            context, if (rememberMe) result.session.email.ifBlank { email } else null
+                        )
                         onAuthenticated(result.session)
                     }
                 }
@@ -171,8 +189,23 @@ fun LoginScreen(
                     label = { Text("Password") },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (showPassword) VisualTransformation.None
+                                           else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                imageVector = if (showPassword) Icons.Filled.VisibilityOff
+                                              else Icons.Filled.Visibility,
+                                // Describes the ACTION, which is what a screen
+                                // reader user needs, and it doubles as the
+                                // tooltip.
+                                contentDescription = if (showPassword) "Hide password"
+                                                     else "Show password",
+                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            )
+                        }
+                    },
                     supportingText = {
                         if (mode == AuthMode.SIGN_UP) {
                             Text("At least 6 characters.", style = MaterialTheme.typography.bodySmall)
@@ -180,6 +213,27 @@ fun LoginScreen(
                     },
                     modifier = autofillModifier.fillMaxWidth(),
                 )
+            }
+
+            // Only meaningful when signing in: on sign-up the address is being
+            // typed for the first time, so there is nothing yet to remember.
+            if (mode == AuthMode.SIGN_IN) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    // The whole row toggles, not just the 20dp box - a
+                    // checkbox-sized tap target is an accessibility problem.
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { rememberMe = !rememberMe },
+                ) {
+                    Checkbox(checked = rememberMe, onCheckedChange = { rememberMe = it })
+                    Text(
+                        "Remember my email",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
             }
 
             if (error != null) {
