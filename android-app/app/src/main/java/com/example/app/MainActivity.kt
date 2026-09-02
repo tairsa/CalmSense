@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -1329,9 +1330,23 @@ fun CalmSenseDashboard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // The chip takes the leftover width and truncates, rather than
+            // sizing to its text and pushing the buttons out of the row. Its
+            // label is a status message whose length varies a lot ("Watch
+            // (live)" vs "Watch - waiting for samples"), and a long one used
+            // to squeeze the Watch button down to a vertical sliver of stacked
+            // letters. Translated text is generally longer than the English,
+            // so this gets worse in other languages, not better.
             AssistChip(
                 onClick = {},
-                label = { Text(viewModel.healthConnectStatus) },
+                label = {
+                    Text(
+                        viewModel.healthConnectStatus,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(modifier = Modifier.weight(1f))
             if (advanced) {
