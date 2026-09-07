@@ -155,6 +155,11 @@ class TherapistApi(private val baseUrl: String) {
                 put("code", code)
                 put("patient_id", patientId)
             }
+            // Built inline rather than via postJsonForBody because this call
+            // needs both the status code and the error body to explain a
+            // rejected code - which is exactly why it was missed when the
+            // shared helpers gained auth headers.
+            val token = SessionManager.validAccessToken()
             val url = URL("$baseUrl/api/v1/consent-codes/redeem")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -162,6 +167,7 @@ class TherapistApi(private val baseUrl: String) {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                if (token != null) setRequestProperty("Authorization", "Bearer $token")
             }
             try {
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
