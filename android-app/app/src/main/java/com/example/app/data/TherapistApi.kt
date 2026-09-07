@@ -118,6 +118,34 @@ class TherapistApi(private val baseUrl: String) {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * DELETE /api/v1/my-therapists/{id} - revoke a therapist's access.
+     *
+     * The server takes the patient from the token, so this can only ever
+     * detach one of the caller's own therapists. Returns true when the call
+     * succeeded, including when there was no link left to remove: the desired
+     * end state holds either way.
+     */
+    suspend fun removeTherapist(therapistId: String): Boolean = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/api/v1/my-therapists/${URLEncoder.encode(therapistId, "UTF-8")}"
+        sendDelete(url, SessionManager.validAccessToken()) in 200..299
+    }
+
+    /**
+     * PUT /api/v1/profile/display-name - rename yourself.
+     *
+     * Sends only the name. The server takes the user from the token and keeps
+     * the existing role, so a rename cannot change either.
+     */
+    suspend fun updateDisplayName(name: String?): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply { put("display_name", name ?: JSONObject.NULL) }
+        sendPut(
+            "$baseUrl/api/v1/profile/display-name",
+            payload.toString(),
+            SessionManager.validAccessToken(),
+        ) in 200..299
+    }
+
     /* ---------- Consent codes ------------------------------------------ */
 
     /** POST /api/v1/consent-codes - therapist generates a code to hand out. */
@@ -142,6 +170,11 @@ class TherapistApi(private val baseUrl: String) {
                 put("code", code)
                 put("patient_id", patientId)
             }
+            // Built inline rather than via postJsonForBody because this call
+            // needs both the status code and the error body to explain a
+            // rejected code - which is exactly why it was missed when the
+            // shared helpers gained auth headers.
+            val token = SessionManager.validAccessToken()
             val url = URL("$baseUrl/api/v1/consent-codes/redeem")
             val conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -149,6 +182,7 @@ class TherapistApi(private val baseUrl: String) {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                if (token != null) setRequestProperty("Authorization", "Bearer $token")
             }
             try {
                 conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
@@ -217,6 +251,41 @@ class TherapistApi(private val baseUrl: String) {
         }
 
     /* ---------- Internals ---------------------------------------------- */
+
+    private fun sendPut(url: String, body: String, token: String?): Int {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
+        }
+        return try {
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            conn.responseCode
+        } catch (_: Throwable) {
+            -1
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun sendDelete(url: String, token: String?): Int {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "DELETE"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
+        }
+        return try {
+            conn.responseCode
+        } catch (_: Throwable) {
+            -1
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     private fun postJson(url: String, body: String, token: String?): Int {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {

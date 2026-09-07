@@ -191,4 +191,17 @@
     <string name="nav_reports">דוחות</string>
     <string name="nav_stats">סטטיסטיקות</string>
     <string name="nav_settings">הגדרות</string>
+    <string name="therapist_remove">הסרה</string>
+    <string name="therapist_remove_desc">הסרת %1$s</string>
+    <string name="therapist_remove_title">להסיר את המטפל הזה?</string>
+    <string name="therapist_remove_body">%1$s לא יוכל עוד לראות את הדוחות והמדדים שלכם. ההיסטוריה שלכם נשמרת, ותוכלו להתחבר מחדש עם קוד חדש בכל עת.</string>
+    <string name="therapist_remove_confirm">הסרת הגישה</string>
+    <string name="therapist_change">החלפת מטפל</string>
+    <string name="therapist_connect">חיבור מטפל</string>
+    <string name="profile_name_label">שם מלא</string>
+    <string name="profile_name_none">לא הוגדר שם</string>
+    <string name="profile_name_edit">עריכת השם</string>
+    <string name="profile_name_title">השם המלא שלכם</string>
+    <string name="profile_name_hint">זה מה שהמטפל או המטופלים שלכם רואים.</string>
+    <string name="action_save">שמירה</string>
 </resources>

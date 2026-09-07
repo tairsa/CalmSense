@@ -432,6 +432,40 @@ def create_therapist_patient_link(record: dict) -> None:
         _json_append_to(LINKS_FILE, record)
 
 
+def delete_therapist_patient_link(therapist_id: str, patient_id: str) -> bool:
+    """Revoke a therapist's access to one patient. Returns True if a link went.
+
+    Only the link row is removed. The patient's reports, feedback and sensor
+    data are untouched - revoking access is not the same as deleting history,
+    and a patient who reconnects the same therapist later should find their
+    record intact.
+
+    Idempotent: removing a link that is not there returns False rather than
+    raising, so a double tap in the UI cannot produce an error.
+    """
+    if _supabase is not None:
+        try:
+            resp = (
+                _supabase.table(LINKS_TABLE_NAME)
+                .delete()
+                .eq("therapist_id", therapist_id)
+                .eq("patient_id", patient_id)
+                .execute()
+            )
+            return bool(resp.data)
+        except Exception as e:
+            _write_fallback_or_raise("link delete", e)
+    rows = _json_read_from(LINKS_FILE)
+    kept = [
+        r for r in rows
+        if not (r.get("therapist_id") == therapist_id and r.get("patient_id") == patient_id)
+    ]
+    if len(kept) == len(rows):
+        return False
+    _json_write_all(LINKS_FILE, kept)
+    return True
+
+
 def list_patients_for_therapist(therapist_id: str) -> list[str]:
     """Return the patient_ids linked to this therapist."""
     if _supabase is not None:

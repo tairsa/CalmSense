@@ -334,6 +334,42 @@ class HeartRateViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Rename the signed-in user.
+     *
+     * Optimistic, like removal: the field updates immediately and loadProfile()
+     * re-reads the server copy afterwards, so a failed save reverts rather than
+     * leaving the UI claiming a name that was never stored.
+     *
+     * Anyone connected sees it on their next refresh - both sides look the name
+     * up per request rather than caching it at link time.
+     */
+    fun updateDisplayName(name: String) {
+        val trimmed = name.trim().ifBlank { null }
+        profileName = trimmed
+        viewModelScope.launch {
+            therapistApi.updateDisplayName(trimmed)
+            val p = therapistApi.getProfile(userId)
+            profileName = p?.displayName
+        }
+    }
+
+    /**
+     * Revoke a therapist's access, then refresh so the list reflects it.
+     *
+     * Optimistically drops the row first: the request is a round trip to Cloud
+     * Run, and leaving the therapist visible until it returns reads as if the
+     * tap did nothing. refreshMyTherapists() is the authority - if the call
+     * failed the row comes straight back.
+     */
+    fun removeTherapist(therapistId: String) {
+        myTherapists = myTherapists.filterNot { it.therapistId == therapistId }
+        viewModelScope.launch {
+            therapistApi.removeTherapist(therapistId)
+            refreshMyTherapists()
+        }
+    }
+
     /** Refresh the connected-therapist list. Safe to call repeatedly - the
      *  profile screen calls it on entry so a code redeemed on another device
      *  shows up without a restart. */
@@ -865,13 +901,31 @@ class MainActivity : AppCompatActivity() {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         containerColor = MaterialTheme.colorScheme.background,
-                        topBar = { CalmSenseTopBar(onLogout = handleLogout) },
+                        topBar = {
+                            CalmSenseTopBar(
+                                onLogout = handleLogout,
+                                onSettings = { therapistNav.navigate(ROUTE_SETTINGS) },
+                            )
+                        },
                     ) { inner ->
                         Box(modifier = Modifier.padding(inner)) {
                             NavHost(
                                 navController = therapistNav,
                                 startDestination = ROUTE_THERAPIST_DASHBOARD,
                             ) {
+                                composable(ROUTE_SETTINGS) {
+                                    SettingsScreen(
+                                        email = session?.email,
+                                        displayName = viewModel.profileName,
+                                        role = viewModel.profileRole,
+                                        // A therapist's own therapist list is
+                                        // meaningless; their clients live on the
+                                        // dashboard.
+                                        therapists = emptyList(),
+                                        onLogout = handleLogout,
+                                        onRenameSelf = { viewModel.updateDisplayName(it) },
+                                    )
+                                }
                                 composable(ROUTE_THERAPIST_DASHBOARD) {
                                     TherapistDashboardScreen(
                                         patients = viewModel.patients,
@@ -982,6 +1036,11 @@ class MainActivity : AppCompatActivity() {
                                     role = viewModel.profileRole,
                                     therapists = viewModel.myTherapists,
                                     onLogout = handleLogout,
+                                    onRemoveTherapist = { viewModel.removeTherapist(it) },
+                                    onConnectTherapist = {
+                                        navController.navigate(ROUTE_CONNECT_THERAPIST)
+                                    },
+                                    onRenameSelf = { viewModel.updateDisplayName(it) },
                                 )
                             }
                             composable(ROUTE_REPORTS) {
@@ -1084,10 +1143,21 @@ class MainActivity : AppCompatActivity() {
      */
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
-    private fun CalmSenseTopBar(onLogout: () -> Unit) {
+    private fun CalmSenseTopBar(onLogout: () -> Unit, onSettings: (() -> Unit)? = null) {
         TopAppBar(
             title = {},
             actions = {
+                // Therapists have no bottom nav, so this bar is their only route
+                // into Settings - where their own name lives.
+                if (onSettings != null) {
+                    IconButton(onClick = onSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.nav_settings),
+                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        )
+                    }
+                }
                 IconButton(onClick = onLogout) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
