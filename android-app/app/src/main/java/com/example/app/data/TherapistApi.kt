@@ -131,6 +131,21 @@ class TherapistApi(private val baseUrl: String) {
         sendDelete(url, SessionManager.validAccessToken()) in 200..299
     }
 
+    /**
+     * PUT /api/v1/profile/display-name - rename yourself.
+     *
+     * Sends only the name. The server takes the user from the token and keeps
+     * the existing role, so a rename cannot change either.
+     */
+    suspend fun updateDisplayName(name: String?): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply { put("display_name", name ?: JSONObject.NULL) }
+        sendPut(
+            "$baseUrl/api/v1/profile/display-name",
+            payload.toString(),
+            SessionManager.validAccessToken(),
+        ) in 200..299
+    }
+
     /* ---------- Consent codes ------------------------------------------ */
 
     /** POST /api/v1/consent-codes - therapist generates a code to hand out. */
@@ -236,6 +251,25 @@ class TherapistApi(private val baseUrl: String) {
         }
 
     /* ---------- Internals ---------------------------------------------- */
+
+    private fun sendPut(url: String, body: String, token: String?): Int {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "PUT"
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
+        }
+        return try {
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            conn.responseCode
+        } catch (_: Throwable) {
+            -1
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     private fun sendDelete(url: String, token: String?): Int {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {

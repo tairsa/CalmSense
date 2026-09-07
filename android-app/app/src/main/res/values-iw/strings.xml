@@ -198,4 +198,10 @@
     <string name="therapist_remove_confirm">הסרת הגישה</string>
     <string name="therapist_change">החלפת מטפל</string>
     <string name="therapist_connect">חיבור מטפל</string>
+    <string name="profile_name_label">שם מלא</string>
+    <string name="profile_name_none">לא הוגדר שם</string>
+    <string name="profile_name_edit">עריכת השם</string>
+    <string name="profile_name_title">השם המלא שלכם</string>
+    <string name="profile_name_hint">זה מה שהמטפל או המטופלים שלכם רואים.</string>
+    <string name="action_save">שמירה</string>
 </resources>

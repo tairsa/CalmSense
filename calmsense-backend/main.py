@@ -16,6 +16,7 @@ from admin_routes import router as admin_router
 from auth import current_user_id
 from models import (
     ConsentCodeRequest,
+    DisplayNameRequest,
     ConsentCodeResponse,
     PanicFeedback,
     PanicReport,
@@ -238,6 +239,41 @@ def set_profile(data: Profile, user_id: str = Depends(current_user_id)):
         return JSONResponse(
             status_code=500,
             content={"success": False, "message": f"Failed to save profile: {e}"},
+        )
+
+
+@app.put("/api/v1/profile/display-name")
+def update_display_name(body: DisplayNameRequest, user_id: str = Depends(current_user_id)):
+    """Rename yourself.
+
+    Everyone who can see you reads the name from this one row - the therapist
+    patient list and the patient's therapist list both look it up per request
+    rather than copying it at link time - so a rename is visible to the other
+    side on their next refresh with nothing to sync.
+
+    The role is carried over from the existing row rather than taken from the
+    request: upsert replaces the whole row, so trusting a client-supplied role
+    here would let a rename silently change it.
+    """
+    existing = get_profile(user_id)
+    if existing is None:
+        # No row yet means the user has not picked a role, and role is not
+        # nullable. Renaming before that is a client bug, not a user action.
+        raise HTTPException(status_code=404, detail="No profile to rename yet")
+
+    name = (body.display_name or "").strip() or None
+    record = {
+        "user_id": user_id,
+        "role": existing.get("role"),
+        "display_name": name,
+    }
+    try:
+        upsert_profile(record)
+        return {"success": True, "profile": record}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"Failed to save name: {e}"},
         )
 
 

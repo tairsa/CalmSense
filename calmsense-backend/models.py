@@ -67,6 +67,18 @@ class PanicReport(BaseModel):
 # Therapist mode: profiles, consent codes, therapist-patient links.
 # ---------------------------------------------------------------------------
 
+class DisplayNameRequest(BaseModel):
+    """Rename yourself. Deliberately carries no user_id and no role.
+
+    The user comes from the verified token, and the role is read from the
+    existing row server-side, so renaming can never change who you are or
+    what you are - upsert_profile replaces the whole row, and a client that
+    sent a stale or empty role would otherwise silently demote itself.
+    """
+
+    display_name: Optional[str] = None
+
+
 class Profile(BaseModel):
     """One row per authenticated user. Chosen once at first login."""
     user_id: str

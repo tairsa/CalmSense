@@ -198,4 +198,10 @@
     <string name="therapist_remove_confirm">Remove access</string>
     <string name="therapist_change">Change therapist</string>
     <string name="therapist_connect">Connect a therapist</string>
+    <string name="profile_name_label">Full name</string>
+    <string name="profile_name_none">No name set</string>
+    <string name="profile_name_edit">Edit name</string>
+    <string name="profile_name_title">Your full name</string>
+    <string name="profile_name_hint">This is what your therapist or clients see.</string>
+    <string name="action_save">Save</string>
 </resources>

@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
@@ -31,6 +32,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -79,6 +81,7 @@ fun SettingsScreen(
     onLogout: () -> Unit = {},
     onRemoveTherapist: (String) -> Unit = {},
     onConnectTherapist: () -> Unit = {},
+    onRenameSelf: (String) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -108,6 +111,7 @@ fun SettingsScreen(
             onLogout = onLogout,
             onRemoveTherapist = onRemoveTherapist,
             onConnectTherapist = onConnectTherapist,
+            onRenameSelf = onRenameSelf,
         )
 
         Text(
@@ -118,6 +122,11 @@ fun SettingsScreen(
         )
 
         LanguageCard()
+
+        // Detection, display and monitoring all configure the patient-side
+        // monitoring service. A therapist account is not monitored, so showing
+        // them a sensitivity dial would imply something the app does not do.
+        if (role != "therapist") {
 
         Text(
             stringResource(R.string.settings_detection),
@@ -159,6 +168,8 @@ fun SettingsScreen(
 
         ConsentCard()
 
+        }  // end patient-only sections
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -180,7 +191,46 @@ private fun ProfileCard(
     onLogout: () -> Unit,
     onRemoveTherapist: (String) -> Unit,
     onConnectTherapist: () -> Unit,
+    onRenameSelf: (String) -> Unit,
 ) {
+    // Null while closed; holds the in-progress text while the dialog is open so
+    // the field survives recomposition without committing anything.
+    var renameDraft by remember { mutableStateOf<String?>(null) }
+
+    renameDraft?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { renameDraft = null },
+            title = { Text(stringResource(R.string.profile_name_title)) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { renameDraft = it },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.profile_name_label)) },
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.profile_name_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRenameSelf(draft)
+                    renameDraft = null
+                }) { Text(stringResource(R.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameDraft = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     // Which therapist the user has asked to remove, pending confirmation.
     // Revoking clinical access is not something to do on a single stray tap.
     var pendingRemoval by remember { mutableStateOf<TherapistApi.LinkedTherapist?>(null) }
@@ -232,15 +282,20 @@ private fun ProfileCard(
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    // Name is the friendlier label, so it leads when set and
-                    // the email drops to a subtitle. With no name the email
-                    // takes the title slot rather than leaving a blank line.
+                    // The name leads. When unset we say so instead of falling
+                    // back to the email, which hid the fact that this is a
+                    // field to fill in - and it is the name the other side
+                    // sees, so a blank one is worth surfacing.
                     Text(
-                        displayName?.takeIf { it.isNotBlank() } ?: email ?: stringResource(R.string.profile_signed_in),
+                        displayName?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.profile_name_none),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        color = if (displayName.isNullOrBlank())
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.onSurface,
                     )
-                    if (!displayName.isNullOrBlank() && !email.isNullOrBlank()) {
+                    if (!email.isNullOrBlank()) {
                         Text(
                             email,
                             style = MaterialTheme.typography.bodySmall,
@@ -255,6 +310,13 @@ private fun ProfileCard(
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+                IconButton(onClick = { renameDraft = displayName.orEmpty() }) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.profile_name_edit),
+                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
