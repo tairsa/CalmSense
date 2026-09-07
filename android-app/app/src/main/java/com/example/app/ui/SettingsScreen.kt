@@ -53,8 +53,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
+import com.example.app.BuildConfig
 import com.example.app.R
 import com.example.app.data.LanguageManager
 import com.example.app.data.SettingsStore
@@ -169,6 +171,20 @@ fun SettingsScreen(
         ConsentCard()
 
         }  // end patient-only sections
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Outside the patient-only block on purpose: the build identifier is
+        // the first thing worth asking for in a bug report, whoever is filing
+        // it. Quiet and centred at the foot of the list, as is conventional -
+        // present when looked for, not competing with anything above it.
+        Text(
+            stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
     }

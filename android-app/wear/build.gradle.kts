@@ -13,8 +13,8 @@ android {
         applicationId = "com.calmsense.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = rootProject.extra["calmsenseVersionCode"] as Int
+        versionName = rootProject.extra["calmsenseVersionName"] as String
     }
 
     buildTypes {
@@ -32,6 +32,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -123,6 +123,15 @@ fun WearStatusUi() {
                 color = Color(0xFFA5C49A),
                 fontSize = 14.sp,
             )
+            // The watch has no settings screen, so this status face is the only
+            // place a version can live - and it is the build people will need
+            // to quote when the phone and watch disagree. Dimmed so it reads as
+            // a footnote on a screen that is otherwise glanced at, not read.
+            Text(
+                text = "v" + BuildConfig.VERSION_NAME,
+                color = Color(0xFF6E7A82),
+                fontSize = 10.sp,
+            )
         }
     }
 

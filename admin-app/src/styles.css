@@ -51,6 +51,7 @@ a { color: var(--primary-dark); }
 .brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 .brand-lg { font-size: 20px; justify-content: center; margin-bottom: 4px; }
 .brand-sub { color: var(--muted); font-weight: 500; }
+.brand-version { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 8px; opacity: 0.7; }
 .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); display: inline-block; }
 .topnav { display: flex; gap: 4px; }
 .topnav a {

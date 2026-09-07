@@ -204,4 +204,5 @@
     <string name="profile_name_title">Your full name</string>
     <string name="profile_name_hint">This is what your therapist or clients see.</string>
     <string name="action_save">Save</string>
+    <string name="settings_version">Version %1$s</string>
 </resources>

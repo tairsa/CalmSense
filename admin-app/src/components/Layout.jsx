@@ -16,6 +16,9 @@ export default function Layout({ children }) {
         <div className="brand">
           <span className="brand-dot" />
           CalmSense <span className="brand-sub">Admin</span>
+          {/* Quiet build marker: the dashboard is the one surface where you
+              can check which backend deploy you are actually looking at. */}
+          <span className="brand-version">v{__APP_VERSION__}</span>
         </div>
         <nav className="topnav">
           <NavLink to="/" end>Dashboard</NavLink>

@@ -59,9 +59,16 @@ async def lifespan(app: FastAPI):
 # before the SPA catch-all and expose the whole admin surface to the internet.
 _PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1", "true", "yes")
 
+# Semantic version of the backend, bumped per confirmed deploy. Kept as a
+# constant rather than inlined because /health reports it too: the interactive
+# docs are disabled in production, so /health is the only way to see which
+# build is actually serving - which is what makes "confirm, then bump" checkable
+# rather than a matter of trusting that the deploy landed.
+APP_VERSION = "1.0.0"
+
 app = FastAPI(
     title="CalmSense API",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url=None if _PROD else "/docs",
     redoc_url=None if _PROD else "/redoc",
@@ -116,7 +123,7 @@ _device_auth = [Depends(require_api_key)]
 def health_check():
     """Unauthenticated on purpose: it is the container liveness probe and the
     phone's server-status chip, and it exposes no user data."""
-    body = {"status": "ok", "storage": storage_backend()}
+    body = {"status": "ok", "version": APP_VERSION, "storage": storage_backend()}
     # Only present when we are NOT on Supabase. Says why, so "storage":"json"
     # on a deployment that expected Supabase is diagnosable at a glance rather
     # than requiring a log dive.

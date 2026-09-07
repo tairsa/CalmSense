@@ -16,8 +16,8 @@ android {
         applicationId = "com.calmsense.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = rootProject.extra["calmsenseVersionCode"] as Int
+        versionName = rootProject.extra["calmsenseVersionName"] as String
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,6 +37,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // Generates BuildConfig, which is how Settings reads VERSION_NAME.
+        // AGP 8+ produces no BuildConfig class at all without this.
+        buildConfig = true
     }
 }
 
