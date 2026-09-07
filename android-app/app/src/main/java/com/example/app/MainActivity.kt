@@ -132,7 +132,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 //   Pi over Tailscale: http://pi5-home-server-ts.tail4f470e.ts.net:8000
 //   Pi raw tailnet IP: http://100.76.34.20:8000
 private const val BACKEND_LAN_URL = "https://calmsense-wzkmopdeua-ew.a.run.app"
-private const val BACKEND_EMULATOR_URL = "http://10.0.2.2:8000"
+private const val BACKEND_EMULATOR_URL = "https://calmsense-wzkmopdeua-ew.a.run.app"
 
 private val isEmulator: Boolean by lazy {
     val fp = Build.FINGERPRINT.orEmpty()
