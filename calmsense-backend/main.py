@@ -35,6 +35,7 @@ from storage import (
     get_sensor_data_for_patient,
     is_link_active,
     list_patients_for_therapist,
+    delete_therapist_patient_link,
     list_therapists_for_patient,
     mark_consent_code_used,
     read_all_records,
@@ -335,6 +336,22 @@ def my_therapists(user_id: str = Depends(current_user_id)):
             "display_name": (profile or {}).get("display_name"),
         })
     return {"therapists": out}
+
+
+@app.delete("/api/v1/my-therapists/{therapist_id}")
+def revoke_therapist(therapist_id: str, user_id: str = Depends(current_user_id)):
+    """Revoke a therapist's access to the caller's data.
+
+    The patient id comes from the verified token, never the path, so this can
+    only ever remove one of the caller's own links - a patient cannot detach
+    someone else's therapist by guessing ids.
+
+    Returns removed=false rather than 404 when there was no such link: the
+    caller's desired end state (that therapist cannot see me) already holds,
+    and a client retrying after a dropped response should not see an error.
+    """
+    removed = delete_therapist_patient_link(therapist_id, user_id)
+    return {"success": True, "removed": removed}
 
 
 def _require_self(path_id: str, caller_id: str) -> None:

@@ -190,4 +190,12 @@
     <string name="nav_reports">Reports</string>
     <string name="nav_stats">Stats</string>
     <string name="nav_settings">Settings</string>
+    <string name="therapist_remove">Remove</string>
+    <!-- %1$s is the therapist name -->
+    <string name="therapist_remove_desc">Remove %1$s</string>
+    <string name="therapist_remove_title">Remove this therapist?</string>
+    <string name="therapist_remove_body">%1$s will no longer be able to see your reports or vitals. Your own history is kept, and you can reconnect with a new code at any time.</string>
+    <string name="therapist_remove_confirm">Remove access</string>
+    <string name="therapist_change">Change therapist</string>
+    <string name="therapist_connect">Connect a therapist</string>
 </resources>

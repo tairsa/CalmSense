@@ -334,6 +334,22 @@ class HeartRateViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Revoke a therapist's access, then refresh so the list reflects it.
+     *
+     * Optimistically drops the row first: the request is a round trip to Cloud
+     * Run, and leaving the therapist visible until it returns reads as if the
+     * tap did nothing. refreshMyTherapists() is the authority - if the call
+     * failed the row comes straight back.
+     */
+    fun removeTherapist(therapistId: String) {
+        myTherapists = myTherapists.filterNot { it.therapistId == therapistId }
+        viewModelScope.launch {
+            therapistApi.removeTherapist(therapistId)
+            refreshMyTherapists()
+        }
+    }
+
     /** Refresh the connected-therapist list. Safe to call repeatedly - the
      *  profile screen calls it on entry so a code redeemed on another device
      *  shows up without a restart. */
@@ -982,6 +998,10 @@ class MainActivity : AppCompatActivity() {
                                     role = viewModel.profileRole,
                                     therapists = viewModel.myTherapists,
                                     onLogout = handleLogout,
+                                    onRemoveTherapist = { viewModel.removeTherapist(it) },
+                                    onConnectTherapist = {
+                                        navController.navigate(ROUTE_CONNECT_THERAPIST)
+                                    },
                                 )
                             }
                             composable(ROUTE_REPORTS) {

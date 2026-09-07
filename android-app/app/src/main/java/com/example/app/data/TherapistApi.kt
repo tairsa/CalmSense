@@ -118,6 +118,19 @@ class TherapistApi(private val baseUrl: String) {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * DELETE /api/v1/my-therapists/{id} - revoke a therapist's access.
+     *
+     * The server takes the patient from the token, so this can only ever
+     * detach one of the caller's own therapists. Returns true when the call
+     * succeeded, including when there was no link left to remove: the desired
+     * end state holds either way.
+     */
+    suspend fun removeTherapist(therapistId: String): Boolean = withContext(Dispatchers.IO) {
+        val url = "$baseUrl/api/v1/my-therapists/${URLEncoder.encode(therapistId, "UTF-8")}"
+        sendDelete(url, SessionManager.validAccessToken()) in 200..299
+    }
+
     /* ---------- Consent codes ------------------------------------------ */
 
     /** POST /api/v1/consent-codes - therapist generates a code to hand out. */
@@ -217,6 +230,22 @@ class TherapistApi(private val baseUrl: String) {
         }
 
     /* ---------- Internals ---------------------------------------------- */
+
+    private fun sendDelete(url: String, token: String?): Int {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "DELETE"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            if (token != null) setRequestProperty("Authorization", "Bearer $token")
+        }
+        return try {
+            conn.responseCode
+        } catch (_: Throwable) {
+            -1
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     private fun postJson(url: String, body: String, token: String?): Int {
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {

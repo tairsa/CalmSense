@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,6 +77,8 @@ fun SettingsScreen(
     role: String?,
     therapists: List<TherapistApi.LinkedTherapist> = emptyList(),
     onLogout: () -> Unit = {},
+    onRemoveTherapist: (String) -> Unit = {},
+    onConnectTherapist: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -103,6 +106,8 @@ fun SettingsScreen(
             role = role,
             therapists = therapists,
             onLogout = onLogout,
+            onRemoveTherapist = onRemoveTherapist,
+            onConnectTherapist = onConnectTherapist,
         )
 
         Text(
@@ -173,7 +178,39 @@ private fun ProfileCard(
     role: String?,
     therapists: List<TherapistApi.LinkedTherapist>,
     onLogout: () -> Unit,
+    onRemoveTherapist: (String) -> Unit,
+    onConnectTherapist: () -> Unit,
 ) {
+    // Which therapist the user has asked to remove, pending confirmation.
+    // Revoking clinical access is not something to do on a single stray tap.
+    var pendingRemoval by remember { mutableStateOf<TherapistApi.LinkedTherapist?>(null) }
+
+    pendingRemoval?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text(stringResource(R.string.therapist_remove_title)) },
+            // Names what is lost and what is kept: people hesitate here because
+            // they cannot tell whether "remove" also deletes their history.
+            text = { Text(stringResource(R.string.therapist_remove_body, target.label)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRemoveTherapist(target.therapistId)
+                    pendingRemoval = null
+                }) {
+                    Text(
+                        stringResource(R.string.therapist_remove_confirm),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -253,7 +290,15 @@ private fun ProfileCard(
                                 t.label,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f),
                             )
+                            TextButton(onClick = { pendingRemoval = t }) {
+                                Text(
+                                    stringResource(R.string.therapist_remove),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -261,6 +306,18 @@ private fun ProfileCard(
                         stringResource(R.string.profile_therapist_can_see),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                }
+
+                // Present whether or not a therapist is connected, so
+                // "change" is one action here rather than remove-then-go-
+                // looking-for-connect on another tab.
+                TextButton(onClick = onConnectTherapist) {
+                    Text(
+                        stringResource(
+                            if (therapists.isEmpty()) R.string.therapist_connect
+                            else R.string.therapist_change
+                        )
                     )
                 }
             }
