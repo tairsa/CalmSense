@@ -32,6 +32,10 @@ import com.example.app.R
 fun RolePickerScreen(
     onSelected: (role: String, displayName: String) -> Unit,
     loading: Boolean = false,
+    /** Message shown when the last save failed; null while there is nothing
+     *  to report. Without this a failed save was indistinguishable from a
+     *  button that simply did not work. */
+    errorText: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var displayName by remember { mutableStateOf("") }
@@ -118,6 +122,18 @@ fun RolePickerScreen(
                 CircularProgressIndicator(
                     modifier = Modifier.size(28.dp),
                     strokeWidth = 2.dp,
+                )
+            }
+
+            // Sits directly under the choices, where the tap happened, so a
+            // failed save reads as a failure rather than as a dead button.
+            if (errorText != null) {
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    errorText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
             }
 

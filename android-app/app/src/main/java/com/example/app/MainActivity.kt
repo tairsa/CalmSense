@@ -90,6 +90,7 @@ import com.example.app.ui.ConnectTherapistScreen
 import com.example.app.ui.LoginScreen
 import com.example.app.ui.PatientDetailScreen
 import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.ProfileUnreachableScreen
 import com.example.app.ui.RolePickerScreen
 import com.example.app.ui.StatsScreen
 import com.example.app.ui.TherapistDashboardScreen
@@ -233,6 +234,9 @@ class HeartRateViewModel : ViewModel() {
     // one-time RolePickerScreen.
     // -----------------------------------------------------------------
     var profileLoaded by mutableStateOf(false)
+    /** True when the last profile fetch could not reach the server. Distinct
+     *  from "this user has no role yet" - see TherapistApi.ProfileResult. */
+    var profileUnavailable by mutableStateOf(false)
     var profileRole by mutableStateOf<String?>(null)
     /** Display name from the profile row; null when the user left it blank. */
     var profileName by mutableStateOf<String?>(null)
@@ -240,6 +244,8 @@ class HeartRateViewModel : ViewModel() {
      *  account, and for a patient who has not redeemed a code yet. */
     var myTherapists by mutableStateOf<List<TherapistApi.LinkedTherapist>>(emptyList())
     var roleSaving by mutableStateOf(false)
+    /** True when the last role save failed, so the picker can say so. */
+    var roleError by mutableStateOf(false)
 
     // Therapist dashboard state.
     var patients by mutableStateOf<List<TherapistApi.PatientSummary>>(emptyList())
@@ -325,13 +331,25 @@ class HeartRateViewModel : ViewModel() {
      *  regardless of outcome so the UI can move past the loading indicator. */
     fun loadProfile() {
         viewModelScope.launch {
-            val p = therapistApi.getProfile(userId)
-            profileRole = p?.role
-            profileName = p?.displayName
+            when (val r = therapistApi.fetchProfile(userId)) {
+                is TherapistApi.ProfileResult.Loaded -> {
+                    profileUnavailable = false
+                    profileRole = r.profile.role
+                    profileName = r.profile.displayName
+                    if (r.profile.role == "patient") refreshMyTherapists()
+                }
+                TherapistApi.ProfileResult.Missing -> {
+                    // Server answered: this really is a first run.
+                    profileUnavailable = false
+                    profileRole = null
+                }
+                TherapistApi.ProfileResult.Unavailable -> {
+                    // Leave profileRole alone. Blanking it here is what made an
+                    // offline tablet look like an account with no role.
+                    profileUnavailable = true
+                }
+            }
             profileLoaded = true
-            // Only patients have therapists to list; asking as a therapist
-            // would always come back empty.
-            if (p?.role == "patient") refreshMyTherapists()
         }
     }
 
@@ -392,10 +410,22 @@ class HeartRateViewModel : ViewModel() {
             val ok = therapistApi.setProfile(userId = userId, role = role, displayName = name)
             roleSaving = false
             if (ok) {
+                roleError = false
                 profileRole = role
                 profileName = name
+            } else {
+                // Previously this did nothing at all, so a failed save looked
+                // exactly like an unresponsive button.
+                roleError = true
             }
         }
+    }
+
+    /** Re-ask for the profile after a failure, from the retry button. */
+    fun retryProfile() {
+        profileLoaded = false
+        profileUnavailable = false
+        loadProfile()
     }
 
     /** Reset profile state — used on logout so the next login re-fetches. */
@@ -893,10 +923,23 @@ class MainActivity : AppCompatActivity() {
                     }
                     return@AppTheme
                 }
+                // Could not ask the server who this is. Show that plainly, with a
+                // way forward and a way out - never the role picker, which
+                // asks the user to redo a decision they already made and whose
+                // buttons would fail for the same reason.
+                if (viewModel.profileUnavailable) {
+                    ProfileUnreachableScreen(
+                        onRetry = { viewModel.retryProfile() },
+                        onLogout = handleLogout,
+                    )
+                    return@AppTheme
+                }
                 if (viewModel.profileRole == null) {
                     RolePickerScreen(
                         onSelected = { role, name -> viewModel.setRole(role, name) },
                         loading = viewModel.roleSaving,
+                        errorText = if (viewModel.roleError)
+                            stringResource(R.string.role_save_failed) else null,
                     )
                     return@AppTheme
                 }

@@ -205,4 +205,8 @@
     <string name="profile_name_hint">This is what your therapist or clients see.</string>
     <string name="action_save">Save</string>
     <string name="settings_version">Version %1$s</string>
+    <string name="profile_unreachable_title">Can’t reach CalmSense</string>
+    <string name="profile_unreachable_body">Your account is still signed in, but the server didn’t answer. Check the connection and try again.</string>
+    <string name="action_retry">Try again</string>
+    <string name="role_save_failed">Couldn’t save that — the server didn’t answer. Check the connection and try again.</string>
 </resources>

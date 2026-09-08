@@ -85,6 +85,40 @@ class TherapistApi(private val baseUrl: String) {
         }
 
     /** GET /api/v1/profile?user_id=... - null if no row (or on network error). */
+    /**
+     * Outcome of asking the server who this user is.
+     *
+     * [Missing] and [Unavailable] must stay distinct: the server answering
+     * "no profile row" means show the role picker, while failing to reach the
+     * server means show nothing of the sort. Collapsing both into null left
+     * users on a role picker they had already completed, whose buttons then
+     * failed for the same underlying reason.
+     */
+    sealed class ProfileResult {
+        data class Loaded(val profile: ProfileDto) : ProfileResult()
+        object Missing : ProfileResult()
+        object Unavailable : ProfileResult()
+    }
+
+    suspend fun fetchProfile(userId: String): ProfileResult = withContext(Dispatchers.IO) {
+        val url = URL("$baseUrl/api/v1/profile?user_id=${URLEncoder.encode(userId, "UTF-8")}")
+        // The endpoint answers 200 {"profile": null} on a genuine first run,
+        // so a non-2xx or a transport failure is always "could not ask".
+        val body = simpleGet(url, SessionManager.validAccessToken())
+            ?: return@withContext ProfileResult.Unavailable
+        runCatching {
+            val p = JSONObject(body).optJSONObject("profile")
+                ?: return@runCatching ProfileResult.Missing
+            ProfileResult.Loaded(
+                ProfileDto(
+                    userId = p.optString("user_id"),
+                    role = p.optString("role"),
+                    displayName = p.optString("display_name").takeIf { !p.isNull("display_name") },
+                )
+            )
+        }.getOrDefault(ProfileResult.Unavailable)
+    }
+
     suspend fun getProfile(userId: String): ProfileDto? = withContext(Dispatchers.IO) {
         val url = URL("$baseUrl/api/v1/profile?user_id=${URLEncoder.encode(userId, "UTF-8")}")
         val body = simpleGet(url, SessionManager.validAccessToken()) ?: return@withContext null

@@ -205,4 +205,8 @@
     <string name="profile_name_hint">זה מה שהמטפל או המטופלים שלכם רואים.</string>
     <string name="action_save">שמירה</string>
     <string name="settings_version">גירסה %1$s</string>
+    <string name="profile_unreachable_title">אין חיבור ל-CalmSense</string>
+    <string name="profile_unreachable_body">החשבון שלך עדיין מחובר, אבל השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
+    <string name="action_retry">נסו שוב</string>
+    <string name="role_save_failed">לא הצלחנו לשמור — השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
 </resources>
