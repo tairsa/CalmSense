@@ -106,6 +106,7 @@ class PanicReportRepository private constructor(
             currentHr = row.currentHr?.toFloat(),
             currentHrv = row.currentHrv,
             currentMotionIntensity = row.currentMotionIntensity,
+            hrvSource = row.hrvSource,
         )
         return when (val r = backend.submitPanicReport(payload)) {
             PostResult.Success -> true

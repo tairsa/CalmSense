@@ -19,6 +19,8 @@ object PanicEventContext {
         val detectedByModel: Boolean,
         val hr: Int?,
         val hrv: Double?,
+        /** How [hrv] was derived, captured with it so the two cannot drift. */
+        val hrvSource: HrvSource? = null,
         val motionIntensity: Float?,
         val duringSleep: Boolean? = null,
         val latitude: Double? = null,

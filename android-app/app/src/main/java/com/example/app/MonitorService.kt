@@ -152,6 +152,7 @@ class MonitorService : Service() {
             currentHr = hr.toFloat(),
             currentHrv = (v.hrv ?: 0.0).toFloat(),
             currentMotionIntensity = v.motionIntensity ?: if (v.isMoving) 1.0f else 0.0f,
+            hrvSource = v.hrvSource,
         )
         scope.launch {
             // Queued on network failure and re-sent (oldest first) once the

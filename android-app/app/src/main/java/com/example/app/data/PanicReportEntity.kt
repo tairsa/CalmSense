@@ -48,6 +48,10 @@ data class PanicReportEntity(
     val currentHrv: Double? = null,
     val currentMotionIntensity: Float? = null,
 
+    /** How [currentHrv] was derived. Null on rows written before this was
+     *  recorded - unknown, which is not the same as [HrvSource.NONE]. */
+    val hrvSource: HrvSource? = null,
+
     /** True if the sleep detector said the wearer was asleep when the event
      *  started (nocturnal panic). Null = unknown (no watch data / old rows). */
     val duringSleep: Boolean? = null,

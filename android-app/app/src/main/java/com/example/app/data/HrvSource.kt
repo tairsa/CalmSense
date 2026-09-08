@@ -13,13 +13,17 @@ package com.example.app.data
  * [wireCode] is the integer sent in the watch→phone sample payload; keep it in
  * sync with the HRV_SRC_* constants in the wear HrMonitoringService.
  */
-enum class HrvSource(val wireCode: Int) {
-    NONE(0),
-    REAL_IBI(1),
-    BPM_DERIVED(2);
+enum class HrvSource(val wireCode: Int, val apiValue: String) {
+    NONE(0, "none"),
+    REAL_IBI(1, "real_ibi"),
+    BPM_DERIVED(2, "bpm_derived");
 
     companion object {
         fun fromWire(code: Int?): HrvSource =
             values().firstOrNull { it.wireCode == code } ?: NONE
+
+        /** Inverse of [apiValue]; null for an absent or unrecognised name. */
+        fun fromApi(name: String?): HrvSource? =
+            values().firstOrNull { it.apiValue == name }
     }
 }

@@ -121,6 +121,7 @@ class PanicReportStore private constructor(context: Context) {
         if (r.locationAccuracyM != null) o.put("location_accuracy_m", r.locationAccuracyM.toDouble())
         if (r.currentHr != null) o.put("current_hr", r.currentHr)
         if (r.currentHrv != null) o.put("current_hrv", r.currentHrv)
+        if (r.hrvSource != null) o.put("hrv_source", r.hrvSource.apiValue)
         if (r.currentMotionIntensity != null)
             o.put("current_motion_intensity", r.currentMotionIntensity.toDouble())
         if (r.duringSleep != null) o.put("during_sleep", r.duringSleep)
@@ -154,6 +155,7 @@ class PanicReportStore private constructor(context: Context) {
                 o.getDouble("location_accuracy_m").toFloat() else null,
             currentHr = if (o.has("current_hr") && !o.isNull("current_hr")) o.getInt("current_hr") else null,
             currentHrv = if (o.has("current_hrv") && !o.isNull("current_hrv")) o.getDouble("current_hrv") else null,
+            hrvSource = HrvSource.fromApi(o.optString("hrv_source", null)),
             currentMotionIntensity = if (o.has("current_motion_intensity") && !o.isNull("current_motion_intensity"))
                 o.getDouble("current_motion_intensity").toFloat() else null,
             duringSleep = if (o.has("during_sleep") && !o.isNull("during_sleep"))

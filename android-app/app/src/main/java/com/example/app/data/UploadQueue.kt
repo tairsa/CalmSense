@@ -136,6 +136,7 @@ object UploadQueue {
         put("hr", p.currentHr.toDouble())
         put("hrv", p.currentHrv.toDouble())
         put("motion", p.currentMotionIntensity.toDouble())
+        if (p.hrvSource != null) put("hrv_source", p.hrvSource.apiValue)
         put("timestamp", p.timestamp)
     }
 
@@ -145,6 +146,8 @@ object UploadQueue {
         currentHr = o.getDouble("hr").toFloat(),
         currentHrv = o.getDouble("hrv").toFloat(),
         currentMotionIntensity = o.getDouble("motion").toFloat(),
+        // Absent on entries queued before this field existed: null = unknown.
+        hrvSource = HrvSource.fromApi(o.optString("hrv_source", null)),
         timestamp = o.optString("timestamp", null),
     )
 
@@ -157,6 +160,7 @@ object UploadQueue {
         if (p.currentHrv != null) put("hrv", p.currentHrv.toDouble())
         if (p.currentMotionIntensity != null) put("motion", p.currentMotionIntensity.toDouble())
         if (p.modelProbability != null) put("probability", p.modelProbability)
+        if (p.hrvSource != null) put("hrv_source", p.hrvSource.apiValue)
         put("timestamp", p.timestamp)
     }
 
@@ -169,6 +173,7 @@ object UploadQueue {
         currentHrv = if (o.has("hrv")) o.getDouble("hrv").toFloat() else null,
         currentMotionIntensity = if (o.has("motion")) o.getDouble("motion").toFloat() else null,
         modelProbability = if (o.has("probability")) o.getDouble("probability") else null,
+        hrvSource = HrvSource.fromApi(o.optString("hrv_source", null)),
         timestamp = o.optString("timestamp", null),
     )
 }

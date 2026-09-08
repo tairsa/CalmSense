@@ -26,6 +26,9 @@ data class SensorPayload(
     val currentHrv: Float,
     val currentMotionIntensity: Float,
     val timestamp: String? = null,
+    // How currentHrv was derived. Null only for payloads queued by a build
+    // that predates this field - see UploadQueue.
+    val hrvSource: HrvSource? = null,
 )
 
 data class PanicFeedbackPayload(
@@ -38,6 +41,7 @@ data class PanicFeedbackPayload(
     val currentMotionIntensity: Float? = null,
     val modelProbability: Double? = null,
     val timestamp: String? = null,
+    val hrvSource: HrvSource? = null,
 )
 
 data class PanicReportPayload(
@@ -56,6 +60,7 @@ data class PanicReportPayload(
     val currentHr: Float?,
     val currentHrv: Double?,
     val currentMotionIntensity: Float?,
+    val hrvSource: HrvSource? = null,
 )
 
 class BackendClient(private val baseUrl: String) {
@@ -96,6 +101,9 @@ class BackendClient(private val baseUrl: String) {
                 put("current_hr", payload.currentHr.toDouble())
                 put("current_hrv", payload.currentHrv.toDouble())
                 put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
+                // Omitted rather than sent as null when unknown, so the column
+                // distinguishes "this client did not say" from "no HRV".
+                if (payload.hrvSource != null) put("hrv_source", payload.hrvSource.apiValue)
                 if (payload.timestamp != null) put("timestamp", payload.timestamp)
             }.toString()
 
@@ -143,6 +151,7 @@ class BackendClient(private val baseUrl: String) {
                 if (payload.currentHrv != null) put("current_hrv", payload.currentHrv)
                 if (payload.currentMotionIntensity != null)
                     put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
+                if (payload.hrvSource != null) put("hrv_source", payload.hrvSource.apiValue)
             }.toString()
 
             try {
@@ -178,6 +187,7 @@ class BackendClient(private val baseUrl: String) {
                 if (payload.currentMotionIntensity != null)
                     put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
                 if (payload.modelProbability != null) put("model_probability", payload.modelProbability)
+                if (payload.hrvSource != null) put("hrv_source", payload.hrvSource.apiValue)
                 if (payload.timestamp != null) put("timestamp", payload.timestamp)
             }.toString()
 

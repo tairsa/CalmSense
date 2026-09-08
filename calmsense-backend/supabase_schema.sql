@@ -13,6 +13,7 @@ create table if not exists public.sensor_data (
     panic_attack_detection   boolean     not null,
     current_hr               double precision,
     current_hrv              double precision,
+    hrv_source               text,
     current_motion_intensity double precision,
     timestamp                timestamptz,
     created_at               timestamptz not null default now()
@@ -32,6 +33,7 @@ create table if not exists public.panic_feedback (
     detected_by_model         boolean     not null,
     current_hr                double precision,
     current_hrv               double precision,
+    hrv_source               text,
     current_motion_intensity  double precision,
     model_probability         double precision,
     timestamp                 timestamptz,
@@ -60,6 +62,7 @@ create table if not exists public.panic_reports (
     location_accuracy_m       double precision,
     current_hr                double precision,
     current_hrv               double precision,
+    hrv_source               text,
     current_motion_intensity  double precision,
     created_at                timestamptz not null default now()
 );
@@ -186,3 +189,17 @@ alter table public.therapist_patients  enable row level security;
 alter table public.admin_users         enable row level security;
 alter table public.model_weights       enable row level security;
 alter table public.user_model_state    enable row level security;
+
+
+-- ---------------------------------------------------------------------------
+-- Migration for databases created before hrv_source existed. Safe to re-run.
+--
+-- Deliberately NOT backfilled. Existing rows are a mix of real_ibi and
+-- bpm_derived readings and there is no record of which is which, so any
+-- backfill would be a guess written down as fact. Null means unknown, and a
+-- query that cares about provenance should exclude those rows rather than
+-- trust them.
+-- ---------------------------------------------------------------------------
+alter table public.sensor_data    add column if not exists hrv_source text;
+alter table public.panic_feedback add column if not exists hrv_source text;
+alter table public.panic_reports  add column if not exists hrv_source text;

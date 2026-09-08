@@ -2,12 +2,23 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 
 
+# How an HRV number was obtained. Null means the client did not say - which is
+# NOT the same as "none": rows written before the phone reported provenance are
+# genuinely unknown and must not be assumed to be real measurements.
+#   real_ibi     inter-beat intervals from the sensor (Samsung SDK, HealthKit)
+#   bpm_derived  approximated from smoothed BPM - a proxy, an order of
+#                magnitude smaller than a true RMSSD, and not comparable to it
+#   none         no HRV was available
+HrvSourceValue = Literal["real_ibi", "bpm_derived", "none"]
+
+
 class SensorData(BaseModel):
     user_id: str
     panic_attack_detection: bool
     current_hr: float                  # Heart Rate in BPM
     current_hrv: float                 # Heart Rate Variability in ms
     current_motion_intensity: float    # Motion intensity (e.g. 0.0–1.0)
+    hrv_source: Optional[HrvSourceValue] = None
     timestamp: Optional[str] = None   # ISO 8601; auto-filled server-side if omitted
 
 
@@ -28,6 +39,10 @@ class PanicFeedback(BaseModel):
     current_hrv: Optional[float] = None
     current_motion_intensity: Optional[float] = None
     model_probability: Optional[float] = None    # p(panic) the on-device model emitted
+    # Provenance of current_hrv. These rows are the model's training labels, so
+    # mixing a real RMSSD with a bpm-derived proxy in one column would quietly
+    # train on two different quantities.
+    hrv_source: Optional[HrvSourceValue] = None
     timestamp: Optional[str] = None             # ISO 8601; auto-filled server-side if omitted
 
 
@@ -61,6 +76,7 @@ class PanicReport(BaseModel):
     current_hr: Optional[float] = None
     current_hrv: Optional[float] = None
     current_motion_intensity: Optional[float] = None
+    hrv_source: Optional[HrvSourceValue] = None
 
 
 # ---------------------------------------------------------------------------

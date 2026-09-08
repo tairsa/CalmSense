@@ -200,6 +200,7 @@ class HeartRateViewModel : ViewModel() {
     private var pendingDetectedByModel: Boolean = false
     private var pendingHr: Int? = null
     private var pendingHrv: Double? = null
+    private var pendingHrvSource: HrvSource? = null
     private var pendingMotion: Float = 0.0f
     private var pendingProbability: Double = 0.0
 
@@ -689,6 +690,9 @@ class HeartRateViewModel : ViewModel() {
                     locationAccuracyM = snap?.locationAccuracyM,
                     currentHr = snap?.hr ?: pendingHr,
                     currentHrv = snap?.hrv ?: pendingHrv,
+                    // Follows the same precedence as the value above, so the
+                    // label always describes the reading it is attached to.
+                    hrvSource = if (snap?.hrv != null) snap.hrvSource else pendingHrvSource,
                     currentMotionIntensity = snap?.motionIntensity,
                     duringSleep = snap?.duringSleep,
                 )
@@ -739,6 +743,7 @@ class HeartRateViewModel : ViewModel() {
         pendingDetectedByModel = detectedByModel
         pendingHr = currentHr
         pendingHrv = currentHrv
+        pendingHrvSource = hrvSource
         pendingMotion = motionIntensity ?: if (isMoving) 1.0f else 0.0f
         pendingProbability = lastPanicProbability
 
@@ -749,6 +754,7 @@ class HeartRateViewModel : ViewModel() {
                 detectedByModel = detectedByModel,
                 hr = currentHr,
                 hrv = currentHrv,
+                hrvSource = hrvSource,
                 motionIntensity = motionIntensity ?: if (isMoving) 1.0f else 0.0f,
                 duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
             )
@@ -772,6 +778,7 @@ class HeartRateViewModel : ViewModel() {
             currentHrv = pendingHrv?.toFloat(),
             currentMotionIntensity = pendingMotion,
             modelProbability = if (pendingDetectedByModel) pendingProbability else null,
+            hrvSource = pendingHrvSource,
         )
         feedbackStatus = "sending…"
         viewModelScope.launch {
