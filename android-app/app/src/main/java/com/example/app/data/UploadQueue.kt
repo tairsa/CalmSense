@@ -78,21 +78,28 @@ object UploadQueue {
             }
         }
         val r = send(backend, kind, body)
-        if (r is PostResult.NetworkError) {
+        if (shouldRetry(r)) {
             mutex.withLock { enqueueLocked(kind, body) }
         }
         return r
     }
 
-    /** Send queued rows oldest-first until empty or the network fails again.
-     *  HTTP errors drop the row — the server got it and said no; retrying
-     *  the same body forever would wedge the queue. */
+    /** Keep the row for later on a network failure or a server-side
+     *  transient (timeout, rate limit, 5xx — including the backend's 503 for
+     *  "can't reach the token keys"). Any other HTTP error is the server
+     *  rejecting this body; retrying it forever would wedge the queue. */
+    internal fun shouldRetry(r: PostResult): Boolean =
+        r is PostResult.NetworkError ||
+            (r is PostResult.HttpError && (r.code == 408 || r.code == 429 || r.code >= 500))
+
+    /** Send queued rows oldest-first until empty or a retryable failure.
+     *  Other HTTP errors drop the row (see [shouldRetry]). */
     suspend fun flush(backend: BackendClient) {
         mutex.withLock {
             while (entries.isNotEmpty()) {
                 val entry = entries.first()
                 val r = send(backend, entry.getString("kind"), entry.getJSONObject("body"))
-                if (r is PostResult.NetworkError) return
+                if (shouldRetry(r)) return
                 if (r is PostResult.HttpError) {
                     Log.w(TAG, "Dropping queued ${entry.getString("kind")} row: HTTP ${r.code}")
                 }

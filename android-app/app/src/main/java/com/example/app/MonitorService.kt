@@ -1,5 +1,6 @@
 package com.example.app
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -25,6 +26,7 @@ import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
 import com.example.app.data.UploadQueue
 import com.example.app.data.Vitals
+import com.example.app.data.decidePanic
 import com.example.app.data.motionFeature
 import com.example.app.data.WatchVitalsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -125,23 +127,16 @@ class MonitorService : Service() {
         uploadIfFresh(v, panic)
     }
 
-    /** Same decision the in-app classifier makes: trained model at the user's
-     *  sensitivity threshold, falling back to the fixed rule when no trained
-     *  model is cached yet. Reloading the cache each poll (every 5–30 s) keeps
-     *  this in sync with weights the app fetches while we run. */
+    /** Same decision as the in-app check (see [decidePanic]). Reloading the
+     *  cache each poll (every 5–30 s) keeps this in sync with weights the app
+     *  fetches while we run. */
     private fun isPanic(v: Vitals): Boolean {
         val hr = v.heartRateBpm ?: return false
         val hrv = v.hrv ?: return false
-        val model = modelCache.load()
-        return if (model != null && !model.isUntrained()) {
-            // Mirror HeartRateViewModel.checkPanicRisk's motion encoding so
-            // foreground and background detections always agree.
-            val motion = v.motionFeature()
-            val threshold = SettingsStore.detectionThreshold.value.toDouble()
-            model.predict(hr.toDouble(), hrv, motion, threshold).isPanic
-        } else {
-            hr > 120 && hrv < 20.0 && !v.isMoving
-        }
+        return decidePanic(
+            modelCache.load(), hr, hrv, v.motionFeature(), v.isMoving,
+            SettingsStore.detectionThreshold.value.toDouble(),
+        ).isPanic
     }
 
     private fun uploadIfFresh(v: Vitals, panic: Boolean) {
@@ -237,12 +232,14 @@ class MonitorService : Service() {
             .build()
     }
 
+    @SuppressLint("MissingPermission") // guarded by hasPostPermission(), which lint cannot see through
     private fun updateMonitorNotification(text: String) {
         if (!hasPostPermission()) return
         NotificationManagerCompat.from(this)
             .notify(MONITOR_NOTIFICATION_ID, buildMonitorNotification(text))
     }
 
+    @SuppressLint("MissingPermission") // guarded by hasPostPermission(), which lint cannot see through
     private fun firePanicNotification() {
         if (!hasPostPermission()) return
         // ACTION_PANIC_ALERT makes MainActivity surface the "was it a panic?"

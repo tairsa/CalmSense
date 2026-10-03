@@ -73,3 +73,13 @@ data class PanicModel(
 }
 
 data class Prediction(val probability: Double, val isPanic: Boolean)
+
+/**
+ * The single panic decision shared by the in-app check and MonitorService, so
+ * foreground and background detections can never disagree: the trained model
+ * at the user's [threshold], or — before any trained model is cached — a fixed
+ * conservative rule (probability reported as 0).
+ */
+fun decidePanic(model: PanicModel?, hr: Int, hrv: Double, motion: Double, moving: Boolean, threshold: Double): Prediction =
+    if (model != null && !model.isUntrained()) model.predict(hr.toDouble(), hrv, motion, threshold)
+    else Prediction(probability = 0.0, isPanic = hr > 120 && hrv < 20.0 && !moving)

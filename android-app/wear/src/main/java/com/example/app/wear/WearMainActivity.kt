@@ -1,6 +1,7 @@
 package com.example.app.wear
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.PowerManager
@@ -26,6 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 
+// False positive: an old androidx.fragment arrives transitively via play-services,
+// but this is a ComponentActivity, not a Fragment host, so the bug the check
+// guards against (Fragment < 1.3 dropping activity results) cannot occur here.
+@SuppressLint("InvalidFragmentVersionForActivityResult")
 class WearMainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(

@@ -83,6 +83,7 @@ import com.example.app.data.TherapistApi
 import com.example.app.data.UploadQueue
 import com.example.app.data.VitalsSource
 import com.example.app.data.WatchVitalsRepository
+import com.example.app.data.decidePanic
 import com.example.app.data.motionFeatureFor
 import com.example.app.ui.ConsentScreen
 import com.example.app.ui.QuestionnaireAnswers
@@ -621,17 +622,12 @@ class HeartRateViewModel : ViewModel() {
             panicDebouncer.reset()
             return
         }
-        val model = panicModel
-        val rawPanic: Boolean = if (model != null && !model.isUntrained()) {
-            val motion = motionFeatureFor(motionIntensity, moving)
-            val threshold = SettingsStore.detectionThreshold.value.toDouble()
-            val pred = model.predict(hr.toDouble(), hrv, motion, threshold)
-            lastPanicProbability = pred.probability
-            pred.isPanic
-        } else {
-            lastPanicProbability = 0.0
-            hr > 120 && hrv < 20.0 && !moving
-        }
+        val pred = decidePanic(
+            panicModel, hr, hrv, motionFeatureFor(motionIntensity, moving), moving,
+            SettingsStore.detectionThreshold.value.toDouble(),
+        )
+        lastPanicProbability = pred.probability
+        val rawPanic = pred.isPanic
         // Require the positive to persist before alerting (filters single-sample
         // spikes). Simulation drives the in-app demos, so it fires immediately.
         val isPanic = if (dataSource == VitalsSource.SIMULATED) rawPanic
@@ -812,10 +808,11 @@ class HeartRateViewModel : ViewModel() {
         )
         feedbackStatus = "sending…"
         viewModelScope.launch {
-            feedbackStatus = when (val r = UploadQueue.postFeedback(pingBackend, payload)) {
-                PostResult.Success -> "Feedback saved — thanks!"
-                is PostResult.HttpError -> "Feedback failed (HTTP ${r.code})"
-                is PostResult.NetworkError -> "Saved on this phone — sends when the server is back"
+            val r = UploadQueue.postFeedback(pingBackend, payload)
+            feedbackStatus = when {
+                r == PostResult.Success -> "Feedback saved — thanks!"
+                UploadQueue.shouldRetry(r) -> "Saved on this phone — sends when the server is back"
+                else -> "Feedback failed (HTTP ${(r as PostResult.HttpError).code})"
             }
         }
     }

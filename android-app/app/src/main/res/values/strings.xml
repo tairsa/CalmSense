@@ -3,7 +3,7 @@
     <!-- Brand name. Deliberately NOT translated: it is the product name and
          stays in Latin script in the Hebrew build too, which is the norm for
          software brands in Israel. -->
-    <string name="app_name">CalmSense</string>
+    <string name="app_name" translatable="false">CalmSense</string>
 
     <!-- ===== Language picker (Settings) ===== -->
     <string name="settings_language">Language</string>
