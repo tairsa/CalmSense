@@ -209,4 +209,13 @@
     <string name="profile_unreachable_body">Your account is still signed in, but the server didn’t answer. Check the connection and try again.</string>
     <string name="action_retry">Try again</string>
     <string name="role_save_failed">Couldn’t save that — the server didn’t answer. Check the connection and try again.</string>
+    <!-- Fingerprint sign-in -->
+    <string name="fingerprint_sign_in">Sign in with fingerprint</string>
+    <string name="fingerprint_setting_desc">Use your fingerprint instead of your password when you sign in.</string>
+    <string name="fingerprint_password_title">Confirm your password</string>
+    <string name="fingerprint_password_body">Enter it once. It stays on this phone, locked by your fingerprint.</string>
+    <string name="fingerprint_turn_on">Turn on</string>
+    <string name="fingerprint_wrong_password">Wrong password.</string>
+    <string name="fingerprint_changed">Your phone’s fingerprints changed, so fingerprint sign-in was turned off. Sign in with your password, then turn it on again in Settings.</string>
+    <string name="fingerprint_password_changed">Your password has changed. Sign in with it, then turn fingerprint sign-in on again in Settings.</string>
 </resources>

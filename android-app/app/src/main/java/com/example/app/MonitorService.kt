@@ -24,6 +24,7 @@ import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicModelCache
 import com.example.app.data.PostResult
 import com.example.app.data.SensorPayload
+import com.example.app.data.SessionManager
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
 import com.example.app.data.UploadQueue
@@ -57,6 +58,9 @@ class MonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
+        // Started at boot or after an update, before any Activity: without this
+        // the first uploads go out with no token and are rejected.
+        SessionManager.init(applicationContext)
         SettingsStore.init(applicationContext)
         UploadQueue.init(applicationContext)
         HrvBaseline.init(applicationContext)

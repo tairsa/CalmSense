@@ -165,11 +165,22 @@ def test_feedback_retrain_serves_new_weights_to_the_phone(client, raw_client, ad
     users = raw_client.get("/api/v1/admin/users", headers=admin_token).json()["users"]
     assert users == [{"user_id": "alice", "sensor_count": 0, "feedback_count": 12, "report_count": 0,
                       "last_seen": (t0 + timedelta(hours=11)).isoformat(), "model_source": "trained",
-                      "hrv_sources": {}}]
+                      "hrv_sources": {}, "name": None, "email": None}]
 
     # Reset puts the baseline back.
     raw_client.post("/api/v1/admin/users/alice/model/reset", headers=admin_token)
     assert client.get("/api/v1/sensor-data", headers=as_user("alice")).json()["source"] == "baseline"
+
+
+def test_admin_shows_who_each_user_is(client, raw_client, admin_token):
+    h = as_user("alice")
+    client.post("/api/v1/profile", json={"user_id": "alice", "role": "patient", "display_name": "Alex"}, headers=h)
+    client.post("/api/v1/panic-reports", json={"user_id": "x", "severity": 5, "detected_by_model": False}, headers=h)
+    client.post("/api/v1/panic-reports", json={"user_id": "x", "severity": 5, "detected_by_model": False},
+                headers=as_user("anon-device"))
+    users = {u["user_id"]: u["name"] for u in raw_client.get("/api/v1/admin/users", headers=admin_token).json()["users"]}
+    assert users == {"alice": "Alex", "anon-device": None}
+    assert raw_client.get("/api/v1/admin/users/alice", headers=admin_token).json()["name"] == "Alex"
 
 
 def test_retrain_refuses_too_little_data(raw_client, admin_token):

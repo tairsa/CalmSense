@@ -2,6 +2,7 @@ package com.example.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,7 +95,14 @@ object SessionManager {
         }
     }
 
-    /** Write a session to disk + notify observers. */
+    /**
+     * Write a session to disk + notify observers.
+     *
+     * commit, not apply: a refresh rotates the refresh token, and if the
+     * process died before an async write landed, the next launch would spend
+     * the old one - which Supabase treats as theft and answers by revoking the
+     * whole session.
+     */
     fun save(context: Context, session: SupabaseAuth.Session) {
         prefs(context).edit()
             .putString(KEY_USER_ID, session.userId)
@@ -102,7 +110,7 @@ object SessionManager {
             .putString(KEY_ACCESS_TOKEN, session.accessToken)
             .putString(KEY_REFRESH_TOKEN, session.refreshToken)
             .putLong(KEY_EXPIRES_AT, session.expiresAtMs)
-            .apply()
+            .commit()
         _session.value = session
     }
 
@@ -194,7 +202,16 @@ object SessionManager {
             if (!latest.needsRefresh()) {
                 return@withLock latest.accessToken.takeIf { it.isNotBlank() }
             }
-            when (val result = SupabaseAuth.refresh(latest.refreshToken)) {
+            var result = SupabaseAuth.refresh(latest.refreshToken)
+            if (result is SupabaseAuth.AuthResult.Error && result.httpCode == null) {
+                // A refresh whose reply was lost has still rotated the token on
+                // the server. Supabase accepts the old one again for 10 s; after
+                // that it reads reuse as theft and revokes the session. So retry
+                // now, inside that window, rather than on the next request.
+                delay(REFRESH_RETRY_MS)
+                result = SupabaseAuth.refresh(latest.refreshToken)
+            }
+            when (result) {
                 is SupabaseAuth.AuthResult.Success -> {
                     // Supabase rotates the refresh token, so persist the whole
                     // session, not just the access token.
@@ -202,8 +219,7 @@ object SessionManager {
                     result.session.accessToken.takeIf { it.isNotBlank() }
                 }
                 is SupabaseAuth.AuthResult.Error -> {
-                    val rejected = result.httpCode != null && result.httpCode in 400..499
-                    if (rejected) {
+                    if (refreshTokenRejected(result.httpCode)) {
                         // The refresh token is spent or revoked; nothing but a
                         // fresh sign-in will fix it.
                         clear(context)
@@ -217,6 +233,17 @@ object SessionManager {
             }
         }
     }
+
+    private const val REFRESH_RETRY_MS = 1_500L
+
+    /**
+     * Whether a failed refresh means the refresh token itself is dead - the
+     * only case that signs anyone out. A rate limit (429) or a timeout (408)
+     * says nothing about the token, and no code at all means the server was
+     * never reached.
+     */
+    internal fun refreshTokenRejected(httpCode: Int?): Boolean =
+        httpCode != null && httpCode in 400..499 && httpCode != 408 && httpCode != 429
 
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

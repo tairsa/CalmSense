@@ -340,10 +340,50 @@ def upsert_profile(record: dict) -> None:
     if _supabase is not None:
         try:
             _supabase.table(PROFILES_TABLE_NAME).upsert(record, on_conflict="user_id").execute()
+            _copy_name_to_auth_user(record)
             return
         except Exception as e:
             print(f"[storage] Supabase profile upsert failed ({e}); writing JSON fallback")
     _json_replace_by_key(PROFILES_FILE, "user_id", record)
+
+
+def _copy_name_to_auth_user(record: dict) -> None:
+    """Put the display name on the Supabase Auth account too, so the Supabase
+    dashboard's Users page shows whose account it is. Best effort: the profile
+    row is the source of truth and is already saved."""
+    try:
+        _supabase.auth.admin.update_user_by_id(
+            record["user_id"], {"user_metadata": {"display_name": record.get("display_name")}})
+    except Exception as e:
+        print(f"[storage] could not copy the name to the auth user ({e})")
+
+
+def user_directory() -> dict[str, dict]:
+    """user_id -> {"name", "email"} for the admin pages: names from profiles,
+    emails from Supabase Auth. Labels only, so a failed lookup leaves them out
+    rather than failing the page."""
+    out: dict[str, dict] = {}
+    if _supabase is None:
+        for p in _json_read_from(PROFILES_FILE):
+            out.setdefault(p["user_id"], {})["name"] = p.get("display_name")
+        return out
+    try:
+        for p in _select_all(PROFILES_TABLE_NAME, "user_id,display_name", order_col="user_id"):
+            out.setdefault(p["user_id"], {})["name"] = p.get("display_name")
+    except Exception as e:
+        print(f"[storage] profile names unavailable ({e})")
+    try:
+        page = 1
+        while True:
+            users = _supabase.auth.admin.list_users(page=page, per_page=1000)
+            for u in users:
+                out.setdefault(u.id, {})["email"] = u.email
+            if len(users) < 1000:
+                break
+            page += 1
+    except Exception as e:
+        print(f"[storage] account emails unavailable ({e})")
+    return out
 
 
 def get_profile(user_id: str) -> dict | None:

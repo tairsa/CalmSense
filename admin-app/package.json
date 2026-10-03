@@ -1,7 +1,7 @@
 {
   "name": "calmsense-admin",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Admin web app for CalmSense (user data, metrics, and per-user model management).",
   "scripts": {

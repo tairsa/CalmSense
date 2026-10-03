@@ -209,4 +209,13 @@
     <string name="profile_unreachable_body">החשבון שלך עדיין מחובר, אבל השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
     <string name="action_retry">נסו שוב</string>
     <string name="role_save_failed">לא הצלחנו לשמור — השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
+    <!-- כניסה עם טביעת אצבע -->
+    <string name="fingerprint_sign_in">כניסה עם טביעת אצבע</string>
+    <string name="fingerprint_setting_desc">שימוש בטביעת האצבע במקום בסיסמה בכניסה.</string>
+    <string name="fingerprint_password_title">אישור הסיסמה</string>
+    <string name="fingerprint_password_body">מזינים אותה פעם אחת. היא נשמרת בטלפון הזה, נעולה בטביעת האצבע.</string>
+    <string name="fingerprint_turn_on">הפעלה</string>
+    <string name="fingerprint_wrong_password">סיסמה שגויה.</string>
+    <string name="fingerprint_changed">טביעות האצבע בטלפון השתנו, ולכן הכניסה עם טביעת אצבע כובתה. היכנסו עם הסיסמה והפעילו אותה מחדש בהגדרות.</string>
+    <string name="fingerprint_password_changed">הסיסמה שלכם השתנתה. היכנסו איתה והפעילו מחדש את הכניסה עם טביעת אצבע בהגדרות.</string>
 </resources>

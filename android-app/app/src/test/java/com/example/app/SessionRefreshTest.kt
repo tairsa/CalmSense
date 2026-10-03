@@ -1,5 +1,6 @@
 package com.example.app
 
+import com.example.app.data.SessionManager
 import com.example.app.data.SupabaseAuth
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -82,7 +83,7 @@ class SessionRefreshTest {
                 r.session.accessToken.takeIf { it.isNotBlank() }
             }
             is SupabaseAuth.AuthResult.Error -> {
-                if (r.httpCode != null && r.httpCode in 400..499) {
+                if (SessionManager.refreshTokenRejected(r.httpCode)) {
                     onClear(); null
                 } else {
                     current.accessToken.takeIf { it.isNotBlank() }
@@ -157,6 +158,22 @@ class SessionRefreshTest {
             onClear = { cleared = true })
         assertEquals("old", out)
         assertFalse(cleared)
+    }
+
+    @Test
+    fun `rate limit or timeout does not sign the user out`() {
+        // Neither is a verdict on the token; signing out on them is what kicked
+        // people out for no reason they could see.
+        for (code in listOf(408, 429)) {
+            var cleared = false
+            val now = 1_000_000L
+            val out = resolve(session(now + 10_000, access = "old"), now,
+                refresh = { SupabaseAuth.AuthResult.Error("slow down", code) },
+                onClear = { cleared = true })
+            assertEquals("old", out)
+            assertFalse("HTTP $code must not sign out", cleared)
+        }
+        assertTrue(SessionManager.refreshTokenRejected(401))
     }
 
     @Test

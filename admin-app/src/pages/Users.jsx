@@ -28,7 +28,9 @@ export default function Users() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return users;
-    return users.filter((u) => u.user_id.toLowerCase().includes(q));
+    return users.filter((u) =>
+      [u.user_id, u.name, u.email].some((v) => v && v.toLowerCase().includes(q)),
+    );
   }, [users, query]);
 
   if (loading) return <Spinner />;
@@ -39,7 +41,7 @@ export default function Users() {
         <input
           className="search"
           type="search"
-          placeholder="Search user id…"
+          placeholder="Search name, email or id…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -70,7 +72,11 @@ export default function Users() {
                   className="clickable"
                   onClick={() => navigate(`/users/${encodeURIComponent(u.user_id)}`)}
                 >
-                  <td className="mono">{u.user_id}</td>
+                  <td>
+                    <div>{u.name || u.email || <span className="mono">{u.user_id}</span>}</div>
+                    {u.name && u.email && <div className="muted small">{u.email}</div>}
+                    {(u.name || u.email) && <div className="muted small mono">{u.user_id}</div>}
+                  </td>
                   <td className="num">{u.sensor_count}</td>
                   <td className="num">{u.feedback_count}</td>
                   <td className="num">{u.report_count}</td>

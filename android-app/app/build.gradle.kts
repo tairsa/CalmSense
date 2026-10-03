@@ -52,6 +52,7 @@ dependencies {
     // For per-app language selection (AppCompatDelegate.setApplicationLocales),
     // which backports Android 13's per-app locales to this app's minSdk 30.
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.biometric)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -27,7 +28,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.app.R
+import com.example.app.data.BiometricLogin
 import com.example.app.data.SessionManager
+import com.example.app.data.fragmentActivity
 import com.example.app.data.SupabaseAuth
 import com.example.app.ui.theme.AppTheme
 import kotlinx.coroutines.launch
@@ -69,6 +72,45 @@ fun LoginScreen(
     val autofillManager = LocalAutofillManager.current
 
     val canSubmit = email.isNotBlank() && password.length >= 6 && !loading
+
+    // Set up by hand in Settings; null when it is off.
+    var fingerprintEmail by remember { mutableStateOf(BiometricLogin.enabledFor(context)) }
+    val fingerprintTitle = stringResource(R.string.fingerprint_sign_in)
+    val cancelText = stringResource(R.string.action_cancel)
+
+    fun fingerprintSignIn() {
+        val activity = context.fragmentActivity() ?: return
+        error = null
+        scope.launch {
+            when (val u = BiometricLogin.unlock(activity, fingerprintTitle, cancelText)) {
+                BiometricLogin.Unlock.Cancelled -> Unit
+                BiometricLogin.Unlock.Invalidated -> {
+                    fingerprintEmail = null
+                    error = context.getString(R.string.fingerprint_changed)
+                }
+                is BiometricLogin.Unlock.Ok -> {
+                    loading = true
+                    val result = SupabaseAuth.signIn(u.email, u.password)
+                    loading = false
+                    when (result) {
+                        is SupabaseAuth.AuthResult.Success -> onAuthenticated(result.session)
+                        is SupabaseAuth.AuthResult.Error -> if (result.httpCode == 400) {
+                            // The stored password no longer works; stop offering it.
+                            BiometricLogin.disable(context)
+                            fingerprintEmail = null
+                            email = u.email
+                            error = context.getString(R.string.fingerprint_password_changed)
+                        } else {
+                            error = result.message
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The usual flow: the fingerprint sheet is already up when the screen opens.
+    LaunchedEffect(Unit) { if (fingerprintEmail != null) fingerprintSignIn() }
 
     fun submit() {
         error = null
@@ -277,6 +319,22 @@ fun LoginScreen(
                         },
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+            }
+
+            if (mode == AuthMode.SIGN_IN && fingerprintEmail != null) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { fingerprintSignIn() },
+                    enabled = !loading,
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                ) {
+                    Icon(Icons.Filled.Fingerprint, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.fingerprint_sign_in), fontWeight = FontWeight.SemiBold)
                 }
             }
 

@@ -149,9 +149,13 @@ object SupabaseAuth {
     /**
      * Sign the current session out on the server. Best-effort - clearing
      * local session is what actually matters for the app.
+     *
+     * scope=local: only this device. Supabase's default is global, so signing
+     * out anywhere (a test phone, an emulator) used to sign the user out on
+     * every device they had.
      */
     suspend fun signOut(accessToken: String): Boolean = withContext(Dispatchers.IO) {
-        val url = URL("$PROJECT_URL/auth/v1/logout")
+        val url = URL("$PROJECT_URL/auth/v1/logout?scope=local")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true

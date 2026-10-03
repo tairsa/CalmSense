@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
@@ -46,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,14 +55,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
 import com.example.app.BuildConfig
 import com.example.app.R
+import com.example.app.data.BiometricLogin
 import com.example.app.data.LanguageManager
 import com.example.app.data.SettingsStore
+import com.example.app.data.SupabaseAuth
 import com.example.app.data.TherapistApi
+import com.example.app.data.fragmentActivity
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.abs
@@ -115,6 +122,8 @@ fun SettingsScreen(
             onConnectTherapist = onConnectTherapist,
             onRenameSelf = onRenameSelf,
         )
+
+        FingerprintCard(email)
 
         Text(
             stringResource(R.string.settings_language),
@@ -418,6 +427,121 @@ private fun ProfileCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+        }
+    }
+}
+
+
+/**
+ * Fingerprint sign-in switch. Turning it on asks for the password once and
+ * then a fingerprint, which locks the password on this phone (BiometricLogin).
+ * Hidden on a phone with no fingerprint enrolled, unless it is already on so
+ * it can still be turned off.
+ */
+@Composable
+private fun FingerprintCard(email: String?) {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(BiometricLogin.enabledFor(context) != null) }
+    val activity = context.fragmentActivity()
+    if (email.isNullOrBlank() || activity == null || (!enabled && !BiometricLogin.canUse(context))) return
+
+    var asking by remember { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val title = stringResource(R.string.fingerprint_sign_in)
+    val cancel = stringResource(R.string.action_cancel)
+
+    fun close() {
+        asking = false
+        password = ""
+        error = null
+    }
+
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) close() },
+            title = { Text(stringResource(R.string.fingerprint_password_title)) },
+            text = {
+                Column {
+                    Text(
+                        stringResource(R.string.fingerprint_password_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it; error = null },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.login_password)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        isError = error != null,
+                        supportingText = error?.let { { Text(it) } },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = password.isNotEmpty() && !busy,
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            // Check the password before locking it away, or a
+                            // typo would only surface at the next sign-in.
+                            when (val r = SupabaseAuth.signIn(email, password)) {
+                                is SupabaseAuth.AuthResult.Error -> error =
+                                    if (r.httpCode == 400) context.getString(R.string.fingerprint_wrong_password)
+                                    else r.message
+                                is SupabaseAuth.AuthResult.Success ->
+                                    if (BiometricLogin.enable(activity, email, password, title, cancel)) {
+                                        enabled = true
+                                        close()
+                                    }
+                            }
+                            busy = false
+                        }
+                    },
+                ) { Text(stringResource(R.string.fingerprint_turn_on)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { close() }, enabled = !busy) { Text(cancel) }
+            },
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.fingerprint_setting_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 4.dp, end = 12.dp),
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = { on ->
+                    if (on) asking = true else {
+                        BiometricLogin.disable(context)
+                        enabled = false
+                    }
+                },
+            )
         }
     }
 }

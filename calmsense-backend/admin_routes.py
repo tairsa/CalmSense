@@ -75,9 +75,12 @@ def list_admins(admin: dict = Depends(get_current_admin)):
 def list_users(admin: dict = Depends(get_current_admin)):
     """Distinct app users with per-source row counts, last activity, the mix
     of HRV sources (real beat-to-beat vs estimated; "unknown" = a phone that
-    predates provenance) and the source of their served model."""
+    predates provenance), who they are and the source of their served model."""
     users = storage.user_stats()
+    directory = storage.user_directory()
     for u in users:
+        who = directory.get(u["user_id"], {})
+        u["name"], u["email"] = who.get("name"), who.get("email")
         try:
             u["model_source"] = model_service.get_active_weights(u["user_id"])["source"]
         except Exception:
@@ -87,8 +90,11 @@ def list_users(admin: dict = Depends(get_current_admin)):
 
 @router.get("/users/{user_id}")
 def user_detail(user_id: str, admin: dict = Depends(get_current_admin)):
+    who = storage.user_directory().get(user_id, {})
     return {
         "user_id": user_id,
+        "name": who.get("name"),
+        "email": who.get("email"),
         "metrics": model_service.compute_user_metrics(user_id),
         "model": model_service.get_model_state_view(user_id),
     }

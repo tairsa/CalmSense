@@ -24,13 +24,16 @@ const TABS = ["Overview", "Model", "Reports", "Feedback", "Sensor"];
 export default function UserDetail() {
   const { userId } = useParams();
   const [tab, setTab] = useState("Overview");
+  const detail = useAsync(() => api.userDetail(userId), [userId]);
+  const who = detail.data?.name || detail.data?.email;
 
   return (
     <div>
       <div className="breadcrumb muted">
         <Link to="/users">Users</Link> / <span className="mono">{userId}</span>
       </div>
-      <h1 className="mono">{userId}</h1>
+      <h1 className={who ? "" : "mono"}>{who || userId}</h1>
+      {detail.data?.name && detail.data?.email && <p className="muted">{detail.data.email}</p>}
 
       <div className="tabs">
         {TABS.map((t) => (
@@ -40,7 +43,7 @@ export default function UserDetail() {
         ))}
       </div>
 
-      {tab === "Overview" && <Overview userId={userId} />}
+      {tab === "Overview" && <Overview detail={detail} />}
       {tab === "Model" && <ModelPanel userId={userId} />}
       {tab === "Reports" && <Reports userId={userId} />}
       {tab === "Feedback" && <Feedback userId={userId} />}
@@ -49,8 +52,8 @@ export default function UserDetail() {
   );
 }
 
-function Overview({ userId }) {
-  const { data, error, loading } = useAsync(() => api.userDetail(userId), [userId]);
+function Overview({ detail }) {
+  const { data, error, loading } = detail;
   if (loading) return <Spinner />;
   const m = data?.metrics;
   const model = data?.model;
