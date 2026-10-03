@@ -1,6 +1,8 @@
 package com.example.app
 
+import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HrvSource
+import com.example.app.data.LogBaseline
 import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicModel
 import com.example.app.data.PostResult
@@ -15,6 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.time.Instant
+import kotlin.math.ln
 
 /**
  * The seams between tiers, pinned from the phone's side:
@@ -70,34 +73,62 @@ class ContractTest {
         return arr.split(',').map { it.trim().toDouble() }.toDoubleArray()
     }
 
+    private fun PanicModel.at(hr: Double, hrv: Double, motion: Double, baseline: Double = 52.5) =
+        predict(hr, hrv, motion, hrvRel = LogBaseline(ln(baseline), 1.0).relative(hrv)).isPanic
+
     @Test
     fun `backend baseline weights classify the canonical profiles on the phone`() {
-        val m = PanicModel(baselineWeights(), "baseline", null, null, null)
+        val w = baselineWeights()
+        assertEquals("raw HRV must not be weighted", 0.0, w[1], 0.0)
+        val m = PanicModel(w, "baseline", null, null, null)
         // Midpoints of the priors in calmsense-backend/ml/generate_data.py.
-        assertFalse("resting", m.predict(70.0, 52.0, 0.05).isPanic)
-        assertFalse("stress", m.predict(92.0, 35.0, 0.10).isPanic)
-        assertTrue("panic", m.predict(145.0, 15.0, 0.15).isPanic)
-        assertFalse("exercise", m.predict(145.0, 25.0, 0.75).isPanic)
+        assertFalse("resting", m.at(70.0, 52.0, 0.05))
+        assertFalse("stress", m.at(92.0, 35.0, 0.10))
+        assertTrue("panic", m.at(145.0, 15.0, 0.15))
+        assertFalse("exercise", m.at(145.0, 25.0, 0.75))
+    }
+
+    @Test
+    fun `estimated HRV at rest is judged against its own source`() {
+        val m = PanicModel(baselineWeights(), "baseline", null, null, null)
+        val estimated = LogBaseline.prior(HrvSource.BPM_DERIVED)
+        // ~10 ms is a normal resting reading for the bpm-derived estimate...
+        assertFalse(m.predict(75.0, 10.0, 0.05, hrvRel = estimated.relative(10.0)).isPanic)
+        // ...and would only look like panic against a real-IBI baseline.
+        val real = LogBaseline.prior(HrvSource.REAL_IBI)
+        assertTrue(m.predict(120.0, 10.0, 0.05, hrvRel = real.relative(10.0)).isPanic)
+    }
+
+    @Test
+    fun `the simulator's panic and exercise demos still behave`() {
+        val m = PanicModel(baselineWeights(), "baseline", null, null, null)
+        val sim = FakeVitalsRepository.RESTING_HRV_MS
+        assertTrue("panic demo, worst case", m.at(130.0, 18.0, motionFeatureFor(null, false), sim))
+        assertFalse("exercise demo", m.at(150.0, 22.0, motionFeatureFor(null, true), sim))
+        assertFalse("baseline demo", m.at(75.0, 40.0, motionFeatureFor(null, false), sim))
     }
 
     // ---- shared decision ------------------------------------------------
 
     @Test
     fun `without a trained model the fixed rule applies`() {
-        assertTrue(decidePanic(null, 130, 15.0, 0.05, moving = false, threshold = 0.5).isPanic)
-        assertFalse(decidePanic(null, 130, 15.0, 0.05, moving = true, threshold = 0.5).isPanic)
-        assertFalse(decidePanic(null, 110, 15.0, 0.05, moving = false, threshold = 0.5).isPanic)
+        assertTrue(decidePanic(null, 130, 15.0, 0.0, 0.05, moving = false, threshold = 0.5).isPanic)
+        assertFalse(decidePanic(null, 130, 15.0, 0.0, 0.05, moving = true, threshold = 0.5).isPanic)
+        assertFalse(decidePanic(null, 110, 15.0, 0.0, 0.05, moving = false, threshold = 0.5).isPanic)
         val zero = PanicModel(DoubleArray(5), "default", null, null, null)
-        assertEquals(0.0, decidePanic(zero, 130, 15.0, 0.05, false, 0.5).probability, 0.0)
+        assertEquals(0.0, decidePanic(zero, 130, 15.0, 0.0, 0.05, false, 0.5).probability, 0.0)
     }
 
     @Test
     fun `a trained model decides at the user's threshold`() {
         // z = 0 -> p = 0.5 exactly.
-        val m = PanicModel(doubleArrayOf(0.0, 0.0, 0.0, 99.0, 0.0), "trained", null, null, null)
-        assertEquals(0.5, decidePanic(m, 60, 50.0, 0.0, false, 0.4).probability, 1e-9)
-        assertTrue(decidePanic(m, 60, 50.0, 0.0, false, 0.4).isPanic)
-        assertFalse(decidePanic(m, 60, 50.0, 0.0, false, 0.6).isPanic)
+        val m = PanicModel(doubleArrayOf(0.0, 0.0, 0.0, 0.0, 0.0001), "trained", null, null, null)
+        assertEquals(0.5, decidePanic(m, 60, 50.0, 0.0, 0.0, false, 0.4).probability, 1e-4)
+        assertTrue(decidePanic(m, 60, 50.0, 0.0, 0.0, false, 0.4).isPanic)
+        assertFalse(decidePanic(m, 60, 50.0, 0.0, 0.0, false, 0.6).isPanic)
+        // Slot 3 weights the HRV drop.
+        val rel = PanicModel(doubleArrayOf(0.0, 0.0, 0.0, -2.0, 0.0001), "trained", null, null, null)
+        assertTrue(decidePanic(rel, 60, 50.0, -1.0, 0.0, false, 0.5).probability > 0.85)
     }
 
     @Test

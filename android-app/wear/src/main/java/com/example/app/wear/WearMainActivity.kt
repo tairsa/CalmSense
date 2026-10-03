@@ -19,10 +19,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -107,6 +111,11 @@ class WearMainActivity : ComponentActivity() {
     }
 }
 
+/** Service -> UI status, shared in-process; Compose redraws when it changes. */
+object WatchStatus {
+    var hrv by mutableStateOf("HRV: starting…")
+}
+
 @Composable
 fun WearStatusUi() {
     Box(
@@ -127,6 +136,14 @@ fun WearStatusUi() {
                 text = "Monitoring HR",
                 color = Color(0xFFA5C49A),
                 fontSize = 14.sp,
+            )
+            // Whether HRV is a real measurement or the bpm-derived estimate,
+            // and why - the first thing to check when detection misbehaves.
+            Text(
+                text = WatchStatus.hrv,
+                color = Color(0xFF8FB3C8),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
             )
             // The watch has no settings screen, so this status face is the only
             // place a version can live - and it is the build people will need

@@ -4,6 +4,15 @@ import { api } from "../api.js";
 import { useAsync } from "../hooks.js";
 import { ErrorBox, ModelBadge, PageHeader, Spinner } from "../components/widgets.jsx";
 
+// Share of HRV readings from real beat-to-beat intervals, among readings whose
+// source is known. Estimated (bpm-derived) HRV is the fallback when the watch
+// cannot get IBI, e.g. before Samsung approves the Health Sensor SDK.
+function realHrvShare(sources) {
+  const real = sources?.real_ibi || 0;
+  const known = real + (sources?.bpm_derived || 0);
+  return known ? `${Math.round((100 * real) / known)}%` : "—";
+}
+
 function fmtDate(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -49,6 +58,7 @@ export default function Users() {
                 <th className="num">Sensor</th>
                 <th className="num">Feedback</th>
                 <th className="num">Reports</th>
+                <th className="num" title="Share of HRV from real beat-to-beat intervals">Real HRV</th>
                 <th>Model</th>
                 <th>Last seen</th>
               </tr>
@@ -64,6 +74,7 @@ export default function Users() {
                   <td className="num">{u.sensor_count}</td>
                   <td className="num">{u.feedback_count}</td>
                   <td className="num">{u.report_count}</td>
+                  <td className="num">{realHrvShare(u.hrv_sources)}</td>
                   <td><ModelBadge source={u.model_source} /></td>
                   <td>{fmtDate(u.last_seen)}</td>
                 </tr>

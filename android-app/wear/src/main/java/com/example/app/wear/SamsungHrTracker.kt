@@ -33,7 +33,8 @@ class SamsungHrTracker(
     private val onBpm: (Int) -> Unit,
     private val onIbi: (Int) -> Unit,
     private val onIbiDropped: () -> Unit,
-    private val onUnavailable: () -> Unit,
+    /** Called with a short, human-readable reason. */
+    private val onUnavailable: (String) -> Unit,
 ) {
     private var service: HealthTrackingService? = null
     private var tracker: HealthTracker? = null
@@ -45,7 +46,7 @@ class SamsungHrTracker(
                 .getOrDefault(emptyList())
             if (HealthTrackerType.HEART_RATE_CONTINUOUS !in supported) {
                 Log.w(TAG, "HEART_RATE_CONTINUOUS unsupported — disconnecting, keeping fallback")
-                onUnavailable()
+                onUnavailable("watch has no continuous heart-rate tracker")
                 stop()
                 return
             }
@@ -56,12 +57,18 @@ class SamsungHrTracker(
 
         override fun onConnectionEnded() {
             Log.i(TAG, "Samsung HR tracker connection ended")
-            onUnavailable()
+            onUnavailable("Samsung Health SDK disconnected")
         }
 
         override fun onConnectionFailed(e: HealthTrackerException) {
             Log.w(TAG, "Samsung HR connect failed: code=${e.errorCode} ${e.message}")
-            onUnavailable()
+            onUnavailable(
+                when (e.errorCode) {
+                    HealthTrackerException.PACKAGE_NOT_INSTALLED -> "Samsung Health Platform not installed"
+                    HealthTrackerException.OLD_PLATFORM_VERSION -> "Samsung Health Platform needs an update"
+                    else -> "Samsung Health SDK connection failed (${e.errorCode})"
+                }
+            )
         }
     }
 
@@ -94,7 +101,15 @@ class SamsungHrTracker(
             // allow-listed). Stop tracking so the continuous PPG sensor powers
             // down instead of draining the battery for data we'll never receive.
             Log.w(TAG, "Samsung HR tracker error: $error — stopping to save battery")
-            onUnavailable()
+            onUnavailable(
+                when (error) {
+                    // Not allow-listed by Samsung. Until the partner approval
+                    // lands, Health Platform developer mode lifts this for testing.
+                    HealthTracker.TrackerError.SDK_POLICY_ERROR -> "app not approved by Samsung yet"
+                    HealthTracker.TrackerError.PERMISSION_ERROR -> "body sensors permission missing"
+                    else -> "Samsung Health SDK error: $error"
+                }
+            )
             stop()
         }
     }
@@ -106,7 +121,7 @@ class SamsungHrTracker(
                 .also { it.connectService() }
         }.onFailure {
             Log.w(TAG, "Failed to start HealthTrackingService", it)
-            onUnavailable()
+            onUnavailable("Samsung Health SDK failed to start")
         }
     }
 

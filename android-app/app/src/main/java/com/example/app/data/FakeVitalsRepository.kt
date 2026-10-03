@@ -18,7 +18,7 @@ class FakeVitalsRepository {
     suspend fun readVitals(): Vitals = when (mode) {
         Mode.BASELINE -> Vitals(
             heartRateBpm = 70 + Random.nextInt(-5, 6),
-            hrv = 45.0 + Random.nextDouble(-5.0, 5.0),
+            hrv = RESTING_HRV_MS + Random.nextDouble(-5.0, 5.0),
             isMoving = false,
             hrvSource = HrvSource.REAL_IBI,
         )
@@ -34,5 +34,10 @@ class FakeVitalsRepository {
             isMoving = true,
             hrvSource = HrvSource.REAL_IBI,
         )
+    }
+
+    companion object {
+        /** The simulated user's normal HRV: simulation's stand-in for HrvBaseline. */
+        const val RESTING_HRV_MS = 45.0
     }
 }

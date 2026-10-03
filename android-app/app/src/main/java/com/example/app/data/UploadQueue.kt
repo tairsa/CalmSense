@@ -168,6 +168,7 @@ object UploadQueue {
         if (p.currentMotionIntensity != null) put("motion", p.currentMotionIntensity.toDouble())
         if (p.modelProbability != null) put("probability", p.modelProbability)
         if (p.hrvSource != null) put("hrv_source", p.hrvSource.apiValue)
+        if (p.hrvBaseline != null) put("hrv_baseline", p.hrvBaseline.toDouble())
         put("timestamp", p.timestamp)
     }
 
@@ -182,5 +183,6 @@ object UploadQueue {
         modelProbability = if (o.has("probability")) o.getDouble("probability") else null,
         hrvSource = HrvSource.fromApi(o.optString("hrv_source", null)),
         timestamp = o.optString("timestamp", null),
+        hrvBaseline = if (o.has("hrv_baseline")) o.getDouble("hrv_baseline").toFloat() else null,
     )
 }

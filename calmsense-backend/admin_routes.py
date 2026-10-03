@@ -81,7 +81,7 @@ def list_users(admin: dict = Depends(get_current_admin)):
             return
         u = users.setdefault(uid, {
             "user_id": uid, "sensor_count": 0, "feedback_count": 0,
-            "report_count": 0, "last_seen": None,
+            "report_count": 0, "last_seen": None, "hrv_sources": {},
         })
         u[key] += 1
 
@@ -94,6 +94,12 @@ def list_users(admin: dict = Depends(get_current_admin)):
 
     for r in sensors:
         bump(r.get("user_id"), "sensor_count")
+        # How much of this user's HRV is real beat-to-beat data vs an estimate.
+        # null = row from a phone that predates provenance.
+        if r.get("user_id"):
+            src = users[r["user_id"]]["hrv_sources"]
+            key = r.get("hrv_source") or "unknown"
+            src[key] = src.get(key, 0) + 1
         touch_last_seen(r.get("user_id"), r.get("timestamp") or r.get("created_at"))
     for r in feedback:
         bump(r.get("user_id"), "feedback_count")

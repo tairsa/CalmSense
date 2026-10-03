@@ -43,6 +43,10 @@ class PanicFeedback(BaseModel):
     # mixing a real RMSSD with a bpm-derived proxy in one column would quietly
     # train on two different quantities.
     hrv_source: Optional[HrvSourceValue] = None
+    # The phone's resting-HRV baseline for this hrv_source when the label was
+    # captured. Training uses ln(current_hrv / hrv_baseline), the drop from the
+    # user's own normal, rather than raw HRV - see ml/generate_data.py.
+    hrv_baseline: Optional[float] = Field(None, gt=0)
     timestamp: Optional[str] = None             # ISO 8601; auto-filled server-side if omitted
 
 

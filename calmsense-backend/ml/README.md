@@ -45,6 +45,14 @@ in the literature:
 | Panic    | 115-175   | 5-25     | 0.00-0.30 | **panic** |
 | Exercise | 110-180   | 15-35    | 0.50-1.00 | no panic  |
 
+The model does **not** use HRV in milliseconds. Each sample also draws a
+personal resting baseline (30-80 ms) and the HRV priors are scaled to it; the
+feature is `hrv_rel = ln(hrv / baseline)`, the drop from that person's normal.
+Absolute HRV is not comparable across people, nor across measurement sources:
+the bpm-derived estimate the watch falls back to reads ~10 ms for a resting
+person whose true RMSSD is ~50 ms, and on raw HRV that resting person looked
+like a panic attack. The phone keeps a separate baseline per source.
+
 Critical detail: panic and exercise both have elevated HR and depressed
 HRV. The motion feature is what lets the model distinguish them. Without
 it, exercise would constantly trigger panic alerts.
@@ -59,8 +67,8 @@ array — for backwards compatibility:
 
 ```json
 {
-  "weights": [w_hr, w_hrv, w_motion, w_reserved, bias],
-  "feature_names": ["hr", "hrv", "motion", "reserved", "bias"],
+  "weights": [w_hr, 0.0, w_motion, w_hrv_rel, bias],
+  "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
   "model_type": "logistic_regression",
   "trained_at": "2026-04-27T13:45:00+00:00",
   "training_samples": 5000,
@@ -69,15 +77,17 @@ array — for backwards compatibility:
 }
 ```
 
-The reserved slot is `0.0` and is held for a future feature
-(e.g. recent-panic memory).
+Slot 1 (raw HRV) is always `0.0`. A phone build that predates `hrv_rel`
+ignores slot 3, so it runs a heart-rate + motion model rather than a wrong one.
 
 ## Client decision rule
 
-Given a single reading `(hr, hrv, motion)` and the weights array `w`:
+Given a single reading `(hr, hrv, motion)`, the user's baseline for that HRV
+source, and the weights array `w`:
 
 ```
-z = w[0]*hr + w[1]*hrv + w[2]*motion + w[4]    # w[3] is reserved (0.0)
+hrv_rel = clamp(ln(hrv / baseline), -3, 1)
+z = w[0]*hr + w[2]*motion + w[3]*hrv_rel + w[4]
 p_panic = 1 / (1 + exp(-z))
 is_panic = p_panic > 0.5
 ```

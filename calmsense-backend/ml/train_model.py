@@ -15,8 +15,8 @@ Usage:
 Output JSON shape (matches the existing /api/v1/sensor-data response):
 
     {
-      "weights": [w_hr, w_hrv, w_motion, w_reserved, bias],
-      "feature_names": ["hr", "hrv", "motion", "reserved", "bias"],
+      "weights": [w_hr, 0.0, w_motion, w_hrv_rel, bias],
+      "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
       "model_type": "logistic_regression",
       "trained_at": "<ISO 8601>",
       "training_samples": <int>,
@@ -24,13 +24,15 @@ Output JSON shape (matches the existing /api/v1/sensor-data response):
       "notes": "<free text>"
     }
 
-The 4th slot ("reserved") is set to 0.0 to keep the array length compatible
-with the existing 5-element contract Alex defined in main.py. It is reserved
-for a future feature (e.g. recent-panic memory).
+Absolute HRV (slot 1) is deliberately 0.0: it is not comparable across people
+or measurement sources (see generate_data.py). Slot 3 carries hrv_rel instead,
+ln(hrv / the user's own resting baseline for that source), which the phone
+computes. A phone build that predates hrv_rel ignores slot 3 and so runs an
+HR + motion model - degraded, but never misled by a raw HRV on the wrong scale.
 
 Decision rule on the client side:
 
-    z = w_hr*hr + w_hrv*hrv + w_motion*motion + bias
+    z = w_hr*hr + w_motion*motion + w_hrv_rel*hrv_rel + bias
     p_panic = 1 / (1 + exp(-z))
     is_panic = p_panic > 0.5
 """
@@ -49,7 +51,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix, classification_rep
 from sklearn.model_selection import train_test_split
 
 
-FEATURE_COLS = ["hr", "hrv", "motion"]
+FEATURE_COLS = ["hr", "motion", "hrv_rel"]
 LABEL_COL = "label"
 
 
@@ -118,18 +120,18 @@ def main() -> int:
     print(metrics["report"])
 
     # Pack into the 5-slot array shape used by the existing /api/v1/sensor-data endpoint.
-    # Slot order MUST match: [hr, hrv, motion, reserved, bias]
+    # Slot order MUST match: [hr, hrv, motion, hrv_rel, bias]
     weights_array = [
         float(coefs[0]),  # hr
-        float(coefs[1]),  # hrv
-        float(coefs[2]),  # motion
-        0.0,              # reserved (future feature)
+        0.0,              # absolute hrv: unused, see module docstring
+        float(coefs[1]),  # motion
+        float(coefs[2]),  # hrv_rel
         bias,
     ]
 
     out = {
         "weights": weights_array,
-        "feature_names": ["hr", "hrv", "motion", "reserved", "bias"],
+        "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
         "model_type": "logistic_regression",
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "training_samples": int(len(X)),

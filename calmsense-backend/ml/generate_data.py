@@ -19,13 +19,25 @@ Usage:
     python generate_data.py
     -> writes ml/training_data.csv (~5000 rows by default)
 
-Output columns: hr, hrv, motion, label  (label: 0 = no panic, 1 = panic)
+Output columns: hr, hrv, motion, hrv_rel, label  (label: 0 = no panic, 1 = panic)
+
+hrv_rel is ln(hrv / the person's resting baseline). The model is trained on it
+instead of absolute HRV, because absolute HRV is not comparable across people
+or across measurement sources: a bpm-derived estimate reads ~10 ms where a true
+RMSSD from beat-to-beat intervals reads ~50 ms for the same resting person, and
+the model has no way to tell them apart. A drop relative to the person's own
+baseline *of the same source* means the same thing either way.
+
+Each sample draws a resting baseline (BASELINE_LO..HI ms) and scales the
+profile's HRV prior by baseline / RESTING_MID, i.e. the same priors as above,
+expressed relative to that person's normal instead of a population average.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import random
 from dataclasses import dataclass
@@ -52,10 +64,18 @@ PROFILES: list[Profile] = [
 ]
 
 
-def sample(profile: Profile, rng: random.Random) -> tuple[float, float, float, int]:
-    """One synthetic sample with mild gaussian jitter on top of uniform draws."""
+# Resting-baseline spread across people (true RMSSD scale), and the midpoint of
+# the resting HRV prior that the absolute priors above are relative to.
+BASELINE_LO, BASELINE_HI = 30.0, 80.0
+RESTING_MID = 52.5
+
+
+def sample(profile: Profile, rng: random.Random) -> tuple[float, float, float, float, int]:
+    """One synthetic sample (hr, hrv, motion, hrv_rel, label) with mild gaussian
+    jitter on top of uniform draws."""
     hr = rng.uniform(profile.hr_lo, profile.hr_hi) + rng.gauss(0, 2.0)
-    hrv = rng.uniform(profile.hrv_lo, profile.hrv_hi) + rng.gauss(0, 1.5)
+    baseline = rng.uniform(BASELINE_LO, BASELINE_HI)
+    hrv = (rng.uniform(profile.hrv_lo, profile.hrv_hi) + rng.gauss(0, 1.5)) * baseline / RESTING_MID
     motion = rng.uniform(profile.motion_lo, profile.motion_hi) + rng.gauss(0, 0.02)
 
     # Clamp to physiologically plausible bounds
@@ -63,10 +83,12 @@ def sample(profile: Profile, rng: random.Random) -> tuple[float, float, float, i
     hrv = max(1.0, min(120.0, hrv))
     motion = max(0.0, min(1.0, motion))
 
-    return round(hr, 2), round(hrv, 2), round(motion, 3), profile.label
+    hrv_rel = math.log(hrv / baseline)
+
+    return round(hr, 2), round(hrv, 2), round(motion, 3), round(hrv_rel, 4), profile.label
 
 
-def generate(n_per_profile: int, seed: int) -> Iterable[tuple[float, float, float, int]]:
+def generate(n_per_profile: int, seed: int) -> Iterable[tuple[float, float, float, float, int]]:
     rng = random.Random(seed)
     for profile in PROFILES:
         for _ in range(n_per_profile):
@@ -89,10 +111,10 @@ def main() -> int:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["hr", "hrv", "motion", "label"])
+        writer.writerow(["hr", "hrv", "motion", "hrv_rel", "label"])
         writer.writerows(rows)
 
-    n_panic = sum(1 for r in rows if r[3] == 1)
+    n_panic = sum(1 for r in rows if r[-1] == 1)
     print(f"Wrote {len(rows)} rows to {out_path}")
     print(f"  panic samples: {n_panic} ({100 * n_panic / len(rows):.1f}%)")
     print(f"  non-panic samples: {len(rows) - n_panic} ({100 * (len(rows) - n_panic) / len(rows):.1f}%)")

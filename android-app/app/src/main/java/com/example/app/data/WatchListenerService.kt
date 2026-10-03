@@ -45,6 +45,8 @@ class WatchListenerService : WearableListenerService() {
                 val s = parseWatchSample(text)
                 WatchVitalsRepository.update(s.bpm, s.motion, s.hrvMs, s.onBody, s.hrvSource)
                 SleepDetector.onSample(s.bpm, s.motion, s.onBody)
+                HrvBaseline.init(applicationContext)
+                if (s.onBody) HrvBaseline.onWatchSample(s.bpm, s.motion, s.hrvMs, s.hrvSource, SleepDetector.isAsleep)
                 Log.d(TAG, "Received sample $s from ${event.sourceNodeId}")
             }
             MSG_PATH_HR -> {

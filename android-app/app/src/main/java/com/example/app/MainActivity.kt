@@ -63,6 +63,7 @@ import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
 import com.example.app.data.FakeVitalsRepository
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.HrvBaseline
 import com.example.app.data.HrvSource
 import com.example.app.data.LocationProvider
 import com.example.app.data.PanicAlertGate
@@ -105,6 +106,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlin.math.ln
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -203,6 +205,7 @@ class HeartRateViewModel : ViewModel() {
     private var pendingHr: Int? = null
     private var pendingHrv: Double? = null
     private var pendingHrvSource: HrvSource? = null
+    private var pendingHrvBaseline: Double? = null
     private var pendingMotion: Float = 0.0f
     private var pendingProbability: Double = 0.0
 
@@ -613,6 +616,19 @@ class HeartRateViewModel : ViewModel() {
         panicDebouncer.reset()
     }
 
+    /** The drop from the user's normal HRV. Simulated vitals are measured
+     *  against the simulator's own resting value: they must neither read nor
+     *  feed the real baseline. */
+    private fun hrvRelFor(hrv: Double): Double =
+        if (dataSource == VitalsSource.SIMULATED) ln(hrv / FakeVitalsRepository.RESTING_HRV_MS)
+        else HrvBaseline.relative(hrv, hrvSource)
+
+    private fun hrvBaselineFor(source: HrvSource?): Double? = when {
+        source == null -> null
+        dataSource == VitalsSource.SIMULATED -> FakeVitalsRepository.RESTING_HRV_MS
+        else -> HrvBaseline.baselineMs(source)
+    }
+
     private fun checkPanicRisk(hr: Int?, hrv: Double?, moving: Boolean) {
         if (!SettingsStore.consentGranted.value || !SettingsStore.monitoringEnabled.value ||
             hr == null || hrv == null
@@ -623,7 +639,7 @@ class HeartRateViewModel : ViewModel() {
             return
         }
         val pred = decidePanic(
-            panicModel, hr, hrv, motionFeatureFor(motionIntensity, moving), moving,
+            panicModel, hr, hrv, hrvRelFor(hrv), motionFeatureFor(motionIntensity, moving), moving,
             SettingsStore.detectionThreshold.value.toDouble(),
         )
         lastPanicProbability = pred.probability
@@ -770,6 +786,7 @@ class HeartRateViewModel : ViewModel() {
         pendingHr = currentHr
         pendingHrv = currentHrv
         pendingHrvSource = hrvSource
+        pendingHrvBaseline = if (currentHrv != null) hrvBaselineFor(hrvSource) else null
         pendingMotion = motionIntensity ?: if (isMoving) 1.0f else 0.0f
         pendingProbability = lastPanicProbability
 
@@ -805,6 +822,7 @@ class HeartRateViewModel : ViewModel() {
             currentMotionIntensity = pendingMotion,
             modelProbability = if (pendingDetectedByModel) pendingProbability else null,
             hrvSource = pendingHrvSource,
+            hrvBaseline = pendingHrvBaseline?.toFloat(),
         )
         feedbackStatus = "sending…"
         viewModelScope.launch {
@@ -830,6 +848,7 @@ class MainActivity : AppCompatActivity() {
         // Before setContent: the dashboard reads SettingsStore on first compose.
         SettingsStore.init(this)
         UploadQueue.init(this)
+        HrvBaseline.init(this)
         createNotificationChannel()
         requestNotificationPermissionIfNeeded()
         requestLocationPermissionIfNeeded()

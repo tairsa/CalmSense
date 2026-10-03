@@ -3,19 +3,22 @@ and metrics. Backed by the versioned `model_weights` + `user_model_state`
 storage (Supabase or JSON fallback).
 
 The weight vector keeps the existing 5-slot contract the phone expects:
-    [w_hr, w_hrv, w_motion, w_reserved, bias]
+    [w_hr, w_hrv, w_motion, w_hrv_rel, bias]
+w_hrv is always 0: raw HRV is not comparable across people or measurement
+sources, so models use hrv_rel = ln(hrv / the user's baseline) instead.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import datetime, timezone
 
 import storage
 
 DEFAULT_WEIGHTS = [0.0, 0.0, 0.0, 0.0, 0.0]
-FEATURE_NAMES = ["hr", "hrv", "motion", "reserved", "bias"]
+FEATURE_NAMES = ["hr", "hrv", "motion", "hrv_rel", "bias"]
 BASELINE_FILE = os.path.join(os.path.dirname(__file__), "ml", "model_weights.json")
 
 # Minimum labeled rows (with both classes present) needed to retrain. Kept low
@@ -60,7 +63,9 @@ def get_active_weights(user_id: str) -> dict:
     state = storage.get_user_model_state(user_id)
     if state and state.get("active_weights_id") is not None:
         snap = storage.get_model_snapshot(state["active_weights_id"])
-        if snap:
+        # Snapshots trained before hrv_rel weight raw HRV, which is exactly the
+        # bug hrv_rel fixes; serve the baseline until the user is retrained.
+        if snap and _uses_hrv_rel(snap):
             return {
                 "weights": _coerce_weights(snap.get("weights")),
                 "source": snap.get("source", "trained"),
@@ -83,6 +88,21 @@ def get_active_weights(user_id: str) -> dict:
             "training_samples": base["training_samples"],
         },
     }
+
+
+def _uses_hrv_rel(snap: dict) -> bool:
+    names = snap.get("feature_names")
+    if isinstance(names, str):
+        names = json.loads(names)
+    return isinstance(names, list) and len(names) == 5 and names[3] == "hrv_rel"
+
+
+def hrv_rel(hrv, baseline) -> float:
+    """ln(hrv / baseline), clamped like the phone's. 0 (no drop) when either is
+    unknown, so rows from phones without a baseline still train on HR+motion."""
+    if not hrv or not baseline or hrv <= 0 or baseline <= 0:
+        return 0.0
+    return max(-3.0, min(1.0, math.log(hrv / baseline)))
 
 
 def _coerce_weights(weights) -> list:
@@ -130,7 +150,7 @@ def _parse_iso(value: str):
 
 def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
     """The user's feedback rows that can train a model, as
-    (hr, hrv, motion, label, event_time) tuples. Rows missing vitals or a
+    (hr, hrv_rel, motion, label, event_time) tuples. Rows missing vitals or a
     `was_panic` label are dropped; rows after `cutoff` (if set) are ignored.
     """
     cutoff_dt = _parse_iso(cutoff) if cutoff else None
@@ -139,7 +159,6 @@ def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
     samples = []
     for r in rows:
         hr = r.get("current_hr")
-        hrv = r.get("current_hrv")
         motion = r.get("current_motion_intensity")
         label = r.get("was_panic")
         if hr is None or motion is None or label is None:
@@ -148,7 +167,8 @@ def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
             t = _parse_iso(_event_time(r))
             if t is not None and t > cutoff_dt:
                 continue
-        samples.append((float(hr), float(hrv or 0.0), float(motion), int(bool(label)), _event_time(r)))
+        rel = hrv_rel(r.get("current_hrv"), r.get("hrv_baseline"))
+        samples.append((float(hr), rel, float(motion), int(bool(label)), _event_time(r)))
     return samples
 
 
@@ -196,8 +216,8 @@ def _synthetic_anchor(label: int, n: int, seed: int = 42) -> list[tuple]:
     out = []
     i = 0
     while len(out) < n:
-        hr, hrv, motion, lab = synth_sample(profiles[i % len(profiles)], rng)
-        out.append((hr, hrv, motion, lab, ""))  # synthetic rows carry no event time
+        hr, _hrv, motion, rel, lab = synth_sample(profiles[i % len(profiles)], rng)
+        out.append((hr, rel, motion, lab, ""))  # synthetic rows carry no event time
         i += 1
     return out
 
@@ -234,7 +254,7 @@ def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
     from sklearn.metrics import accuracy_score
 
     rows = samples + synthetic
-    X = np.array([[s[0], s[1], s[2]] for s in rows], dtype=float)
+    X = np.array([[s[0], s[2], s[1]] for s in rows], dtype=float)  # hr, motion, hrv_rel
     y = np.array([s[3] for s in rows], dtype=int)
     sample_weight = np.array([1.0] * len(samples) + [0.5] * len(synthetic))
     model = LogisticRegression(solver="liblinear", C=1.0, max_iter=1000)
@@ -242,7 +262,7 @@ def retrain_user_model(user_id: str, cutoff: str | None = None) -> dict:
     acc = float(accuracy_score(y, model.predict(X)))  # in-sample; data is tiny
 
     coefs = model.coef_[0]
-    weights = [float(coefs[0]), float(coefs[1]), float(coefs[2]), 0.0, float(model.intercept_[0])]
+    weights = [float(coefs[0]), 0.0, float(coefs[1]), float(coefs[2]), float(model.intercept_[0])]
     trained_through = max((s[4] for s in samples), default=None)
 
     note = f"Retrained from {len(samples)} labeled feedback rows."

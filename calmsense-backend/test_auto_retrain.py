@@ -136,6 +136,7 @@ def main():
             "detected_by_model": True,
             "current_hr": 115.0 + i,
             "current_hrv": 27.0 + (i % 4),
+            "hrv_baseline": 50.0,  # a mild drop from this user's normal
             "current_motion_intensity": 0.05,
             "model_probability": 0.8,
             "timestamp": (base + timedelta(minutes=40 + i)).isoformat(),
@@ -152,12 +153,12 @@ def main():
     import math
     w = model_service.get_active_weights(FP_USER)["weights"]
 
-    def prob(hr, hrv, motion):
-        z = w[0] * hr + w[1] * hrv + w[2] * motion + w[4]
+    def prob(hr, rel, motion):
+        z = w[0] * hr + w[2] * motion + w[3] * rel + w[4]
         return 1.0 / (1.0 + math.exp(-z))
 
-    p_fp = prob(120.0, 28.0, 0.05)      # the user's false-positive region
-    p_panic = prob(155.0, 10.0, 0.10)   # canonical panic from the priors
+    p_fp = prob(120.0, math.log(28 / 50), 0.05)      # the user's false-positive region
+    p_panic = prob(155.0, math.log(10 / 52.5), 0.10)   # canonical panic from the priors
     check("FP region now below 0.5", p_fp < 0.5, f"p={p_fp:.3f}")
     check("canonical panic still detected", p_panic > 0.5, f"p={p_panic:.3f}")
 

@@ -165,6 +165,10 @@ def receive_panic_feedback(data: PanicFeedback, user_id: str = Depends(current_u
     record["user_id"] = user_id
     if record["timestamp"] is None:
         record["timestamp"] = datetime.now(timezone.utc).isoformat()
+    # Only sent by phones new enough to keep a baseline. Omitted rather than
+    # null so older phones keep working against a table without the column.
+    if record["hrv_baseline"] is None:
+        del record["hrv_baseline"]
     try:
         append_feedback(record)
         return {"success": True, "message": "Feedback saved."}

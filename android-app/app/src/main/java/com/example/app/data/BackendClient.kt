@@ -42,6 +42,9 @@ data class PanicFeedbackPayload(
     val modelProbability: Double? = null,
     val timestamp: String? = null,
     val hrvSource: HrvSource? = null,
+    // HrvBaseline for hrvSource at capture time, so the server retrains on the
+    // same hrv_rel feature the phone predicts with.
+    val hrvBaseline: Float? = null,
 )
 
 data class PanicReportPayload(
@@ -188,6 +191,7 @@ class BackendClient(private val baseUrl: String) {
                     put("current_motion_intensity", payload.currentMotionIntensity.toDouble())
                 if (payload.modelProbability != null) put("model_probability", payload.modelProbability)
                 if (payload.hrvSource != null) put("hrv_source", payload.hrvSource.apiValue)
+                if (payload.hrvBaseline != null) put("hrv_baseline", payload.hrvBaseline.toDouble())
                 if (payload.timestamp != null) put("timestamp", payload.timestamp)
             }.toString()
 

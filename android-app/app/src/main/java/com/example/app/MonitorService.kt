@@ -17,6 +17,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.app.data.BackendClient
 import com.example.app.data.HealthConnectVitalsRepository
+import com.example.app.data.HrvBaseline
 import com.example.app.data.PanicAlertGate
 import com.example.app.data.PanicDebouncer
 import com.example.app.data.PanicModelCache
@@ -52,6 +53,7 @@ class MonitorService : Service() {
         createChannels()
         SettingsStore.init(applicationContext)
         UploadQueue.init(applicationContext)
+        HrvBaseline.init(applicationContext)
         repo = HealthConnectVitalsRepository(applicationContext)
         modelCache = PanicModelCache(applicationContext)
         startInForeground(buildMonitorNotification("Starting…"))
@@ -134,7 +136,7 @@ class MonitorService : Service() {
         val hr = v.heartRateBpm ?: return false
         val hrv = v.hrv ?: return false
         return decidePanic(
-            modelCache.load(), hr, hrv, v.motionFeature(), v.isMoving,
+            modelCache.load(), hr, hrv, HrvBaseline.relative(hrv, v.hrvSource), v.motionFeature(), v.isMoving,
             SettingsStore.detectionThreshold.value.toDouble(),
         ).isPanic
     }

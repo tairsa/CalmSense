@@ -9,13 +9,13 @@ import kotlin.math.exp
  * CalmSense backend's GET /api/v1/sensor-data:
  *
  *     weights[0] = w_hr
- *     weights[1] = w_hrv
+ *     weights[1] = w_hrv      (raw HRV; 0 in current models)
  *     weights[2] = w_motion
- *     weights[3] = reserved (currently 0.0)
+ *     weights[3] = w_hrv_rel  (ln(hrv / the user's baseline), see HrvBaseline)
  *     weights[4] = bias
  *
  * Decision rule:
- *     z       = w_hr*hr + w_hrv*hrv + w_motion*motion + bias
+ *     z       = w_hr*hr + w_hrv*hrv + w_motion*motion + w_hrv_rel*hrvRel + bias
  *     p_panic = 1 / (1 + exp(-z))
  *     is_panic = p_panic > threshold
  *
@@ -39,11 +39,12 @@ data class PanicModel(
     }
 
     /** Return (probability of panic, decision at [threshold]). */
-    fun predict(hr: Double, hrv: Double, motion: Double, threshold: Double = 0.5): Prediction {
+    fun predict(hr: Double, hrv: Double, motion: Double, threshold: Double = 0.5, hrvRel: Double = 0.0): Prediction {
         val z = weights[0] * hr +
                 weights[1] * hrv +
                 weights[2] * motion +
-                weights[4]   // weights[3] is reserved/unused
+                weights[3] * hrvRel +
+                weights[4]
         val p = 1.0 / (1.0 + exp(-z))
         return Prediction(probability = p, isPanic = p > threshold)
     }
@@ -80,6 +81,6 @@ data class Prediction(val probability: Double, val isPanic: Boolean)
  * at the user's [threshold], or — before any trained model is cached — a fixed
  * conservative rule (probability reported as 0).
  */
-fun decidePanic(model: PanicModel?, hr: Int, hrv: Double, motion: Double, moving: Boolean, threshold: Double): Prediction =
-    if (model != null && !model.isUntrained()) model.predict(hr.toDouble(), hrv, motion, threshold)
+fun decidePanic(model: PanicModel?, hr: Int, hrv: Double, hrvRel: Double, motion: Double, moving: Boolean, threshold: Double): Prediction =
+    if (model != null && !model.isUntrained()) model.predict(hr.toDouble(), hrv, motion, threshold, hrvRel)
     else Prediction(probability = 0.0, isPanic = hr > 120 && hrv < 20.0 && !moving)

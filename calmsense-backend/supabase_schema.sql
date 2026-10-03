@@ -34,6 +34,7 @@ create table if not exists public.panic_feedback (
     current_hr                double precision,
     current_hrv               double precision,
     hrv_source               text,
+    hrv_baseline              double precision,
     current_motion_intensity  double precision,
     model_probability         double precision,
     timestamp                 timestamptz,
@@ -203,3 +204,14 @@ alter table public.user_model_state    enable row level security;
 alter table public.sensor_data    add column if not exists hrv_source text;
 alter table public.panic_feedback add column if not exists hrv_source text;
 alter table public.panic_reports  add column if not exists hrv_source text;
+
+
+-- ---------------------------------------------------------------------------
+-- Migration for databases created before hrv_baseline existed. Safe to re-run.
+--
+-- The phone's resting-HRV baseline for the row's hrv_source, so retraining can
+-- use the drop from the user's own normal. Run BEFORE shipping a phone build
+-- that sends it; until then those inserts fail and stay queued on the phone.
+-- Older phones omit the key, so they are unaffected either way.
+-- ---------------------------------------------------------------------------
+alter table public.panic_feedback add column if not exists hrv_baseline double precision;

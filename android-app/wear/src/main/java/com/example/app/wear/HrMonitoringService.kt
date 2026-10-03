@@ -188,6 +188,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         heartBeatSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT, true)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_HEART_BEAT)
         useHeartBeatForHrv = heartBeatSensor != null
+        if (useHeartBeatForHrv) WatchStatus.hrv = "HRV: real (beat sensor)"
         if (heartBeatSensor != null) {
             sensorManager.registerListener(this, heartBeatSensor, SensorManager.SENSOR_DELAY_FASTEST)
             Log.i(TAG, "Heart-beat sensor registered (${heartBeatSensor!!.name}) — HRV from real R-R")
@@ -402,8 +403,9 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     /** Samsung stream gone (connection ended/failed or tracker error). Fall
      *  back to the platform HR sensor unless we're off-wrist or shutting down. */
-    private fun onSamsungUnavailable() {
+    private fun onSamsungUnavailable(reason: String) {
         useSamsungIbiForHrv = false
+        WatchStatus.hrv = if (useHeartBeatForHrv) "HRV: real (beat sensor)" else "HRV: estimated — $reason"
         if (!useSamsungHr) return
         useSamsungHr = false
         if (isOnBody && !shuttingDown) {
@@ -429,6 +431,7 @@ class HrMonitoringService : Service(), SensorEventListener {
                 ibiDiffFilled = 0
                 lastIbiMs = null
                 useSamsungIbiForHrv = true
+                WatchStatus.hrv = "HRV: real (Samsung)"
                 Log.i(TAG, "First Samsung IBI received — HRV source is now REAL_IBI")
             }
             acceptIbi(ibiMs.toFloat())
@@ -503,6 +506,7 @@ class HrMonitoringService : Service(), SensorEventListener {
             platformHrRegistered = hrSensor != null
             heartBeatSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
             samsungHrTracker?.start()
+            WatchStatus.hrv = if (useHeartBeatForHrv) "HRV: real (beat sensor)" else "HRV: starting…"
             updateNotification("On wrist — waiting for heart rate…")
         } else {
             hrSensor?.let { sensorManager.unregisterListener(this, it) }
@@ -513,6 +517,7 @@ class HrMonitoringService : Service(), SensorEventListener {
             samsungHrTracker?.stop()
             useSamsungIbiForHrv = false
             useSamsungHr = false
+            WatchStatus.hrv = "HRV: paused — off wrist"
             // Let the watch sleep while it's off the wrist; the wake-up
             // off-body sensor brings us back when it's worn again.
             wakeLock?.takeIf { it.isHeld }?.release()
@@ -577,7 +582,7 @@ class HrMonitoringService : Service(), SensorEventListener {
         if (now - lastSamsungRestartElapsed < SAMSUNG_RESTART_MIN_INTERVAL_MS) return
         lastSamsungRestartElapsed = now
         Log.w(TAG, "Samsung stream silent for ${silentFor}ms — restoring platform HR sensor and bouncing the tracker")
-        onSamsungUnavailable()  // clears useSamsungHr and re-registers the HR sensor
+        onSamsungUnavailable("Samsung stream stalled")  // clears useSamsungHr and re-registers the HR sensor
         if (isOnBody) {
             samsungHrTracker?.stop()
             samsungHrTracker?.start()
