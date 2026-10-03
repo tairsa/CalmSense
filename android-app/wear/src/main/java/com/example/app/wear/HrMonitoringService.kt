@@ -20,10 +20,12 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.MessageOptions
 import com.google.android.gms.wearable.Wearable
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -31,6 +33,10 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     private val sensorManager by lazy { getSystemService(SENSOR_SERVICE) as SensorManager }
     private val sendExecutor = Executors.newSingleThreadExecutor()
+    // The newest unsent payload. Holding one slot instead of queueing a task per
+    // sample means a slow Bluetooth link delivers the latest reading when it
+    // recovers, rather than a backlog of stale ones that keeps the phone behind.
+    private val pendingPayload = AtomicReference<ByteArray?>(null)
 
     // Held only briefly (timed) around each sample send so the async send
     // finishes before the SoC suspends again — see sendWithWakeLock. HR delivery
@@ -584,7 +590,10 @@ class HrMonitoringService : Service(), SensorEventListener {
         // Off-wrist there's nothing to monitor — just a slow "still off" beacon
         // so the phone can tell off-wrist apart from a dead connection.
         val interval = if (isOnBody) sendIntervalMs() else OFFBODY_SEND_INTERVAL_MS
-        if (now - lastSendElapsed < interval) return
+        // 20% slack: screen-off, sensor bursts arrive every ~interval, so an
+        // exact gate skips any burst that lands a few ms early and the real
+        // gap doubles (5 s became ~10 s).
+        if (now - lastSendElapsed < interval - interval / 5) return
         if (!isOnBody) {
             lastSendElapsed = now
             sendWithWakeLock(bpm = -1, motion = latestMotionRms, hrvMs = null, onBody = false)
@@ -660,32 +669,41 @@ class HrMonitoringService : Service(), SensorEventListener {
     }
 
     private fun sendSampleToPhone(bpm: Int, motion: Float, hrvMs: Float?, onBody: Boolean) {
+        // Locale.US keeps the decimal point a '.' so the comma-separated
+        // payload can't be corrupted by comma-decimal locales.
+        // HRV is -1 until the rolling window has enough readings; bpm is
+        // -1 when there's no reading (off wrist, or just re-worn).
+        // 4th field: 1 = on wrist, 0 = off wrist.
+        // 5th field: HRV provenance (see HrvSource.wireCode) so the phone
+        // can flag bpm-derived estimates. Older phone builds ignore it.
+        val hrvSourceCode = when {
+            hrvMs == null -> HRV_SRC_NONE
+            useSamsungIbiForHrv || useHeartBeatForHrv -> HRV_SRC_REAL_IBI
+            else -> HRV_SRC_BPM_DERIVED
+        }
+        val text = formatSample(bpm, motion, hrvMs, onBody, hrvSourceCode)
+        // A send is already queued: it will pick up this newer payload.
+        if (pendingPayload.getAndSet(text.toByteArray(Charsets.UTF_8)) != null) return
         sendExecutor.execute {
             try {
+                val payload = pendingPayload.getAndSet(null) ?: return@execute
                 val nodeClient = Wearable.getNodeClient(this)
                 val messageClient = Wearable.getMessageClient(this)
-                val nodes = Tasks.await(nodeClient.connectedNodes)
-                // Locale.US keeps the decimal point a '.' so the comma-separated
-                // payload can't be corrupted by comma-decimal locales.
-                // HRV is -1 until the rolling window has enough readings; bpm is
-                // -1 when there's no reading (off wrist, or just re-worn).
-                // 4th field: 1 = on wrist, 0 = off wrist.
-                // 5th field: HRV provenance (see HrvSource.wireCode) so the phone
-                // can flag bpm-derived estimates. Older phone builds ignore it.
-                val hrvSourceCode = when {
-                    hrvMs == null -> HRV_SRC_NONE
-                    useSamsungIbiForHrv || useHeartBeatForHrv -> HRV_SRC_REAL_IBI
-                    else -> HRV_SRC_BPM_DERIVED
-                }
-                val text = String.format(
-                    java.util.Locale.US, "%d,%.3f,%.1f,%d,%d",
-                    bpm, motion, hrvMs ?: -1f, if (onBody) 1 else 0, hrvSourceCode
-                )
-                val payload = text.toByteArray(Charsets.UTF_8)
+                // Bounded waits: an unbounded await on a stalled link blocked
+                // every later send behind it.
+                val nodes = Tasks.await(nodeClient.connectedNodes, SEND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
                 for (node in nodes) {
-                    Tasks.await(messageClient.sendMessage(node.id, MSG_PATH_SAMPLE, payload))
+                    // HIGH: default (low) priority lets the system defer delivery
+                    // to an idle phone by seconds or more - wrong for a panic signal.
+                    Tasks.await(
+                        messageClient.sendMessage(
+                            node.id, MSG_PATH_SAMPLE, payload,
+                            MessageOptions(MessageOptions.MESSAGE_PRIORITY_HIGH),
+                        ),
+                        SEND_TIMEOUT_MS, TimeUnit.MILLISECONDS,
+                    )
                 }
-                Log.d(TAG, "Sent sample bpm=$bpm motion=$motion hrv=$hrvMs onBody=$onBody to ${nodes.size} node(s)")
+                Log.d(TAG, "Sent sample ${String(payload, Charsets.UTF_8)} to ${nodes.size} node(s)")
             } catch (t: Throwable) {
                 Log.w(TAG, "Failed to send sample to phone", t)
             } finally {
@@ -746,6 +764,8 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val SAMSUNG_RESTART_MIN_INTERVAL_MS = 60_000L
         // Timed CPU wake lock around each send; auto-releases as a backstop.
         private const val SEND_WAKELOCK_MS = 4_000L
+        // Per-call bound on node lookup / message send; under the wake lock.
+        private const val SEND_TIMEOUT_MS = 3_000L
         private const val HR_SAMPLING_US = 1_000_000
         private const val ACCEL_SAMPLING_US = 200_000
 
@@ -779,6 +799,14 @@ class HrMonitoringService : Service(), SensorEventListener {
         private const val HRV_SRC_BPM_DERIVED = 2
         const val ACTION_STOP = "com.example.app.wear.action.STOP"
         const val MSG_PATH_SAMPLE = "/calmsense/sample"
+
+        /** The watch→phone wire format, parsed by parseWatchSample on the phone.
+         *  Both sides are pinned to the same golden strings in their unit tests. */
+        internal fun formatSample(bpm: Int, motion: Float, hrvMs: Float?, onBody: Boolean, hrvSourceCode: Int): String =
+            String.format(
+                java.util.Locale.US, "%d,%.3f,%.1f,%d,%d",
+                bpm, motion, hrvMs ?: -1f, if (onBody) 1 else 0, hrvSourceCode
+            )
 
         fun ensureChannel(ctx: Context) {
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
