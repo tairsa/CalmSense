@@ -1,0 +1,187 @@
+# CalmSense CI/CD.
+#
+# Every push and PR: backend tests + lint + audit, admin build + audit, phone
+# and watch unit tests + lint + APKs, and the Cloud Run image built and booted.
+#
+# Pushes to main then deploy that image to Cloud Run - but only once all of the
+# above pass, and only if the GCP variables below exist (until then the deploy
+# job is skipped, not failed). The new revision gets no traffic until its
+# /health answers with the expected version; a bad build never serves a user.
+#
+# One-time setup for deploys (Settings -> Secrets and variables -> Actions):
+#   vars.GCP_PROJECT_ID        the project hosting the `calmsense` service
+#   secrets.GCP_WIF_PROVIDER   projects/<num>/locations/global/workloadIdentityPools/<pool>/providers/<provider>
+#   secrets.GCP_DEPLOY_SA      deployer@<project>.iam.gserviceaccount.com, with
+#                              roles/cloudbuild.builds.editor, roles/run.admin,
+#                              roles/iam.serviceAccountUser, roles/storage.admin
+# and a `production` environment (add required reviewers there for a manual gate).
+# Keyless auth via Workload Identity Federation: no JSON key is stored anywhere.
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (FastAPI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: calmsense-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # matches Dockerfile.cloudrun
+          cache: pip
+          cache-dependency-path: calmsense-backend/requirements*.txt
+      - run: pip install -r requirements-dev.txt pip-audit
+      - name: Lint
+        run: ruff check .
+      - name: API, auth and model tests
+        run: python -m pytest tests -q
+      - name: Storage guards and auto-retrain
+        run: |
+          python test_storage_guards.py
+          python test_auto_retrain.py
+      - name: Dependency vulnerabilities
+        run: pip-audit -r requirements.txt
+
+  admin:
+    name: Admin dashboard (React)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: admin-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # matches Dockerfile.cloudrun
+          cache: npm
+          cache-dependency-path: admin-app/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Dependency vulnerabilities (high and above)
+        run: npm audit --omit=dev --audit-level=high
+
+  android:
+    name: Phone + watch (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      # Caches Gradle and validates the committed wrapper jar.
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests, lint, debug APKs
+        run: >
+          ./gradlew --console=plain --continue
+          :app:testDebugUnitTest :wear:testDebugUnitTest
+          :app:lintDebug :wear:lintDebug
+          :app:assembleDebug :wear:assembleDebug
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            android-app/*/build/reports/
+            android-app/*/build/test-results/
+          if-no-files-found: ignore
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: calmsense-debug-apks
+          path: |
+            android-app/app/build/outputs/apk/debug/*.apk
+            android-app/wear/build/outputs/apk/debug/*.apk
+
+  image:
+    name: Cloud Run image (build + boot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Dockerfile.cloudrun
+        run: docker build -f Dockerfile.cloudrun -t calmsense:ci .
+      - name: Boot it and probe
+        run: |
+          docker run -d --name cs -p 8080:8080 -e CALMSENSE_AUTO_RETRAIN_MINUTES=0 calmsense:ci
+          for i in $(seq 30); do curl -fsS localhost:8080/health && break; sleep 1; done
+          echo
+          want=$(grep -oP '^APP_VERSION = "\K[^"]+' calmsense-backend/main.py)
+          curl -fsS localhost:8080/health | grep -q "\"version\":\"$want\""
+          curl -fsS localhost:8080/ | grep -q 'id="root"'                    # dashboard served
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost:8080/api/v1/sensor-data)
+          test "$code" = 401                                                  # auth enforced
+          docker exec cs sh -c 'test ! -e /app/data && test ! -e /app/.env'   # no data/secrets baked in
+      - name: Container logs
+        if: failure()
+        run: docker logs cs
+
+  deploy:
+    name: Deploy to Cloud Run
+    needs: [backend, admin, android, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REGION: europe-west1
+      SERVICE: calmsense
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push image
+        run: |
+          echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          # --suppress-logs: streaming needs project Viewer, which the deployer does not get.
+          gcloud builds submit --project "$PROJECT" --config cloudbuild.yaml \
+            --substitutions=_REGION=$REGION,_TAG=${GITHUB_SHA::7} --suppress-logs
+      - name: Deploy new revision with no traffic
+        run: |
+          # Image only: env vars, secrets and --max-instances stay as configured on the service.
+          gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --image "$REGION-docker.pkg.dev/$PROJECT/cloud-run-source-deploy/$SERVICE:$TAG" \
+            --no-traffic --tag "sha-$TAG"
+      - name: Verify the candidate
+        run: |
+          url=$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format=json \
+                | jq -r --arg t "sha-$TAG" '.status.traffic[] | select(.tag==$t) | .url')
+          want=$(grep -oP '^APP_VERSION = "\K[^"]+' calmsense-backend/main.py)
+          for i in $(seq 20); do body=$(curl -fsS "$url/health") && break; sleep 3; done
+          echo "$body"
+          echo "$body" | grep -q "\"version\":\"$want\""
+          echo "$body" | grep -q '"storage":"supabase"'   # never promote a revision that fell back to JSON
+      - name: Promote to 100% traffic
+        run: |
+          gcloud run services update-traffic "$SERVICE" --project "$PROJECT" --region "$REGION" \
+            --to-latest --remove-tags "sha-$TAG"

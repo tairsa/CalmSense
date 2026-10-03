@@ -1,0 +1,19 @@
+# Weekly dependency update PRs, one grouped PR per ecosystem. CI gates each one.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /calmsense-backend
+    schedule: { interval: weekly }
+    groups: { python: { patterns: ["*"] } }
+  - package-ecosystem: npm
+    directory: /admin-app
+    schedule: { interval: weekly }
+    groups: { npm: { patterns: ["*"] } }
+  - package-ecosystem: gradle
+    directory: /android-app
+    schedule: { interval: weekly }
+    groups: { gradle: { patterns: ["*"] } }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups: { actions: { patterns: ["*"] } }
