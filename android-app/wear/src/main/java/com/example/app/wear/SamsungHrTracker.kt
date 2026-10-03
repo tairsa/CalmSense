@@ -125,6 +125,11 @@ class SamsungHrTracker(
         }
     }
 
+    /** Ask the SDK to deliver whatever it is holding in its batch now. */
+    fun flush() {
+        runCatching { tracker?.flush() }
+    }
+
     fun stop() {
         runCatching { tracker?.unsetEventListener() }
         runCatching { service?.disconnectService() }

@@ -405,6 +405,9 @@ class HrMonitoringService : Service(), SensorEventListener {
     /** Samsung stream gone (connection ended/failed or tracker error). Fall
      *  back to the platform HR sensor unless we're off-wrist or shutting down. */
     private fun onSamsungUnavailable(reason: String) {
+        // The window holds real-IBI diffs; the fallback must not inherit them
+        // and report a true RMSSD under the bpm-derived label.
+        if (useSamsungIbiForHrv) synchronized(hrvLock) { resetHrvWindow() }
         useSamsungIbiForHrv = false
         WatchStatus.hrv = if (useHeartBeatForHrv) "HRV: real (beat sensor)" else "HRV: estimated — $reason"
         if (!useSamsungHr) return
@@ -428,15 +431,23 @@ class HrMonitoringService : Service(), SensorEventListener {
         synchronized(hrvLock) {
             if (!useSamsungIbiForHrv) {
                 // First real IBI — discard any fallback diffs already accumulated.
-                ibiDiffIndex = 0
-                ibiDiffFilled = 0
-                lastIbiMs = null
+                resetHrvWindow()
                 useSamsungIbiForHrv = true
                 WatchStatus.hrv = "HRV: real (Samsung)"
                 Log.i(TAG, "First Samsung IBI received — HRV source is now REAL_IBI")
             }
             acceptIbi(ibiMs.toFloat())
         }
+    }
+
+    /** Start HRV over when its source changes, so a value is never computed
+     *  from one source's intervals and labelled as the other's. Until the new
+     *  window fills, HRV is reported as absent. Call under [hrvLock]. */
+    private fun resetHrvWindow() {
+        ibiDiffIndex = 0
+        ibiDiffFilled = 0
+        lastIbiMs = null
+        latestHrvMs = null
     }
 
     /** The SDK rejected an IBI (bad status / implausible range). The valid IBIs
@@ -612,6 +623,11 @@ class HrMonitoringService : Service(), SensorEventListener {
         // its previous vitals rather than clearing them.
         val bpm = currentBpm()
         lastSendElapsed = now
+        // Screen off, the Samsung SDK holds its data in a batch for a minute
+        // or more (measured on the Watch5: nothing for 40 s, then ~200 beats at
+        // once on wake), so real HRV froze and the stall watchdog gave up on
+        // it. Asking for the batch every send keeps it at most one send old.
+        if (!isAwake) samsungHrTracker?.flush()
         val motion = latestMotionRms
         // HRV without a current HR is not attributable to a current heartbeat.
         val hrv = if (bpm > 0) latestHrvMs else null

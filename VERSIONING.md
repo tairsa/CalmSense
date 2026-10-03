@@ -47,4 +47,5 @@ expected to stay that way.
 
 | Version | Date | Components | What shipped |
 |---------|------|------------|--------------|
+| 1.1.1 | 2026-10-03 | phone + watch | Watch: real HRV no longer drops out with the screen off (the Samsung SDK's batch is flushed on every send), and switching HRV source restarts the HRV window instead of reporting leftover values under the new label. |
 | 1.1.0 | 2026-10-03 | phone + watch, backend, admin | Faster watch-to-phone delivery; HRV judged against each user's own baseline; motion in m/s²; background detection on every watch sample; crash reporting (Sentry); HRV source on the watch face and "Real HRV" in admin; consent-code and login hardening; CI/CD. Model weights keep their 5-slot shape, but slot 3 now carries `hrv_rel` - phones before 1.1.0 ignore it and run a much less sensitive model, so phone and backend should move together. |
