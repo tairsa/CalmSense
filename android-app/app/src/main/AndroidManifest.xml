@@ -34,8 +34,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.App"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/Theme.App">
         <!-- Crash and ANR reporting (Sentry). Starts only when a DSN is set in
              gradle.properties (calmsense.sentryDsn). No user identity, request
              data, screenshots or logcat are attached: crash reports carry stack

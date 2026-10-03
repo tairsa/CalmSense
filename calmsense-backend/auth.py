@@ -12,6 +12,9 @@ import hashlib
 import hmac
 import os
 import secrets
+import threading
+import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -45,6 +48,58 @@ if _REQUIRE_SUPABASE and not os.environ.get("ADMIN_JWT_SECRET"):
 JWT_SECRET = os.environ.get("ADMIN_JWT_SECRET") or secrets.token_urlsafe(48)
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+# --- Rate limiting -----------------------------------------------------------
+
+class RateLimiter:
+    """At most `limit` recorded attempts per key within `window_s` seconds.
+
+    ponytail: in-process, so each Cloud Run instance counts separately (N
+    instances allow N x limit); move to a shared table if that ever matters.
+    """
+
+    def __init__(self, limit: int, window_s: int):
+        self.limit, self.window_s = limit, window_s
+        self._hits: dict[str, deque] = {}
+        self._lock = threading.Lock()
+
+    def _live(self, key: str, now: float) -> deque:
+        q = self._hits.setdefault(key, deque())
+        while q and now - q[0] > self.window_s:
+            q.popleft()
+        return q
+
+    def check(self, key: str) -> None:
+        """Raise 429 if `key` has used up its attempts."""
+        now = time.monotonic()
+        with self._lock:
+            q = self._live(key, now)
+            if len(q) >= self.limit:
+                retry = int(self.window_s - (now - q[0])) + 1
+                raise HTTPException(status_code=429, detail="Too many attempts; try again later",
+                                    headers={"Retry-After": str(retry)})
+
+    def hit(self, key: str) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._live(key, now).append(now)
+            # Keys are attacker-chosen (any email); drop idle ones so a spray
+            # of distinct keys cannot grow this without bound.
+            if len(self._hits) > 10_000:
+                self._hits = {k: q for k, q in self._hits.items() if q and now - q[-1] <= self.window_s}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
+
+# Failed admin logins per email: 10 per 15 min. Keyed by email rather than IP
+# because the client IP is spoofable through X-Forwarded-For.
+LOGIN_LIMITER = RateLimiter(limit=10, window_s=15 * 60)
+# Consent-code redemptions per patient: 10 per 15 min, plenty for typos and far
+# too few to search the ~10^9 code space.
+REDEEM_LIMITER = RateLimiter(limit=10, window_s=15 * 60)
 
 
 # --- Passwords -------------------------------------------------------------

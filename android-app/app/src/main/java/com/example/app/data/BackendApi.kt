@@ -14,18 +14,12 @@ import java.net.URLEncoder
  * footprint zero. Once the surface area grows (more endpoints, JWT, etc.)
  * swap in Retrofit — but for two endpoints that's overkill.
  *
- * Default base URL targets the Android emulator's host loopback.
- *   - Emulator:           http://10.0.2.2:8000   <-- the host machine
- *   - Real device, LAN:   http://192.168.x.x:8000   <-- whatever ipconfig says
- *   - Production:         https://api.calmsense...   (later)
- *
- * Cleartext HTTP requires `usesCleartextTraffic="true"` (or a network
- * security config) in AndroidManifest — see the manifest in this branch.
+ * HTTPS only: the manifest no longer allows cleartext traffic, so a local
+ * http:// backend (emulator 10.0.2.2, the Pi) needs a network security config.
  */
-class BackendApi(private val baseUrl: String = DEFAULT_BASE_URL) {
+class BackendApi(private val baseUrl: String) {
 
     companion object {
-        const val DEFAULT_BASE_URL = "http://10.0.2.2:8000"
         // Generous because the backend scales to zero: a cold start has to
         // boot the container, import sklearn/supabase and open a Supabase
         // connection before it answers. 5s was fine against a Pi that was

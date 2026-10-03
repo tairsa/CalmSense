@@ -141,17 +141,20 @@ Sensor records are appended to `data/sensor_data.json` using an atomic
 write (temp file + rename). Good enough for MVP / single-process dev; not
 safe for concurrent writers from multiple processes.
 
-## Smoke test
+## Tests
 
-After starting the server in one terminal, in another terminal:
+No server needed: the suite runs the app in-process against a throwaway JSON
+store, with no network or credentials.
 
 ```bat
 .venv\Scripts\activate
-python smoke_test.py
+pip install -r requirements-dev.txt
+python -m pytest tests
+python test_storage_guards.py
+python test_auto_retrain.py
 ```
 
-This sends a few POSTs and a GET, prints results, and exits non-zero on any
-failure. Useful as a sanity check before connecting the Android app.
+CI runs the same commands on every push (`.github/workflows/ci.yml`).
 
 ## Project layout
 
@@ -161,6 +164,6 @@ calmsense-backend/
   models.py          # Pydantic schemas
   storage.py         # Atomic JSON file storage
   requirements.txt   # Runtime deps
-  smoke_test.py      # Local verification script
+  tests/             # pytest suite (API, auth, model loop)
   data/              # Runtime data dir (gitignored)
 ```

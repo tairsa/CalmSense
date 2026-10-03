@@ -10,6 +10,7 @@ import auto_retrain
 import model_service
 import storage
 from auth import (
+    LOGIN_LIMITER,
     create_access_token,
     get_current_admin,
     hash_password,
@@ -34,8 +35,11 @@ def _public(admin: dict) -> dict:
 
 @router.post("/auth/login", response_model=TokenResponse)
 def login(body: AdminLoginRequest):
+    key = body.email.strip().lower()
+    LOGIN_LIMITER.check(key)
     admin = storage.get_admin_by_email(body.email)
     if admin is None or not verify_password(body.password, admin["password_hash"]):
+        LOGIN_LIMITER.hit(key)  # only failures count, so a real admin is never slowed
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not admin.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account disabled")

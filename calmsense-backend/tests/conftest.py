@@ -20,6 +20,7 @@ import pytest  # noqa: E402
 from fastapi import Header  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+import auth  # noqa: E402
 import storage  # noqa: E402
 from auth import current_user_id  # noqa: E402
 from main import app  # noqa: E402
@@ -27,6 +28,8 @@ from main import app  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def isolated_storage(tmp_path, monkeypatch):
+    auth.LOGIN_LIMITER.reset()
+    auth.REDEEM_LIMITER.reset()
     monkeypatch.setattr(storage, "_supabase", None)
     monkeypatch.setattr(storage, "DATA_DIR", str(tmp_path))
     for name in dir(storage):

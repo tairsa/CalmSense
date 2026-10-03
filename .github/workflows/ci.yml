@@ -1,6 +1,6 @@
 # CalmSense CI/CD.
 #
-# Every push and PR: backend tests + lint + audit, admin build + audit, phone
+# Every push: backend tests + lint + audit, admin build + audit, phone
 # and watch unit tests + lint + APKs, and the Cloud Run image built and booted.
 #
 # Pushes to main then deploy that image to Cloud Run - but only once all of the
@@ -19,15 +19,16 @@
 
 name: CI/CD
 
+# Every branch push. A pull request shows these same runs as its checks (they
+# are keyed by commit), so a separate pull_request trigger would only run
+# everything twice.
 on:
   push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read

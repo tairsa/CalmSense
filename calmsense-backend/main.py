@@ -1,4 +1,5 @@
 import hmac
+import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -12,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 import auto_retrain
 import model_service
 from admin_routes import router as admin_router
-from auth import current_user_id
+from auth import REDEEM_LIMITER, current_user_id
 from models import (
     ConsentCodeRequest,
     DisplayNameRequest,
@@ -42,6 +43,17 @@ from storage import (
     storage_error,
     upsert_profile,
 )
+
+
+log = logging.getLogger("calmsense.api")
+
+
+def _save_failed(what: str) -> JSONResponse:
+    """500 for a failed write. Call from an except block: the exception goes
+    to the server log, not the response, which would otherwise hand database
+    internals (table names, constraint text) to any caller."""
+    log.exception("Failed to save %s", what)
+    return JSONResponse(status_code=500, content={"success": False, "message": f"Failed to save {what}."})
 
 
 @asynccontextmanager
@@ -145,11 +157,8 @@ def receive_sensor_data(data: SensorData, user_id: str = Depends(current_user_id
     try:
         append_record(record)
         return {"success": True, "message": "Data saved successfully."}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Failed to save data: {e}"},
-        )
+    except Exception:
+        return _save_failed("data")
 
 
 @app.post("/api/v1/panic-feedback", dependencies=_device_auth)
@@ -172,11 +181,8 @@ def receive_panic_feedback(data: PanicFeedback, user_id: str = Depends(current_u
     try:
         append_feedback(record)
         return {"success": True, "message": "Feedback saved."}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Failed to save feedback: {e}"},
-        )
+    except Exception:
+        return _save_failed("feedback")
 
 
 @app.post("/api/v1/panic-reports", dependencies=_device_auth)
@@ -194,11 +200,8 @@ def receive_panic_report(data: PanicReport, user_id: str = Depends(current_user_
     try:
         append_report(record)
         return {"success": True, "message": "Report saved."}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Failed to save report: {e}"},
-        )
+    except Exception:
+        return _save_failed("report")
 
 
 @app.get("/api/v1/sensor-data", dependencies=_device_auth)
@@ -244,11 +247,8 @@ def set_profile(data: Profile, user_id: str = Depends(current_user_id)):
     try:
         upsert_profile(record)
         return {"success": True, "profile": record}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Failed to save profile: {e}"},
-        )
+    except Exception:
+        return _save_failed("profile")
 
 
 @app.put("/api/v1/profile/display-name")
@@ -279,11 +279,8 @@ def update_display_name(body: DisplayNameRequest, user_id: str = Depends(current
     try:
         upsert_profile(record)
         return {"success": True, "profile": record}
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Failed to save name: {e}"},
-        )
+    except Exception:
+        return _save_failed("name")
 
 
 @app.get("/api/v1/profile")
@@ -329,8 +326,9 @@ def generate_consent_code(data: ConsentCodeRequest,
     }
     try:
         create_consent_code(record)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"failed to create code: {e}")
+    except Exception:
+        log.exception("Failed to create consent code")
+        raise HTTPException(status_code=500, detail="failed to create code")
     return ConsentCodeResponse(code=code, expires_at=expires.isoformat())
 
 
@@ -338,6 +336,8 @@ def generate_consent_code(data: ConsentCodeRequest,
 def redeem_consent_code(data: RedeemConsentRequest,
                         patient_id: str = Depends(current_user_id)):
     """Patient submits a code. If valid + unused + unexpired, creates the link."""
+    REDEEM_LIMITER.check(patient_id)
+    REDEEM_LIMITER.hit(patient_id)
     row = find_consent_code(data.code)
     if row is None:
         raise HTTPException(status_code=404, detail="unknown code")
