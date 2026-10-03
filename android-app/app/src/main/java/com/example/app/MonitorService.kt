@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -30,14 +31,15 @@ import com.example.app.data.Vitals
 import com.example.app.data.decidePanic
 import com.example.app.data.motionFeature
 import com.example.app.data.WatchVitalsRepository
+import com.example.app.data.awaitChange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.ln
 
 class MonitorService : Service() {
 
@@ -47,6 +49,10 @@ class MonitorService : Service() {
     private lateinit var modelCache: PanicModelCache
     private val backend = BackendClient(BACKEND_URL)
     private val panicDebouncer = PanicDebouncer()
+    // Only touched from the single polling coroutine.
+    private var shownStatus: String? = null
+    private var shownStatusAtMs = 0L
+    private var lastUploadAtMs = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -79,12 +85,19 @@ class MonitorService : Service() {
         if (pollJob != null) return
         pollJob = scope.launch {
             while (isActive) {
+                val seen = WatchVitalsRepository.sampleCount.value
                 val vitals = readVitals()
                 handleVitals(vitals)
-                delay(if (isElevated(vitals)) ELEVATED_INTERVAL_MS else NORMAL_INTERVAL_MS)
+                // Wake on the next watch sample (every 1-5 s), so a panic is
+                // judged as the data arrives rather than up to 30 s later. The
+                // timeout is still the cadence for Health Connect, which does
+                // not push, and refreshes "last reading N min ago".
+                awaitChange(WatchVitalsRepository.sampleCount, seen, intervalMs(vitals))
             }
         }
     }
+
+    private fun intervalMs(v: Vitals) = if (isElevated(v)) ELEVATED_INTERVAL_MS else NORMAL_INTERVAL_MS
 
     private suspend fun readVitals(): Vitals {
         // Prefer the watch when it has a fresh sample — bypasses Samsung Health/HC sync delay.
@@ -99,8 +112,12 @@ class MonitorService : Service() {
 
     private fun isElevated(v: Vitals): Boolean {
         val hr = v.heartRateBpm ?: return false
-        val hrv = v.hrv ?: 100.0
-        return hr > 110 || hrv < 25.0
+        if (hr > 110) return true
+        val hrv = v.hrv ?: return false
+        // Against the user's own normal for this source. A fixed 25 ms cut-off
+        // read every bpm-derived estimate (~10 ms) as elevated, so the service
+        // ran - and uploaded - at the 5 s rate all day.
+        return HrvBaseline.relative(hrv, v.hrvSource) < ELEVATED_HRV_REL
     }
 
     private fun handleVitals(v: Vitals) {
@@ -118,20 +135,32 @@ class MonitorService : Service() {
             v.hrSampleAgeMinutes != null -> "Monitoring — last reading ${v.hrSampleAgeMinutes} min ago"
             else -> "Monitoring — waiting for watch data"
         }
-        updateMonitorNotification(statusText)
+        val now = SystemClock.elapsedRealtime()
+        // Runs on every watch sample now; the text changes with nearly every
+        // bpm, so redraw at most every few seconds rather than churn it.
+        if (statusText != shownStatus && now - shownStatusAtMs >= STATUS_MIN_INTERVAL_MS) {
+            shownStatus = statusText
+            shownStatusAtMs = now
+            updateMonitorNotification(statusText)
+        }
 
         // Require the detection to persist before acting (filters single-sample
         // spikes); the cooldown gate then keeps a sustained episode from
-        // re-notifying on every poll (every 5 s when elevated).
+        // re-notifying on every sample.
         val panic = panicDebouncer.confirm(isPanic(v))
         if (panic && PanicAlertGate.tryFire()) firePanicNotification()
 
-        uploadIfFresh(v, panic)
+        // Uploads keep the old poll cadence (30 s, 5 s while elevated), so
+        // judging every sample does not multiply the server's row rate.
+        if (now - lastUploadAtMs >= intervalMs(v)) {
+            lastUploadAtMs = now
+            uploadIfFresh(v, panic)
+        }
     }
 
     /** Same decision as the in-app check (see [decidePanic]). Reloading the
-     *  cache each poll (every 5–30 s) keeps this in sync with weights the app
-     *  fetches while we run. */
+     *  cache each time keeps this in sync with weights the app fetches while
+     *  we run; it is a small SharedPreferences read. */
     private fun isPanic(v: Vitals): Boolean {
         val hr = v.heartRateBpm ?: return false
         val hrv = v.hrv ?: return false
@@ -282,5 +311,8 @@ class MonitorService : Service() {
         const val PANIC_NOTIFICATION_ID = 1
         const val NORMAL_INTERVAL_MS = 30_000L
         const val ELEVATED_INTERVAL_MS = 5_000L
+        const val STATUS_MIN_INTERVAL_MS = 5_000L
+        /** HRV at half the user's normal counts as elevated. */
+        val ELEVATED_HRV_REL = ln(0.5)
     }
 }

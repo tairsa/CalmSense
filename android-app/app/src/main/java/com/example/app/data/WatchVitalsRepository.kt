@@ -1,9 +1,23 @@
 package com.example.app.data
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Duration
 import java.time.Instant
 
+/** Suspends until [counter] moves past [seen] or [timeoutMs] elapses; true if it moved. */
+suspend fun awaitChange(counter: StateFlow<Long>, seen: Long, timeoutMs: Long): Boolean =
+    withTimeoutOrNull(timeoutMs) { counter.first { it != seen } } != null
+
 object WatchVitalsRepository {
+
+    // Bumped on every watch sample, so MonitorService can wake the moment one
+    // arrives instead of finding it on its next poll.
+    private val _sampleCount = MutableStateFlow(0L)
+    val sampleCount: StateFlow<Long> = _sampleCount
 
     private const val MOVING_THRESHOLD = 0.5f  // m/s^2 RMS — above this counts as moving
     // Motion must stay above the threshold this long before we report "Active".
@@ -62,6 +76,7 @@ object WatchVitalsRepository {
             updateMotionState(motion)
         }
         lastReceivedAt = Instant.now()
+        _sampleCount.update { it + 1 }
     }
 
     /** Debounce the "Active" label: only confirm movement once motion has stayed

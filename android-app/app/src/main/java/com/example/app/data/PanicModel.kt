@@ -1,6 +1,7 @@
 package com.example.app.data
 
 import kotlin.math.exp
+import kotlin.math.ln
 
 /**
  * Logistic-regression panic-attack detector.
@@ -83,4 +84,8 @@ data class Prediction(val probability: Double, val isPanic: Boolean)
  */
 fun decidePanic(model: PanicModel?, hr: Int, hrv: Double, hrvRel: Double, motion: Double, moving: Boolean, threshold: Double): Prediction =
     if (model != null && !model.isUntrained()) model.predict(hr.toDouble(), hrv, motion, threshold, hrvRel)
-    else Prediction(probability = 0.0, isPanic = hr > 120 && hrv < 20.0 && !moving)
+    else Prediction(probability = 0.0, isPanic = hr > 120 && hrvRel < FALLBACK_HRV_REL && !moving)
+
+/** The fallback rule's old "HRV under 20 ms", restated against a typical 52.5 ms
+ *  resting HRV so it means the same for a bpm-derived estimate (~10 ms at rest). */
+val FALLBACK_HRV_REL = ln(20.0 / 52.5)

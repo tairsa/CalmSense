@@ -114,9 +114,12 @@ class ContractTest {
 
     @Test
     fun `without a trained model the fixed rule applies`() {
-        assertTrue(decidePanic(null, 130, 15.0, 0.0, 0.05, moving = false, threshold = 0.5).isPanic)
-        assertFalse(decidePanic(null, 130, 15.0, 0.0, 0.05, moving = true, threshold = 0.5).isPanic)
-        assertFalse(decidePanic(null, 110, 15.0, 0.0, 0.05, moving = false, threshold = 0.5).isPanic)
+        val drop = -1.2  // HRV at ~30% of the user's normal
+        assertTrue(decidePanic(null, 130, 15.0, drop, 0.1, moving = false, threshold = 0.5).isPanic)
+        assertFalse(decidePanic(null, 130, 15.0, drop, 0.1, moving = true, threshold = 0.5).isPanic)
+        assertFalse(decidePanic(null, 110, 15.0, drop, 0.1, moving = false, threshold = 0.5).isPanic)
+        // A bpm-derived ~10 ms that is this user's normal is not a drop.
+        assertFalse(decidePanic(null, 130, 10.0, 0.0, 0.1, moving = false, threshold = 0.5).isPanic)
         val zero = PanicModel(DoubleArray(5), "default", null, null, null)
         assertEquals(0.0, decidePanic(zero, 130, 15.0, 0.0, 0.05, false, 0.5).probability, 0.0)
     }
