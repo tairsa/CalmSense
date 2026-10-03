@@ -20,6 +20,10 @@ android {
         versionName = rootProject.extra["calmsenseVersionName"] as String
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val sentryDsn = rootProject.extra["sentryDsn"] as String
+        manifestPlaceholders["sentryDsn"] = sentryDsn
+        manifestPlaceholders["sentryEnabled"] = sentryDsn.isNotEmpty().toString()
     }
 
     buildTypes {
@@ -56,6 +60,7 @@ dependencies {
     implementation(libs.androidx.health.connect.client)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.play.services.location)
+    implementation(libs.sentry.android.core)
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

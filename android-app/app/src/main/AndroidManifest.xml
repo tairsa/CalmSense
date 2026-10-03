@@ -36,6 +36,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.App"
         android:usesCleartextTraffic="true">
+        <!-- Crash and ANR reporting (Sentry). Starts only when a DSN is set in
+             gradle.properties (calmsense.sentryDsn). No user identity, request
+             data, screenshots or logcat are attached: crash reports carry stack
+             traces and device model, never vitals. -->
+        <meta-data android:name="io.sentry.dsn" android:value="${sentryDsn}" />
+        <meta-data android:name="io.sentry.auto-init" android:value="${sentryEnabled}" />
+        <meta-data android:name="io.sentry.send-default-pii" android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -151,6 +151,7 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        CrashRelay.install(this)
         ensureChannel(this)
         startInForeground(buildNotification("Starting…"))
 

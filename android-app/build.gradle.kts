@@ -23,4 +23,5 @@ val calmsenseVersionCode: Int = calmsenseVersionName
     .let { (major, minor, patch) -> major * 10_000 + minor * 100 + patch }
 
 extra["calmsenseVersionName"] = calmsenseVersionName
+extra["sentryDsn"] = providers.gradleProperty("calmsense.sentryDsn").orElse("").get().trim()
 extra["calmsenseVersionCode"] = calmsenseVersionCode

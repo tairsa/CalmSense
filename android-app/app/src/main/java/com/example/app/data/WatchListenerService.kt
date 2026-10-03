@@ -3,6 +3,8 @@ package com.example.app.data
 import android.util.Log
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
+import io.sentry.Sentry
+import io.sentry.SentryLevel
 
 data class WatchSample(
     val bpm: Int?,
@@ -49,6 +51,7 @@ class WatchListenerService : WearableListenerService() {
                 if (s.onBody) HrvBaseline.onWatchSample(s.bpm, s.motion, s.hrvMs, s.hrvSource, SleepDetector.isAsleep)
                 Log.d(TAG, "Received sample $s from ${event.sourceNodeId}")
             }
+            MSG_PATH_CRASH -> reportWatchCrash(text)
             MSG_PATH_HR -> {
                 val bpm = text.toIntOrNull() ?: return
                 WatchVitalsRepository.update(bpm)
@@ -57,9 +60,31 @@ class WatchListenerService : WearableListenerService() {
         }
     }
 
+    /** A watch crash relayed by its CrashRelay ("<watch version>\n<stack trace>"):
+     *  the watch has no network of its own. A no-op when Sentry is not set up. */
+    private fun reportWatchCrash(text: String) {
+        val lines = text.lines()
+        val trace = lines.drop(1)
+        val exception = trace.firstOrNull().orEmpty()
+        Log.e(TAG, "Watch crashed: $exception")
+        Sentry.captureMessage("Watch crash: $exception") { scope ->
+            scope.level = SentryLevel.FATAL
+            scope.setTag("device", "watch")
+            scope.setTag("watch_version", lines.firstOrNull().orEmpty())
+            scope.setExtra("stacktrace", trace.joinToString("\n"))
+            // Group by exception type and crash site, not the message text.
+            scope.fingerprint = listOf(
+                "watch-crash",
+                exception.substringBefore(':'),
+                trace.firstOrNull { it.trim().startsWith("at ") }?.trim().orEmpty(),
+            )
+        }
+    }
+
     companion object {
         private const val TAG = "WatchListener"
         const val MSG_PATH_HR = "/calmsense/hr"
         const val MSG_PATH_SAMPLE = "/calmsense/sample"
+        const val MSG_PATH_CRASH = "/calmsense/crash"  // = wear CrashRelay.MSG_PATH_CRASH
     }
 }

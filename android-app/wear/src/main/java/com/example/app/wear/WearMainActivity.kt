@@ -50,6 +50,7 @@ class WearMainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashRelay.install(this)
         requestBatteryOptimizationExemptionIfNeeded()
         setContent { WearStatusUi() }
 
