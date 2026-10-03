@@ -392,23 +392,29 @@ def find_consent_code(code: str) -> dict | None:
     return next((r for r in rows if r.get("code") == code), None)
 
 
-def mark_consent_code_used(code: str, patient_id: str, used_at_iso: str) -> None:
-    """Set used_at/used_by on the code so it can't be redeemed twice."""
+def mark_consent_code_used(code: str, patient_id: str, used_at_iso: str) -> bool:
+    """Claim the code for `patient_id`. Returns False if it was already used.
+
+    The update only matches a row whose used_at is still null, so it is a
+    compare-and-set: two concurrent redemptions cannot both succeed.
+    """
     if _supabase is not None:
         try:
-            _supabase.table(CONSENT_CODES_TABLE_NAME).update({
+            resp = _supabase.table(CONSENT_CODES_TABLE_NAME).update({
                 "used_at": used_at_iso,
                 "used_by": patient_id,
-            }).eq("code", code).execute()
-            return
+            }).eq("code", code).is_("used_at", "null").execute()
+            return bool(resp.data)
         except Exception as e:
-            print(f"[storage] Supabase consent-code update failed ({e}); updating JSON fallback")
-    rows = _json_read_from(CONSENT_CODES_FILE)
-    for r in rows:
-        if r.get("code") == code:
-            r["used_at"] = used_at_iso
-            r["used_by"] = patient_id
-    _json_replace_by_key(CONSENT_CODES_FILE, "code", next(r for r in rows if r.get("code") == code))
+            _write_fallback_or_raise("consent-code update", e)
+    # ponytail: read-check-write, not atomic across processes; fine for the single-process Pi.
+    row = next((r for r in _json_read_from(CONSENT_CODES_FILE) if r.get("code") == code), None)
+    if row is None or row.get("used_at"):
+        return False
+    row["used_at"] = used_at_iso
+    row["used_by"] = patient_id
+    _json_replace_by_key(CONSENT_CODES_FILE, "code", row)
+    return True
 
 
 # --- Therapist-patient links ----------------------------------------------
@@ -417,11 +423,16 @@ def create_therapist_patient_link(record: dict) -> None:
     """Create the (therapist_id, patient_id) link. No-op if it already exists."""
     if _supabase is not None:
         try:
-            _supabase.table(LINKS_TABLE_NAME).insert(record).execute()
+            # ON CONFLICT DO NOTHING on the (therapist_id, patient_id) unique
+            # key makes the duplicate case a no-op. Every other failure is real
+            # and must surface: this runs after the code has been burned, so
+            # swallowing it left a patient told "linked" with no link at all.
+            _supabase.table(LINKS_TABLE_NAME).upsert(
+                record, on_conflict="therapist_id,patient_id", ignore_duplicates=True
+            ).execute()
             return
         except Exception as e:
-            print(f"[storage] Supabase link insert note ({e})")
-            return
+            _write_fallback_or_raise("link insert", e)
     rows = _json_read_from(LINKS_FILE)
     exists = any(
         r.get("therapist_id") == record.get("therapist_id")

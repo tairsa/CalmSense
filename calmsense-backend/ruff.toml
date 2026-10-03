@@ -1,0 +1,4 @@
+# CI lint gate: real defects only (syntax errors, undefined names, unused
+# imports/variables). Style is not gated.
+[lint]
+select = ["E9", "F"]

@@ -111,7 +111,7 @@ def main() -> int:
     coefs = model.coef_[0]
     bias = float(model.intercept_[0])
     print(f"  test_accuracy = {metrics['test_accuracy']:.4f}")
-    print(f"  confusion_matrix (rows=true, cols=pred):")
+    print("  confusion_matrix (rows=true, cols=pred):")
     for row in metrics["confusion_matrix"]:
         print(f"    {row}")
     print()

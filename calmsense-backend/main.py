@@ -1,11 +1,10 @@
 import hmac
 import os
-import random
-import string
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,7 +38,6 @@ from storage import (
     delete_therapist_patient_link,
     list_therapists_for_patient,
     mark_consent_code_used,
-    read_all_records,
     storage_backend,
     storage_error,
     upsert_profile,
@@ -298,8 +296,11 @@ CONSENT_CODE_TTL_MINUTES = 30
 
 
 def _generate_consent_code() -> str:
-    """Short human-friendly code like 'A7K-Q2M'. Ambiguous chars removed."""
-    body = "".join(random.choices(CONSENT_CODE_ALPHABET, k=6))
+    """Short human-friendly code like 'A7K-Q2M'. Ambiguous chars removed.
+
+    secrets, not random: the code is a bearer credential for a patient's data,
+    and Mersenne Twister output is predictable from earlier codes."""
+    body = "".join(secrets.choice(CONSENT_CODE_ALPHABET) for _ in range(6))
     return f"{body[:3]}-{body[3:]}"
 
 
@@ -307,6 +308,10 @@ def _generate_consent_code() -> str:
 def generate_consent_code(data: ConsentCodeRequest,
                           therapist_id: str = Depends(current_user_id)):
     """Therapist generates a code to hand to a client (in person / message)."""
+    # Without this a patient account could mint a code and, once another
+    # patient redeemed it, read that patient's reports and GPS.
+    if (get_profile(therapist_id) or {}).get("role") != "therapist":
+        raise HTTPException(status_code=403, detail="Only therapists can issue consent codes")
     now = datetime.now(timezone.utc)
     expires = now + timedelta(minutes=CONSENT_CODE_TTL_MINUTES)
     code = _generate_consent_code()
@@ -346,7 +351,11 @@ def redeem_consent_code(data: RedeemConsentRequest,
 
     therapist_id = row["therapist_id"]
 
-    mark_consent_code_used(data.code, patient_id, now.isoformat())
+    # The used_at check above is only a fast path; this claim is the real one.
+    # It is conditional on the code still being unused, so of two concurrent
+    # redemptions exactly one wins.
+    if not mark_consent_code_used(data.code, patient_id, now.isoformat()):
+        raise HTTPException(status_code=409, detail="code already used")
     create_therapist_patient_link({
         "therapist_id": therapist_id,
         "patient_id": patient_id,
