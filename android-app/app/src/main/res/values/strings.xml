@@ -218,4 +218,13 @@
     <string name="fingerprint_wrong_password">Wrong password.</string>
     <string name="fingerprint_changed">Your phone’s fingerprints changed, so fingerprint sign-in was turned off. Sign in with your password, then turn it on again in Settings.</string>
     <string name="fingerprint_password_changed">Your password has changed. Sign in with it, then turn fingerprint sign-in on again in Settings.</string>
+    <!-- App updates (Settings) -->
+    <string name="update_title">App updates</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_up_to_date">You have the latest version.</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_download">Download and install</string>
+    <string name="update_install">Install</string>
+    <string name="update_allow_install">Allow CalmSense to install apps, then come back and tap Install.</string>
+    <string name="update_check_failed">Couldn’t check for updates. Check your internet connection.</string>
 </resources>

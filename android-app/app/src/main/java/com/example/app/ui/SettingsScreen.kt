@@ -34,6 +34,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -56,11 +57,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
 import com.example.app.BuildConfig
 import com.example.app.R
+import com.example.app.data.AppUpdater
 import com.example.app.data.BiometricLogin
 import com.example.app.data.LanguageManager
 import com.example.app.data.SettingsStore
@@ -68,8 +69,10 @@ import com.example.app.data.SupabaseAuth
 import com.example.app.data.TherapistApi
 import com.example.app.data.fragmentActivity
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -181,19 +184,17 @@ fun SettingsScreen(
 
         }  // end patient-only sections
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Outside the patient-only block on purpose: the build identifier is
-        // the first thing worth asking for in a bug report, whoever is filing
-        // it. Quiet and centred at the foot of the list, as is conventional -
-        // present when looked for, not competing with anything above it.
+        // Outside the patient-only block on purpose: every account runs the
+        // same app, and the installed version is the first thing worth asking
+        // for in a bug report, whoever is filing it.
         Text(
-            stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
+            stringResource(R.string.update_title),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
         )
+
+        UpdateCard()
 
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -542,6 +543,113 @@ private fun FingerprintCard(email: String?) {
                     }
                 },
             )
+        }
+    }
+}
+
+
+/**
+ * Check for updates -> download -> Android's installer (AppUpdater). One button
+ * that moves through those steps, so there is never more than one thing to tap.
+ */
+@Composable
+private fun UpdateCard() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var release by remember { mutableStateOf<AppUpdater.Release?>(null) }
+    var apk by remember { mutableStateOf<File?>(null) }
+    var status by remember { mutableStateOf<String?>(null) }
+    // Null when idle; -1 while checking; 0..1 while downloading.
+    var progress by remember { mutableStateOf<Float?>(null) }
+
+    fun install(file: File) {
+        if (AppUpdater.canInstall(context)) {
+            AppUpdater.install(context, file)
+        } else {
+            status = context.getString(R.string.update_allow_install)
+            AppUpdater.openInstallPermission(context)
+        }
+    }
+
+    fun onClick() {
+        val ready = apk
+        val found = release
+        status = null
+        scope.launch {
+            try {
+                when {
+                    ready != null -> install(ready)
+                    found != null -> {
+                        progress = 0f
+                        val file = AppUpdater.download(context, found) { progress = it }
+                        apk = file
+                        install(file)
+                    }
+                    else -> {
+                        progress = -1f
+                        release = AppUpdater.check()
+                        if (release == null) status = context.getString(R.string.update_up_to_date)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                status = if (found == null) context.getString(R.string.update_check_failed)
+                         else e.message ?: e.javaClass.simpleName
+            } finally {
+                progress = null
+            }
+        }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                release?.let { stringResource(R.string.update_available, it.version) }
+                    ?: stringResource(R.string.settings_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            release?.notes?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    it.take(400),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            status?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            progress?.let { p ->
+                val bar = Modifier.fillMaxWidth().padding(top = 12.dp)
+                if (p < 0f) LinearProgressIndicator(modifier = bar)
+                else LinearProgressIndicator(progress = { p }, modifier = bar)
+            }
+            Button(
+                onClick = { onClick() },
+                enabled = progress == null,
+                modifier = Modifier.padding(top = 12.dp),
+            ) {
+                Text(
+                    stringResource(
+                        when {
+                            apk != null -> R.string.update_install
+                            release != null -> R.string.update_download
+                            else -> R.string.update_check
+                        }
+                    )
+                )
+            }
         }
     }
 }

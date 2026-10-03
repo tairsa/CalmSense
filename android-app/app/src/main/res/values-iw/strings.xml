@@ -218,4 +218,13 @@
     <string name="fingerprint_wrong_password">סיסמה שגויה.</string>
     <string name="fingerprint_changed">טביעות האצבע בטלפון השתנו, ולכן הכניסה עם טביעת אצבע כובתה. היכנסו עם הסיסמה והפעילו אותה מחדש בהגדרות.</string>
     <string name="fingerprint_password_changed">הסיסמה שלכם השתנתה. היכנסו איתה והפעילו מחדש את הכניסה עם טביעת אצבע בהגדרות.</string>
+    <!-- עדכוני אפליקציה (הגדרות) -->
+    <string name="update_title">עדכוני אפליקציה</string>
+    <string name="update_check">בדיקת עדכונים</string>
+    <string name="update_up_to_date">מותקנת הגרסה האחרונה.</string>
+    <string name="update_available">גרסה %1$s זמינה</string>
+    <string name="update_download">הורדה והתקנה</string>
+    <string name="update_install">התקנה</string>
+    <string name="update_allow_install">אפשרו ל-CalmSense להתקין אפליקציות, ואז חזרו ולחצו על התקנה.</string>
+    <string name="update_check_failed">לא ניתן לבדוק עדכונים. בדקו את החיבור לאינטרנט.</string>
 </resources>

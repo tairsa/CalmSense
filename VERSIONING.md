@@ -40,6 +40,10 @@ computes `MAJOR*10000 + MINOR*100 + PATCH` (so 1.0.0 → 10000). The build fails
 if the version is not three numeric parts, or if minor or patch reaches 100 —
 past that the derived code would stop increasing, which Play rejects.
 
+Phone builds ship as GitHub Releases: `scripts/publish-phone-release.sh` uploads
+the APK, and Settings > App updates on the phone installs it. The watch still
+needs adb.
+
 The three components version independently. They start aligned; they are not
 expected to stay that way.
 
@@ -47,6 +51,7 @@ expected to stay that way.
 
 | Version | Date | Components | What shipped |
 |---------|------|------------|--------------|
+| 1.3.0 | 2026-10-04 | phone + watch | The phone updates itself: Settings > App updates checks GitHub Releases, downloads the new build and opens Android's installer (the first time, allow CalmSense to install apps). First build on the phone since 1.1.1, so it also brings everything in 1.2.0. Watch: no changes, renumbered to match. |
 | 1.2.0 | 2026-10-03 | phone + watch | Fingerprint sign-in, turned on by hand in Settings (password confirmed once, then kept locked by the fingerprint; the sign-in screen offers it). Staying signed in: signing out on one device no longer ends every other session (Supabase signs out globally by default), a rate limit or timeout no longer counts as a dead session, the rotated refresh token is written before it is used, a refresh whose reply was lost is retried inside Supabase's 10 s reuse window, and monitoring started at boot has the session. Watch: no changes, renumbered to match. |
 | 1.2.0 | 2026-10-03 | backend, admin | Admin Users and user pages show each person's name and email (names from profiles, emails from Supabase Auth). A name saved in the app is also put on the Supabase Auth account. |
 | 1.1.1 | 2026-10-03 | backend | Admin Users page and dashboard count in the database (`admin_user_stats()`, migration in supabase_schema.sql) instead of downloading the sensor table: 60 s and then a 500 at ~300k rows, now ~50 ms. The per-user sensor tab fetches only the newest page. |
