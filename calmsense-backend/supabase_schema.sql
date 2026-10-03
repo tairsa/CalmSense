@@ -215,3 +215,59 @@ alter table public.panic_reports  add column if not exists hrv_source text;
 -- Older phones omit the key, so they are unaffected either way.
 -- ---------------------------------------------------------------------------
 alter table public.panic_feedback add column if not exists hrv_baseline double precision;
+
+
+-- ---------------------------------------------------------------------------
+-- admin_user_stats(): per-user activity, counted in the database. Safe to
+-- re-run.
+--
+-- The admin Users page and dashboard used to download every sensor row,
+-- 1,000 per request, just to count them: 60 s, then a dropped connection and
+-- a 500 once the table passed a few hundred thousand rows (2026-10-03). This
+-- returns one row per user instead.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_user_stats()
+returns table (
+    user_id          text,
+    sensor_count     bigint,
+    feedback_count   bigint,
+    report_count     bigint,
+    last_seen        timestamptz,
+    hrv_real_ibi     bigint,
+    hrv_bpm_derived  bigint,
+    hrv_no_hrv       bigint,
+    hrv_unknown      bigint
+)
+language sql stable
+set search_path = public
+as $$
+    with s as (
+        select user_id, count(*) as n, max(coalesce("timestamp", created_at)) as t,
+               count(*) filter (where hrv_source = 'real_ibi')    as real_ibi,
+               count(*) filter (where hrv_source = 'bpm_derived') as bpm_derived,
+               count(*) filter (where hrv_source = 'none')        as no_hrv,
+               count(*) filter (where hrv_source is null)         as unknown
+        from sensor_data group by user_id
+    ),
+    f as (select user_id, count(*) as n, max(coalesce("timestamp", created_at)) as t
+          from panic_feedback group by user_id),
+    r as (select user_id, count(*) as n, max(coalesce("timestamp", created_at)) as t
+          from panic_reports group by user_id)
+    select u.user_id,
+           coalesce(s.n, 0), coalesce(f.n, 0), coalesce(r.n, 0),
+           greatest(s.t, f.t, r.t),
+           coalesce(s.real_ibi, 0), coalesce(s.bpm_derived, 0),
+           coalesce(s.no_hrv, 0), coalesce(s.unknown, 0)
+    from (select user_id from s union select user_id from f union select user_id from r) u
+    left join s using (user_id)
+    left join f using (user_id)
+    left join r using (user_id)
+    where u.user_id is not null
+    order by u.user_id;
+$$;
+
+-- Admin only. A new function is executable by PUBLIC, and Supabase exposes it
+-- over the REST API - so without this the public anon key in the phone app
+-- could list every user id.
+revoke all on function public.admin_user_stats() from public, anon, authenticated;
+grant execute on function public.admin_user_stats() to service_role;

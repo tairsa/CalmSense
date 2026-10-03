@@ -175,3 +175,74 @@ def test_feedback_retrain_serves_new_weights_to_the_phone(client, raw_client, ad
 def test_retrain_refuses_too_little_data(raw_client, admin_token):
     r = raw_client.post("/api/v1/admin/users/nobody/model/retrain", json={}, headers=admin_token)
     assert r.status_code == 400
+
+
+# --- Admin stats come from the database, not a table download ------------
+
+class _Rpc:
+    def __init__(self, data=None, error=None):
+        self.data, self.error = data, error
+
+    def execute(self):
+        if self.error:
+            raise self.error
+        return self
+
+
+class _FakeSupabase:
+    def __init__(self, rpc):
+        self._rpc = rpc
+
+    def rpc(self, name):
+        assert name == "admin_user_stats"
+        return self._rpc
+
+
+def test_user_stats_reads_the_database_function(monkeypatch):
+    row = {"user_id": "u1", "sensor_count": 300000, "feedback_count": 4, "report_count": 1,
+           "last_seen": "2026-10-03T19:00:00+00:00", "hrv_real_ibi": 250000,
+           "hrv_bpm_derived": 50000, "hrv_no_hrv": 0, "hrv_unknown": 0}
+    monkeypatch.setattr(storage, "_supabase", _FakeSupabase(_Rpc([row])))
+    monkeypatch.setattr(storage, "read_all_records", lambda: pytest.fail("downloaded the sensor table"))
+    assert storage.user_stats() == [{
+        "user_id": "u1", "sensor_count": 300000, "feedback_count": 4, "report_count": 1,
+        "last_seen": "2026-10-03T19:00:00+00:00",
+        "hrv_sources": {"real_ibi": 250000, "bpm_derived": 50000},
+    }]
+
+
+def test_user_stats_still_works_before_the_migration(monkeypatch):
+    monkeypatch.setattr(storage, "_supabase", _FakeSupabase(_Rpc(error=RuntimeError("function not found"))))
+    monkeypatch.setattr(storage, "read_all_records", lambda: [{"user_id": "u1", "hrv_source": "real_ibi", "timestamp": "t1"}])
+    monkeypatch.setattr(storage, "read_all_feedback", lambda: [])
+    monkeypatch.setattr(storage, "read_all_reports", lambda: [{"user_id": "u2", "timestamp": "t2"}])
+    assert [(u["user_id"], u["sensor_count"], u["report_count"]) for u in storage.user_stats()] == \
+        [("u1", 1, 0), ("u2", 0, 1)]
+
+
+def test_admin_sensor_tab_returns_the_newest_page_and_the_total(client, raw_client, admin_token):
+    for i in range(7):
+        client.post("/api/v1/sensor-data", headers=as_user("alice"), json={
+            "user_id": "x", "panic_attack_detection": False, "current_hr": 60.0 + i,
+            "current_hrv": 40.0, "current_motion_intensity": 0.1,
+            "timestamp": f"2026-10-03T10:00:0{i}+00:00"})
+    body = raw_client.get("/api/v1/admin/users/alice/sensor-data?limit=3", headers=admin_token).json()
+    assert body["total"] == 7
+    assert [r["current_hr"] for r in body["sensor_data"]] == [66.0, 65.0, 64.0]
+
+
+def test_select_all_stops_at_the_limit(monkeypatch):
+    class Table:
+        requests = 0
+        def __init__(self): self.rows = list(range(2500))
+        def select(self, *a, **k): return self
+        def eq(self, *a): return self
+        def order(self, *a, **k): return self
+        def range(self, lo, hi): self.lo, self.hi = lo, hi; return self
+        def execute(self):
+            Table.requests += 1
+            return type("R", (), {"data": self.rows[self.lo:self.hi + 1][:1000]})()
+    t = Table()
+    monkeypatch.setattr(storage, "_supabase", type("C", (), {"table": lambda self, name: t})())
+    assert len(storage._select_all("sensor_data", limit=1500)) == 1500
+    assert Table.requests == 2

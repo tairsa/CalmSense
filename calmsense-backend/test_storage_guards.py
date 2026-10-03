@@ -41,7 +41,7 @@ MULTI_ROW_READERS = [
     "read_all_records", "read_all_feedback", "read_all_reports",
     "list_admins", "list_model_snapshots",
     "list_patients_for_therapist", "get_reports_for_patient",
-    "get_sensor_data_for_patient",
+    "get_sensor_data_for_patient", "recent_sensor_data",
 ]
 
 # Exempt from paging only because they look up a primary key (at most one row).

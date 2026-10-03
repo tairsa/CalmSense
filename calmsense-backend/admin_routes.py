@@ -73,53 +73,16 @@ def list_admins(admin: dict = Depends(get_current_admin)):
 
 @router.get("/users")
 def list_users(admin: dict = Depends(get_current_admin)):
-    """Distinct app users (by user_id) with per-source row counts."""
-    sensors = storage.read_all_records()
-    feedback = storage.read_all_feedback()
-    reports = storage.read_all_reports()
-
-    users: dict[str, dict] = {}
-
-    def bump(uid, key):
-        if not uid:
-            return
-        u = users.setdefault(uid, {
-            "user_id": uid, "sensor_count": 0, "feedback_count": 0,
-            "report_count": 0, "last_seen": None, "hrv_sources": {},
-        })
-        u[key] += 1
-
-    def touch_last_seen(uid, ts):
-        if not uid or not ts:
-            return
-        u = users.get(uid)
-        if u and (u["last_seen"] is None or ts > u["last_seen"]):
-            u["last_seen"] = ts
-
-    for r in sensors:
-        bump(r.get("user_id"), "sensor_count")
-        # How much of this user's HRV is real beat-to-beat data vs an estimate.
-        # null = row from a phone that predates provenance.
-        if r.get("user_id"):
-            src = users[r["user_id"]]["hrv_sources"]
-            key = r.get("hrv_source") or "unknown"
-            src[key] = src.get(key, 0) + 1
-        touch_last_seen(r.get("user_id"), r.get("timestamp") or r.get("created_at"))
-    for r in feedback:
-        bump(r.get("user_id"), "feedback_count")
-        touch_last_seen(r.get("user_id"), r.get("timestamp") or r.get("created_at"))
-    for r in reports:
-        bump(r.get("user_id"), "report_count")
-        touch_last_seen(r.get("user_id"), r.get("timestamp") or r.get("created_at"))
-
-    # Annotate each user with the source of their currently-served model.
-    for uid, u in users.items():
+    """Distinct app users with per-source row counts, last activity, the mix
+    of HRV sources (real beat-to-beat vs estimated; "unknown" = a phone that
+    predates provenance) and the source of their served model."""
+    users = storage.user_stats()
+    for u in users:
         try:
-            u["model_source"] = model_service.get_active_weights(uid)["source"]
+            u["model_source"] = model_service.get_active_weights(u["user_id"])["source"]
         except Exception:
             u["model_source"] = None
-
-    return {"users": sorted(users.values(), key=lambda u: u["user_id"])}
+    return {"users": users}
 
 
 @router.get("/users/{user_id}")
@@ -147,9 +110,8 @@ def user_feedback(user_id: str, admin: dict = Depends(get_current_admin)):
 
 @router.get("/users/{user_id}/sensor-data")
 def user_sensor_data(user_id: str, limit: int = 500, admin: dict = Depends(get_current_admin)):
-    rows = [r for r in storage.read_all_records() if r.get("user_id") == user_id]
-    rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
-    return {"sensor_data": rows[: max(1, min(limit, 5000))], "total": len(rows)}
+    rows, total = storage.recent_sensor_data(user_id, max(1, min(limit, 5000)))
+    return {"sensor_data": rows, "total": total}
 
 
 @router.get("/users/{user_id}/metrics")
@@ -230,10 +192,9 @@ def auto_retrain_run(admin: dict = Depends(get_current_admin)):
 
 @router.get("/metrics/global")
 def global_metrics(admin: dict = Depends(get_current_admin)):
-    sensors = storage.read_all_records()
+    # Counts come from the database; feedback is small and needed row by row.
+    stats = storage.user_stats()
     feedback = storage.read_all_feedback()
-    reports = storage.read_all_reports()
-    user_ids = {r.get("user_id") for r in sensors + feedback + reports if r.get("user_id")}
 
     tp = fp = fn = 0
     for r in feedback:
@@ -247,10 +208,10 @@ def global_metrics(admin: dict = Depends(get_current_admin)):
             fn += 1
 
     return {
-        "user_count": len(user_ids),
-        "sensor_count": len(sensors),
+        "user_count": len(stats),
+        "sensor_count": sum(u["sensor_count"] for u in stats),
         "feedback_count": len(feedback),
-        "report_count": len(reports),
+        "report_count": sum(u["report_count"] for u in stats),
         "confusion": {"true_positive": tp, "false_positive": fp, "false_negative": fn},
         "precision": tp / (tp + fp) if (tp + fp) else None,
         "recall": tp / (tp + fn) if (tp + fn) else None,

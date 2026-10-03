@@ -97,21 +97,24 @@ _PAGE = 1000
 
 
 def _select_all(table: str, columns: str = "*", order_col: str = "id",
-                desc: bool = False, eq: tuple[str, object] | None = None) -> list[dict]:
-    """Read every row of `table`, paging past the PostgREST row cap."""
+                desc: bool = False, eq: tuple[str, object] | None = None,
+                limit: int | None = None) -> list[dict]:
+    """Read every row of `table` (or the first `limit`), paging past the
+    PostgREST row cap."""
     out: list[dict] = []
     offset = 0
     while True:
+        size = _PAGE if limit is None else min(_PAGE, limit - offset)
         q = _supabase.table(table).select(columns)
         if eq is not None:
             q = q.eq(eq[0], eq[1])
-        page = q.order(order_col, desc=desc).range(offset, offset + _PAGE - 1).execute().data or []
+        page = q.order(order_col, desc=desc).range(offset, offset + size - 1).execute().data or []
         out.extend(page)
         # A short page means we've reached the end. An exactly-full page is
         # ambiguous, so we go round once more and get an empty page.
-        if len(page) < _PAGE:
+        if len(page) < size or (limit is not None and len(out) >= limit):
             return out
-        offset += _PAGE
+        offset += size
 
 
 def _init_supabase():
@@ -524,6 +527,77 @@ def get_reports_for_patient(patient_id: str) -> list:
         except Exception as e:
             _read_fallback_or_raise("per-patient reports read", e)
     return [r for r in _json_read_from(REPORTS_FILE) if r.get("user_id") == patient_id]
+
+
+def recent_sensor_data(user_id: str, limit: int) -> tuple[list, int]:
+    """A user's newest `limit` sensor rows, and how many they have in all.
+
+    Only what the admin page shows: the full history is hundreds of thousands
+    of rows, and fetching it to slice off 500 took a minute.
+    """
+    if _supabase is not None:
+        try:
+            rows = _select_all(TABLE_NAME, order_col="timestamp", desc=True,
+                               eq=("user_id", user_id), limit=limit)
+            total = (_supabase.table(TABLE_NAME).select("id", count="exact", head=True)
+                     .eq("user_id", user_id).execute().count) or 0
+            return rows, total
+        except Exception as e:
+            _read_fallback_or_raise("recent sensor read", e)
+    rows = [r for r in _json_read_from(DATA_FILE) if r.get("user_id") == user_id]
+    rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
+    return rows[:limit], len(rows)
+
+
+def _aggregate_user_stats(sensors: list, feedback: list, reports: list) -> list[dict]:
+    """In-Python twin of the admin_user_stats() SQL function: same rows, same
+    shape. Used for the JSON store, and on Supabase only until the function
+    exists."""
+    users: dict[str, dict] = {}
+    for key, rows in (("sensor_count", sensors), ("feedback_count", feedback), ("report_count", reports)):
+        for r in rows:
+            uid = r.get("user_id")
+            if not uid:
+                continue
+            u = users.setdefault(uid, {"user_id": uid, "sensor_count": 0, "feedback_count": 0,
+                                       "report_count": 0, "last_seen": None, "hrv_sources": {}})
+            u[key] += 1
+            ts = r.get("timestamp") or r.get("created_at")
+            if ts and (u["last_seen"] is None or ts > u["last_seen"]):
+                u["last_seen"] = ts
+            if key == "sensor_count":
+                src = r.get("hrv_source") or "unknown"
+                u["hrv_sources"][src] = u["hrv_sources"].get(src, 0) + 1
+    return sorted(users.values(), key=lambda u: u["user_id"])
+
+
+def user_stats() -> list[dict]:
+    """One row per user with any data: sensor / feedback / report counts, last
+    activity and the mix of HRV sources. On Supabase it is counted in the
+    database by admin_user_stats() (see supabase_schema.sql).
+
+    ponytail: an RPC result is capped by PostgREST's max-rows (1000 users);
+    page it if CalmSense ever has more users than that.
+    """
+    if _supabase is not None:
+        try:
+            rows = _supabase.rpc("admin_user_stats").execute().data or []
+            return [{
+                "user_id": r["user_id"],
+                "sensor_count": r["sensor_count"],
+                "feedback_count": r["feedback_count"],
+                "report_count": r["report_count"],
+                "last_seen": r["last_seen"],
+                "hrv_sources": {k: n for k, n in (("real_ibi", r["hrv_real_ibi"]),
+                                                  ("bpm_derived", r["hrv_bpm_derived"]),
+                                                  ("none", r["hrv_no_hrv"]),
+                                                  ("unknown", r["hrv_unknown"])) if n},
+            } for r in rows]
+        except Exception as e:
+            # Not migrated yet: still correct, just slow. Loud, so it gets fixed.
+            print(f"[storage] admin_user_stats() failed ({e}); counting by full table "
+                  f"scan - apply the migration at the end of supabase_schema.sql")
+    return _aggregate_user_stats(read_all_records(), read_all_feedback(), read_all_reports())
 
 
 def get_sensor_data_for_patient(patient_id: str) -> list:
