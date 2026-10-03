@@ -787,7 +787,7 @@ class HeartRateViewModel : ViewModel() {
         pendingHrv = currentHrv
         pendingHrvSource = hrvSource
         pendingHrvBaseline = if (currentHrv != null) hrvBaselineFor(hrvSource) else null
-        pendingMotion = motionIntensity ?: if (isMoving) 1.0f else 0.0f
+        pendingMotion = motionFeatureFor(motionIntensity, isMoving).toFloat()
         pendingProbability = lastPanicProbability
 
         // Snapshot for the journal entry and kick off a GPS fix.
@@ -798,7 +798,7 @@ class HeartRateViewModel : ViewModel() {
                 hr = currentHr,
                 hrv = currentHrv,
                 hrvSource = hrvSource,
-                motionIntensity = motionIntensity ?: if (isMoving) 1.0f else 0.0f,
+                motionIntensity = motionFeatureFor(motionIntensity, isMoving).toFloat(),
                 duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
             )
         )

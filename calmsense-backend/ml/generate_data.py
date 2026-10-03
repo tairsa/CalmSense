@@ -6,10 +6,19 @@ resolution is not freely available. WESAD uses "stress" labels, not panic.
 Until we collect real labeled data from CalmSense users, we generate
 training examples from physiological priors documented in the literature:
 
-  - Baseline (resting):    HR 60-80 bpm,  HRV 40-65 ms, motion 0.00-0.10
-  - Mild stress:           HR 80-105,     HRV 25-45,    motion 0.00-0.20
-  - Panic attack:          HR 115-175,    HRV  5-25,    motion 0.00-0.30
-  - Exercise (NOT panic):  HR 110-180,    HRV 15-35,    motion 0.50-1.00
+  - Baseline (resting):    HR 60-80 bpm,  HRV 40-65 ms, motion 0.0-0.5
+  - Mild stress:           HR 80-105,     HRV 25-45,    motion 0.0-1.0
+  - Light activity:        HR 85-115,     HRV 25-50,    motion 0.8-3.0
+  - Panic attack:          HR 115-175,    HRV  5-25,    motion 0.0-1.5
+  - Exercise (NOT panic):  HR 110-180,    HRV 15-35,    motion 2.0-8.0
+
+Motion is in the watch's own units: RMS of wrist linear acceleration over ~3 s,
+in m/s^2 (HrMonitoringService), clamped to MOTION_MAX. The ranges are anchored
+to 8,105 real watch samples from June 2026, where the median was 0.24 m/s^2 at
+HR < 70 and 1.7-2.5 m/s^2 at HR 85-115: a wrist moves a lot even when the body
+is sedentary. Light activity (chores, slow walking) is its own class because
+that middle ground is most of a waking day and was previously unrepresented.
+Panic allows restlessness and trembling (to 1.5) but not walking pace.
 
 Critical: panic and exercise both have elevated HR and depressed HRV.
 The motion feature is what lets the model distinguish them. Without it,
@@ -17,7 +26,7 @@ exercise would constantly trigger panic alerts.
 
 Usage:
     python generate_data.py
-    -> writes ml/training_data.csv (~5000 rows by default)
+    -> writes ml/training_data.csv (~6250 rows by default)
 
 Output columns: hr, hrv, motion, hrv_rel, label  (label: 0 = no panic, 1 = panic)
 
@@ -57,11 +66,16 @@ class Profile:
 
 
 PROFILES: list[Profile] = [
-    Profile("resting",  60.0,  80.0, 40.0, 65.0, 0.00, 0.10, label=0),
-    Profile("stress",   80.0, 105.0, 25.0, 45.0, 0.00, 0.20, label=0),
-    Profile("panic",   115.0, 175.0,  5.0, 25.0, 0.00, 0.30, label=1),
-    Profile("exercise",110.0, 180.0, 15.0, 35.0, 0.50, 1.00, label=0),
+    Profile("resting",  60.0,  80.0, 40.0, 65.0, 0.0, 0.5, label=0),
+    Profile("stress",   80.0, 105.0, 25.0, 45.0, 0.0, 1.0, label=0),
+    Profile("light",    85.0, 115.0, 25.0, 50.0, 0.8, 3.0, label=0),
+    Profile("panic",   115.0, 175.0,  5.0, 25.0, 0.0, 1.5, label=1),
+    Profile("exercise",110.0, 180.0, 15.0, 35.0, 2.0, 8.0, label=0),
 ]
+
+# Upper clamp on motion (m/s^2), shared with the phone and the retrainer:
+# beyond this it is unambiguously not a panic and extra range adds nothing.
+MOTION_MAX = 10.0
 
 
 # Resting-baseline spread across people (true RMSSD scale), and the midpoint of
@@ -76,12 +90,12 @@ def sample(profile: Profile, rng: random.Random) -> tuple[float, float, float, f
     hr = rng.uniform(profile.hr_lo, profile.hr_hi) + rng.gauss(0, 2.0)
     baseline = rng.uniform(BASELINE_LO, BASELINE_HI)
     hrv = (rng.uniform(profile.hrv_lo, profile.hrv_hi) + rng.gauss(0, 1.5)) * baseline / RESTING_MID
-    motion = rng.uniform(profile.motion_lo, profile.motion_hi) + rng.gauss(0, 0.02)
+    motion = rng.uniform(profile.motion_lo, profile.motion_hi) + rng.gauss(0, 0.05)
 
     # Clamp to physiologically plausible bounds
     hr = max(40.0, min(220.0, hr))
     hrv = max(1.0, min(120.0, hrv))
-    motion = max(0.0, min(1.0, motion))
+    motion = max(0.0, min(MOTION_MAX, motion))
 
     hrv_rel = math.log(hrv / baseline)
 
@@ -98,7 +112,7 @@ def generate(n_per_profile: int, seed: int) -> Iterable[tuple[float, float, floa
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate synthetic CalmSense training data.")
     parser.add_argument("--per-profile", type=int, default=1250,
-                        help="Samples per profile (default: 1250 → ~5000 total)")
+                        help="Samples per profile (default: 1250 → ~6250 total)")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed for reproducibility.")
     parser.add_argument("--out", default=None, help="Output CSV path (default: ml/training_data.csv).")
     args = parser.parse_args()

@@ -38,12 +38,18 @@ multiple GB of subject pickle files. Until CalmSense collects real labeled
 data from its own users, training data is generated from priors documented
 in the literature:
 
-| Profile  | HR (bpm)  | HRV (ms) | Motion    | Label     |
-| -------- | --------- | -------- | --------- | --------- |
-| Resting  | 60-80     | 40-65    | 0.00-0.10 | no panic  |
-| Stress   | 80-105    | 25-45    | 0.00-0.20 | no panic  |
-| Panic    | 115-175   | 5-25     | 0.00-0.30 | **panic** |
-| Exercise | 110-180   | 15-35    | 0.50-1.00 | no panic  |
+| Profile        | HR (bpm)  | HRV (ms) | Motion (m/s²) | Label     |
+| -------------- | --------- | -------- | ------------- | --------- |
+| Resting        | 60-80     | 40-65    | 0.0-0.5       | no panic  |
+| Stress         | 80-105    | 25-45    | 0.0-1.0       | no panic  |
+| Light activity | 85-115    | 25-50    | 0.8-3.0       | no panic  |
+| Panic          | 115-175   | 5-25     | 0.0-1.5       | **panic** |
+| Exercise       | 110-180   | 15-35    | 2.0-8.0       | no panic  |
+
+Motion is the watch's own measurement - wrist linear-acceleration RMS over
+~3 s, in m/s², clamped to 10 - so the phone and per-user retraining use it
+unconverted. The ranges are anchored to 8,105 real samples from June 2026
+(median 0.24 m/s² at HR < 70, 1.7-2.5 m/s² at HR 85-115).
 
 The model does **not** use HRV in milliseconds. Each sample also draws a
 personal resting baseline (30-80 ms) and the HRV priors are scaled to it; the
@@ -68,7 +74,7 @@ array — for backwards compatibility:
 ```json
 {
   "weights": [w_hr, 0.0, w_motion, w_hrv_rel, bias],
-  "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
+  "feature_names": ["hr", "hrv", "motion_ms2", "hrv_rel", "bias"],
   "model_type": "logistic_regression",
   "trained_at": "2026-04-27T13:45:00+00:00",
   "training_samples": 5000,

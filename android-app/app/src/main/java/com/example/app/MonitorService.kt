@@ -148,7 +148,7 @@ class MonitorService : Service() {
             panicAttackDetection = panic,
             currentHr = hr.toFloat(),
             currentHrv = (v.hrv ?: 0.0).toFloat(),
-            currentMotionIntensity = v.motionIntensity ?: if (v.isMoving) 1.0f else 0.0f,
+            currentMotionIntensity = v.motionFeature().toFloat(),
             hrvSource = v.hrvSource,
         )
         scope.launch {

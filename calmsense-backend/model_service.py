@@ -6,6 +6,8 @@ The weight vector keeps the existing 5-slot contract the phone expects:
     [w_hr, w_hrv, w_motion, w_hrv_rel, bias]
 w_hrv is always 0: raw HRV is not comparable across people or measurement
 sources, so models use hrv_rel = ln(hrv / the user's baseline) instead.
+Motion is wrist linear-acceleration RMS in m/s^2, clamped to MOTION_MAX - the
+watch's own units, which is also what feedback rows store.
 """
 
 from __future__ import annotations
@@ -16,9 +18,10 @@ import os
 from datetime import datetime, timezone
 
 import storage
+from ml.generate_data import MOTION_MAX
 
 DEFAULT_WEIGHTS = [0.0, 0.0, 0.0, 0.0, 0.0]
-FEATURE_NAMES = ["hr", "hrv", "motion", "hrv_rel", "bias"]
+FEATURE_NAMES = ["hr", "hrv", "motion_ms2", "hrv_rel", "bias"]
 BASELINE_FILE = os.path.join(os.path.dirname(__file__), "ml", "model_weights.json")
 
 # Minimum labeled rows (with both classes present) needed to retrain. Kept low
@@ -63,9 +66,9 @@ def get_active_weights(user_id: str) -> dict:
     state = storage.get_user_model_state(user_id)
     if state and state.get("active_weights_id") is not None:
         snap = storage.get_model_snapshot(state["active_weights_id"])
-        # Snapshots trained before hrv_rel weight raw HRV, which is exactly the
-        # bug hrv_rel fixes; serve the baseline until the user is retrained.
-        if snap and _uses_hrv_rel(snap):
+        # Older snapshots weight raw HRV and/or motion on a 0-1 scale - the two
+        # unit bugs since fixed. Serve the baseline until the user is retrained.
+        if snap and _is_current(snap):
             return {
                 "weights": _coerce_weights(snap.get("weights")),
                 "source": snap.get("source", "trained"),
@@ -90,11 +93,11 @@ def get_active_weights(user_id: str) -> dict:
     }
 
 
-def _uses_hrv_rel(snap: dict) -> bool:
+def _is_current(snap: dict) -> bool:
     names = snap.get("feature_names")
     if isinstance(names, str):
         names = json.loads(names)
-    return isinstance(names, list) and len(names) == 5 and names[3] == "hrv_rel"
+    return names == FEATURE_NAMES
 
 
 def hrv_rel(hrv, baseline) -> float:
@@ -168,7 +171,8 @@ def usable_samples(user_id: str, cutoff: str | None = None) -> list[tuple]:
             if t is not None and t > cutoff_dt:
                 continue
         rel = hrv_rel(r.get("current_hrv"), r.get("hrv_baseline"))
-        samples.append((float(hr), rel, float(motion), int(bool(label)), _event_time(r)))
+        motion = max(0.0, min(MOTION_MAX, float(motion)))
+        samples.append((float(hr), rel, motion, int(bool(label)), _event_time(r)))
     return samples
 
 

@@ -82,20 +82,33 @@ def test_baseline_weights_classify_the_canonical_profiles():
     assert base["note"].startswith("Synthetic"), "ml/model_weights.json missing or malformed"
     w = base["weights"]
     assert len(w) == 5 and w[1] == 0.0, "raw HRV must not be weighted"
-    # Midpoints of the priors in ml/generate_data.py, for a 52.5 ms baseline...
-    assert phone_predict(w, 70, 52, 0.05) < 0.5    # resting
-    assert phone_predict(w, 92, 35, 0.10) < 0.5    # stress, not panic
-    assert phone_predict(w, 145, 15, 0.15) > 0.5   # panic
-    assert phone_predict(w, 145, 25, 0.75) < 0.5   # exercise: motion must veto
+    # Midpoints of the priors in ml/generate_data.py (motion in m/s^2), for a
+    # 52.5 ms baseline.
+    assert phone_predict(w, 70, 52, 0.25) < 0.5    # resting
+    assert phone_predict(w, 92, 35, 0.5) < 0.5     # stress, not panic
+    assert phone_predict(w, 100, 37, 1.9) < 0.5    # light activity
+    assert phone_predict(w, 145, 15, 0.75) > 0.5   # panic
+    assert phone_predict(w, 145, 15, 1.5) > 0.5    # panic, restless
+    assert phone_predict(w, 145, 25, 5.0) < 0.5    # exercise: motion must veto
+
+
+def test_motion_is_in_watch_units():
+    """Everyday wrist movement at a normal heart rate (the June 2026 median at
+    HR 70-85 was ~1.1 m/s^2) is neither panic nor 'exercise' that hides one."""
+    w = model_service.load_baseline()["weights"]
+    assert model_service.FEATURE_NAMES[2] == "motion_ms2"
+    assert phone_predict(w, 78, 50, 1.1) < 0.05
+    # A panic while fidgeting at 1 m/s^2 used to be capped to 1.0 = exercise.
+    assert phone_predict(w, 140, 15, 1.0) > 0.5
 
 
 def test_estimated_hrv_at_rest_is_not_panic():
     """The bug hrv_rel fixes: a bpm-derived estimate reads ~10 ms for a resting
     person. Against that source's own ~11 ms baseline it is no drop at all."""
     w = model_service.load_baseline()["weights"]
-    assert phone_predict(w, 75, 10, 0.05, baseline=11) < 0.05
+    assert phone_predict(w, 75, 10, 0.1, baseline=11) < 0.05
     # The same reading against a real-IBI scale baseline would look like panic.
-    assert phone_predict(w, 120, 10, 0.05, baseline=52.5) > 0.5
+    assert phone_predict(w, 120, 10, 0.1, baseline=52.5) > 0.5
 
 
 def test_snapshots_trained_on_raw_hrv_are_not_served(client):

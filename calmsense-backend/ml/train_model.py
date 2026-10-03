@@ -16,7 +16,7 @@ Output JSON shape (matches the existing /api/v1/sensor-data response):
 
     {
       "weights": [w_hr, 0.0, w_motion, w_hrv_rel, bias],
-      "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
+      "feature_names": ["hr", "hrv", "motion_ms2", "hrv_rel", "bias"],
       "model_type": "logistic_regression",
       "trained_at": "<ISO 8601>",
       "training_samples": <int>,
@@ -124,14 +124,14 @@ def main() -> int:
     weights_array = [
         float(coefs[0]),  # hr
         0.0,              # absolute hrv: unused, see module docstring
-        float(coefs[1]),  # motion
+        float(coefs[1]),  # motion, m/s^2 (see generate_data.MOTION_MAX)
         float(coefs[2]),  # hrv_rel
         bias,
     ]
 
     out = {
         "weights": weights_array,
-        "feature_names": ["hr", "hrv", "motion", "hrv_rel", "bias"],
+        "feature_names": ["hr", "hrv", "motion_ms2", "hrv_rel", "bias"],
         "model_type": "logistic_regression",
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "training_samples": int(len(X)),

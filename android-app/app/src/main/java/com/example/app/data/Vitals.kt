@@ -15,17 +15,22 @@ data class Vitals(
     val hrvSource: HrvSource = HrvSource.NONE,
 )
 
+/** Upper clamp on motion, m/s²; MOTION_MAX in ml/generate_data.py. */
+const val MOTION_MAX = 10.0
+
 /**
- * Motion feature fed to [PanicModel.predict].
+ * Motion feature fed to [PanicModel.predict], and the value uploaded with
+ * sensor rows and feedback so the server retrains on exactly what the phone
+ * predicts with.
  *
- * The model is trained on motion RMS in roughly [0,1] (see ml/generate_data.py),
- * and the watch reports RMS in the same m/s² units, so we pass it straight
- * through, clamped to the trained range. Falls back to a coarse binary only when
- * no motion sample is available. This replaces the old always-binary 0.7/0.05
- * encoding, which discarded the real intensity — making any still moment with a
- * high heart rate look like panic and inflating false positives.
+ * Units are the watch's own: wrist linear-acceleration RMS over ~3 s in m/s²,
+ * which the model is trained in (ml/generate_data.py). It used to be clamped to
+ * [0,1] for a model trained on an abstract 0-1 scale, which turned ordinary
+ * arm movement (~1 m/s² at a normal heart rate) into "exercise" and vetoed
+ * any panic. Without a sample (simulation, Health Connect), [isMoving] picks a
+ * walking-pace or a still value.
  */
 fun motionFeatureFor(motionIntensity: Float?, isMoving: Boolean): Double =
-    motionIntensity?.toDouble()?.coerceIn(0.0, 1.0) ?: if (isMoving) 0.7 else 0.05
+    motionIntensity?.toDouble()?.coerceIn(0.0, MOTION_MAX) ?: if (isMoving) 3.0 else 0.1
 
 fun Vitals.motionFeature(): Double = motionFeatureFor(motionIntensity, isMoving)

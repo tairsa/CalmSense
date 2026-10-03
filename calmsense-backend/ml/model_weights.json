@@ -1,21 +1,21 @@
 {
   "weights": [
-    0.054112984473933264,
+    0.07133896971168528,
     0.0,
-    -10.484291416433173,
-    -6.1849090512611475,
-    -10.071500947596439
+    -2.835122140713872,
+    -6.415141687908947,
+    -11.595917384095412
   ],
   "feature_names": [
     "hr",
     "hrv",
-    "motion",
+    "motion_ms2",
     "hrv_rel",
     "bias"
   ],
   "model_type": "logistic_regression",
-  "trained_at": "2026-10-03T09:07:09.174833+00:00",
-  "training_samples": 5000,
-  "test_accuracy": 0.99,
+  "trained_at": "2026-10-03T09:24:11.798072+00:00",
+  "training_samples": 6250,
+  "test_accuracy": 0.988,
   "notes": "Trained on synthetic data generated from physiological priors. See ml/generate_data.py for the priors and ml/README.md for details."
 }

@@ -81,11 +81,13 @@ class ContractTest {
         val w = baselineWeights()
         assertEquals("raw HRV must not be weighted", 0.0, w[1], 0.0)
         val m = PanicModel(w, "baseline", null, null, null)
-        // Midpoints of the priors in calmsense-backend/ml/generate_data.py.
-        assertFalse("resting", m.at(70.0, 52.0, 0.05))
-        assertFalse("stress", m.at(92.0, 35.0, 0.10))
-        assertTrue("panic", m.at(145.0, 15.0, 0.15))
-        assertFalse("exercise", m.at(145.0, 25.0, 0.75))
+        // Midpoints of the priors in calmsense-backend/ml/generate_data.py, motion in m/s².
+        assertFalse("resting", m.at(70.0, 52.0, 0.25))
+        assertFalse("stress", m.at(92.0, 35.0, 0.5))
+        assertFalse("light activity", m.at(100.0, 37.0, 1.9))
+        assertTrue("panic", m.at(145.0, 15.0, 0.75))
+        assertTrue("panic, restless", m.at(145.0, 15.0, 1.5))
+        assertFalse("exercise", m.at(145.0, 25.0, 5.0))
     }
 
     @Test
@@ -132,12 +134,12 @@ class ContractTest {
     }
 
     @Test
-    fun `motion feature passes intensity through clamped`() {
-        assertEquals(0.3, motionFeatureFor(0.3f, false), 1e-6)
-        assertEquals(1.0, motionFeatureFor(4.2f, false), 0.0)
+    fun `motion feature is the watch's m per s squared, clamped`() {
+        assertEquals(4.2, motionFeatureFor(4.2f, false), 1e-6)  // was capped at 1.0
+        assertEquals(10.0, motionFeatureFor(25f, false), 0.0)
         assertEquals(0.0, motionFeatureFor(-1f, true), 0.0)
-        assertEquals(0.7, motionFeatureFor(null, true), 0.0)
-        assertEquals(0.05, motionFeatureFor(null, false), 0.0)
+        assertEquals(3.0, motionFeatureFor(null, true), 0.0)
+        assertEquals(0.1, motionFeatureFor(null, false), 0.0)
     }
 
     // ---- debouncer --------------------------------------------------------

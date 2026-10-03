@@ -10,7 +10,7 @@ import kotlin.math.exp
  *
  *     weights[0] = w_hr
  *     weights[1] = w_hrv      (raw HRV; 0 in current models)
- *     weights[2] = w_motion
+ *     weights[2] = w_motion   (per m/s² of wrist motion, see motionFeatureFor)
  *     weights[3] = w_hrv_rel  (ln(hrv / the user's baseline), see HrvBaseline)
  *     weights[4] = bias
  *
