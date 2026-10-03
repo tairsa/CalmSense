@@ -74,7 +74,7 @@ _PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1"
 # docs are disabled in production, so /health is the only way to see which
 # build is actually serving - which is what makes "confirm, then bump" checkable
 # rather than a matter of trusting that the deploy landed.
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 app = FastAPI(
     title="CalmSense API",

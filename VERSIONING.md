@@ -5,14 +5,19 @@ All CalmSense components use [semantic versioning](https://semver.org):
 
 ## When to bump
 
-A build becomes a version **once Alex has confirmed it on a real device.**
-Work in progress does not get a number — an unconfirmed build is just the
-current commit. This keeps a version a statement about something that was
-actually seen working, not about something that merely compiled.
+**Every build that ships gets a version** - installed on Alex's devices or
+deployed to production. Alex is patient zero: he runs every build himself, so
+shipping to him *is* the release, and a version is what lets a bug report,
+a Sentry event or a `/health` response name exactly which build it came from.
+(Until 2026-10-03 a build was only numbered after it had been confirmed on a
+device, which left the build under test indistinguishable from the last one.)
+
+Bump in the same commit that ships, never after. Work that has not shipped yet
+does not get a number - it is just the current commit.
 
 | Bump  | For |
 |-------|-----|
-| PATCH | A confirmed fix or small change. The default. |
+| PATCH | A fix or small change. The default. |
 | MINOR | New user-visible capability, backwards compatible. |
 | MAJOR | A break: an API contract change, or a phone build that no longer works with an existing watch build. |
 
@@ -37,3 +42,9 @@ past that the derived code would stop increasing, which Play rejects.
 
 The three components version independently. They start aligned; they are not
 expected to stay that way.
+
+## History
+
+| Version | Date | Components | What shipped |
+|---------|------|------------|--------------|
+| 1.1.0 | 2026-10-03 | phone + watch, backend, admin | Faster watch-to-phone delivery; HRV judged against each user's own baseline; motion in m/s²; background detection on every watch sample; crash reporting (Sentry); HRV source on the watch face and "Real HRV" in admin; consent-code and login hardening; CI/CD. Model weights keep their 5-slot shape, but slot 3 now carries `hrv_rel` - phones before 1.1.0 ignore it and run a much less sensitive model, so phone and backend should move together. |
