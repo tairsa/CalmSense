@@ -61,6 +61,7 @@ class HrMonitoringService : Service(), SensorEventListener {
 
     @Volatile private var latestBpm: Int? = null
     @Volatile private var latestMotionRms: Float = 0f
+    private val gravity = GravityTracker()
     @Volatile private var latestHrvMs: Float? = null
     // When latestBpm was last refreshed. Periodic sends now fire without a fresh
     // HR event, so without this a long-dead reading would keep being re-sent and
@@ -326,8 +327,8 @@ class HrMonitoringService : Service(), SensorEventListener {
                 val z = event.values[2]
                 var sq = x * x + y * y + z * z
                 if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-                    val mag = sqrt(sq)
-                    val deviation = mag - SensorManager.GRAVITY_EARTH
+                    // Against the learned resting |a|, not a nominal 9.81 - see GravityTracker.
+                    val deviation = gravity.deviation(sqrt(sq))
                     sq = deviation * deviation
                 }
                 accelSquares[accelIndex] = sq
