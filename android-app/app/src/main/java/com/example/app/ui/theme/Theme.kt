@@ -22,16 +22,41 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = Color.White
 )
 
+// Every role is set. Material fills unset ones from its default lavender
+// palette, so the bottom-bar highlight, segmented buttons, dialogs, slider
+// tracks, text-field labels and the Settings avatar were all tinted purple in
+// an otherwise teal app.
 private val LightColorScheme = lightColorScheme(
     primary = DeepTeal,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFB2DFDB),
+    onPrimaryContainer = Color(0xFF00382F),
     secondary = CalmSage,
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFFCDE8E4),
+    onSecondaryContainer = Color(0xFF0B3A33),
     tertiary = SoftBlue,
     background = CalmMint,
-    surface = Color.White,
-    onPrimary = Color.White,
-    onSecondary = Color.Black,
     onBackground = TextGray,
-    onSurface = TextGray
+    surface = Color.White,
+    onSurface = TextGray,
+    surfaceVariant = Color(0xFFE4EEEC),
+    onSurfaceVariant = TextMuted,
+    surfaceTint = DeepTeal,
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF5FAF9),
+    surfaceContainer = Color(0xFFEFF6F5),
+    surfaceContainerHigh = Color(0xFFE9F2F0),
+    surfaceContainerHighest = Color(0xFFE3EDEB),
+    inverseSurface = Color(0xFF2B3A3D),
+    inverseOnSurface = Color(0xFFEAF4F2),
+    inversePrimary = Color(0xFF80CBC4),
+    outline = Color(0xFF6F8986),
+    outlineVariant = Color(0xFFBFD3D0),
+    error = AlertRed,
+    onError = Color.White,
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF410E0B),
 )
 
 @Composable

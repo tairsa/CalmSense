@@ -175,6 +175,59 @@ object SupabaseAuth {
         }
     }
 
+    // --- Forgot password -------------------------------------------------
+    //
+    // Code-based, not link-based: Supabase emails a 6-digit code (the "Reset
+    // password" email template must contain {{ .Token }}), the app trades it
+    // for a session, then sets the new password with that session. No deep
+    // link, no browser, and an email scanner that pre-opens links cannot
+    // spend the code before the user does.
+
+    /** Email a reset code. Null on success. Supabase answers 200 for unknown
+     *  addresses too, so this cannot be used to find out who has an account. */
+    suspend fun sendPasswordReset(email: String): AuthResult.Error? {
+        val (code, text) = call("POST", "recover", JSONObject().put("email", email.trim()))
+        return if (code in 200..299) null else AuthResult.Error(parseErrorMessage(text) ?: "HTTP $code", code)
+    }
+
+    /** Trade the emailed code for a signed-in session. */
+    suspend fun verifyResetCode(email: String, token: String): AuthResult {
+        val body = JSONObject().put("type", "recovery").put("email", email.trim()).put("token", token.trim())
+        val (code, text) = call("POST", "verify", body)
+        if (code !in 200..299) return AuthResult.Error(parseErrorMessage(text) ?: "HTTP $code", code)
+        return parseSession(text)?.let { AuthResult.Success(it) } ?: AuthResult.Error("unexpected response from server")
+    }
+
+    /** Set a new password for the session [accessToken] belongs to. Null on success. */
+    suspend fun updatePassword(accessToken: String, password: String): AuthResult.Error? {
+        val (code, text) = call("PUT", "user", JSONObject().put("password", password), accessToken)
+        return if (code in 200..299) null else AuthResult.Error(parseErrorMessage(text) ?: "HTTP $code", code)
+    }
+
+    /** One auth request; (null, message) when the server was never reached. */
+    private suspend fun call(method: String, path: String, body: JSONObject,
+                             bearer: String? = null): Pair<Int?, String> = withContext(Dispatchers.IO) {
+        val conn = (URL("$PROJECT_URL/auth/v1/$path").openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            doOutput = true
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("apikey", ANON_KEY)
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (bearer != null) setRequestProperty("Authorization", "Bearer $bearer")
+        }
+        try {
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            code to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+        } catch (t: Throwable) {
+            null to JSONObject().put("msg", t.message ?: "network error").toString()
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private suspend fun postAuth(
         path: String,
         email: String,

@@ -239,7 +239,7 @@ private fun ProfileCard(
                     Text(
                         stringResource(R.string.profile_name_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },
@@ -318,14 +318,14 @@ private fun ProfileCard(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = if (displayName.isNullOrBlank())
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         else MaterialTheme.colorScheme.onSurface,
                     )
                     if (!email.isNullOrBlank()) {
                         Text(
                             email,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Text(
@@ -335,7 +335,7 @@ private fun ProfileCard(
                             else -> stringResource(R.string.settings_account)
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 IconButton(onClick = { renameDraft = displayName.orEmpty() }) {
@@ -355,14 +355,14 @@ private fun ProfileCard(
                     if (therapists.isEmpty()) stringResource(R.string.profile_therapist_label) else
                         if (therapists.size == 1) stringResource(R.string.profile_your_therapist) else stringResource(R.string.profile_your_therapists),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 if (therapists.isEmpty()) {
                     Text(
                         stringResource(R.string.profile_no_therapist),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     therapists.forEach { t ->
@@ -393,7 +393,7 @@ private fun ProfileCard(
                     Text(
                         stringResource(R.string.profile_therapist_can_see),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
@@ -469,7 +469,7 @@ private fun FingerprintCard(email: String?) {
                     Text(
                         stringResource(R.string.fingerprint_password_body),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
@@ -530,7 +530,7 @@ private fun FingerprintCard(email: String?) {
                 Text(
                     stringResource(R.string.fingerprint_setting_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
                 )
             }
@@ -618,7 +618,7 @@ private fun UpdateCard() {
                 Text(
                     it.take(400),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -626,7 +626,7 @@ private fun UpdateCard() {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
@@ -711,7 +711,7 @@ private fun LanguageCard() {
             Text(
                 stringResource(R.string.settings_language_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
@@ -742,7 +742,7 @@ private fun ConsentCard() {
                 Text(
                     stringResource(R.string.consent_card_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
                 )
             }
@@ -785,7 +785,7 @@ private fun CooldownCard() {
                 Text(
                     stringResource(R.string.cooldown_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
                 )
             }
@@ -847,7 +847,7 @@ private fun MonitoringCard() {
                         stringResource(R.string.monitoring_off_desc)
                 },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
             if (enabled) {
@@ -911,7 +911,7 @@ private fun AdvancedModeCard() {
                 Text(
                     stringResource(R.string.advanced_mode_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, end = 12.dp),
                 )
             }
@@ -971,7 +971,7 @@ private fun SensitivityCard() {
             Text(
                 stringResource(R.string.detection_sensitivity_desc),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
 
@@ -989,13 +989,13 @@ private fun SensitivityCard() {
                 Text(
                     stringResource(R.string.detection_fewer_alerts),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
                     stringResource(R.string.detection_more_alerts),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -1009,7 +1009,7 @@ private fun SensitivityCard() {
                 Text(
                     stringResource(R.string.detection_threshold_summary, (shownThreshold * 100).roundToInt()),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (!isDefault) {
                     TextButton(onClick = {

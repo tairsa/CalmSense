@@ -95,7 +95,7 @@ private fun ConnectTherapistCard(onClick: () -> Unit) {
             Text(
                 stringResource(R.string.connect_card_prompt),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onClick) {
@@ -142,7 +142,7 @@ private fun Header(userEmail: String?) {
                 "Signed in as $userEmail"
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
     }
@@ -155,7 +155,7 @@ private fun EmptyState() {
             "Once you log a few panic attacks in the questionnaire, patterns and " +
                 "statistics will appear here.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -204,7 +204,7 @@ private fun StatCell(value: String, label: String, modifier: Modifier = Modifier
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
     }
@@ -274,7 +274,7 @@ private fun FrequencyChartCard(reports: List<PanicReportEntity>) {
                     Text(
                         dayFormat.format(day.time),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -298,7 +298,7 @@ private fun TriggerBreakdownCard(reports: List<PanicReportEntity>) {
             Text(
                 "No trigger data yet - fill in \"What were you doing?\" in the questionnaire.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             return@ChartCard
         }
@@ -335,7 +335,7 @@ private fun TriggerBreakdownCard(reports: List<PanicReportEntity>) {
                             .padding(start = 8.dp)
                             .width(24.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.End,
                     )
                 }
@@ -392,7 +392,7 @@ private fun SeverityDistributionCard(reports: List<PanicReportEntity>) {
                     Text(
                         level.toString(),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -425,7 +425,7 @@ private fun ChartCard(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(14.dp))

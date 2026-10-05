@@ -63,6 +63,22 @@ fun LoginScreen(
     var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var resetOpen by remember { mutableStateOf(false) }
+
+    if (resetOpen) {
+        ForgotPasswordDialog(
+            initialEmail = email,
+            onDone = { session ->
+                resetOpen = false
+                // Fingerprint sign-in holds the old password; it would only fail.
+                if (BiometricLogin.enabledFor(context).equals(session.email, ignoreCase = true)) {
+                    BiometricLogin.disable(context)
+                }
+                onAuthenticated(session)
+            },
+            onDismiss = { resetOpen = false },
+        )
+    }
 
     val scope = rememberCoroutineScope()
     // Compose 1.8+. commit() tells the autofill service the form was submitted,
@@ -188,7 +204,7 @@ fun LoginScreen(
                     AuthMode.SIGN_UP -> stringResource(R.string.login_get_set_up)
                 },
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(28.dp))
@@ -244,7 +260,7 @@ fun LoginScreen(
                             // tooltip.
                             contentDescription = if (showPassword) stringResource(R.string.login_hide_password)
                                 else stringResource(R.string.login_show_password),
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         }
                     },
@@ -285,6 +301,13 @@ fun LoginScreen(
                 }
             }
 
+            if (mode == AuthMode.SIGN_IN) {
+                TextButton(
+                    onClick = { resetOpen = true },
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(stringResource(R.string.login_forgot)) }
+            }
+
             if (error != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -314,8 +337,8 @@ fun LoginScreen(
                 } else {
                     Text(
                         text = when (mode) {
-                            AuthMode.SIGN_IN -> "Sign in"
-                            AuthMode.SIGN_UP -> "Create account"
+                            AuthMode.SIGN_IN -> stringResource(R.string.login_sign_in)
+                            AuthMode.SIGN_UP -> stringResource(R.string.login_create_account)
                         },
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -342,7 +365,7 @@ fun LoginScreen(
             Text(
                 text = stringResource(R.string.login_privacy_note),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }

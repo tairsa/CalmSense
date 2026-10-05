@@ -1,6 +1,7 @@
 package com.example.app
 
 import android.app.NotificationChannel
+import com.example.app.ui.theme.AlertRed
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -1220,7 +1221,7 @@ class MainActivity : AppCompatActivity() {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = stringResource(R.string.nav_settings),
-                            tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -1228,7 +1229,7 @@ class MainActivity : AppCompatActivity() {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Logout,
                         contentDescription = "Sign out",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },
@@ -1386,8 +1387,8 @@ class MainActivity : AppCompatActivity() {
         )
         val builder = NotificationCompat.Builder(this, "PANIC_CHANNEL_ID")
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("CalmSense: Breathe with me")
-            .setContentText("We noticed your heart rate is high. Want to try a 1-minute breathing exercise?")
+            .setContentTitle(getString(R.string.notif_panic_title))
+            .setContentText(getString(R.string.notif_panic_text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
@@ -1454,7 +1455,7 @@ fun CalmSenseDashboard(
                 text = msg,
                 style = MaterialTheme.typography.bodySmall,
                 color = if (isErr) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
@@ -1474,18 +1475,23 @@ fun CalmSenseDashboard(
             // to squeeze the Watch button down to a vertical sliver of stacked
             // letters. Translated text is generally longer than the English,
             // so this gets worse in other languages, not better.
-            AssistChip(
-                onClick = {},
-                label = {
-                    Text(
-                        viewModel.healthConnectStatus,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Spacer(modifier = Modifier.weight(1f))
+            //
+            // The Box takes all the leftover width; the chip inside sizes to its
+            // text and only truncates when it really runs out. (A weighted
+            // spacer beside it used to claim half the row, cutting the label
+            // to "Watch -..." with room to spare.)
+            Box(modifier = Modifier.weight(1f)) {
+                AssistChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            viewModel.healthConnectStatus,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
             if (advanced) {
                 TextButton(onClick = onUseSimulation) { Text("Sim") }
                 Button(onClick = onConnectWatch) { Text("Watch") }
@@ -1513,7 +1519,7 @@ fun CalmSenseDashboard(
                 Text(
                     text = viewModel.modelStatus,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
                 TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
@@ -1606,8 +1612,8 @@ fun CalmSenseDashboard(
         Spacer(modifier = Modifier.height(24.dp))
 
         ActionTile(
-            title = "Start Breathing",
-            subtitle = "A quick way to center yourself",
+            title = stringResource(R.string.home_breathe_title),
+            subtitle = stringResource(R.string.home_breathe_subtitle),
             icon = Icons.Default.SelfImprovement,
             onClick = { viewModel.showBreathingExercise = true }
         )
@@ -1615,8 +1621,8 @@ fun CalmSenseDashboard(
         Spacer(modifier = Modifier.height(8.dp))
 
         ActionTile(
-            title = "I'm having a panic attack",
-            subtitle = "Log a panic the app didn't catch — helps train the model.",
+            title = stringResource(R.string.home_panic_title),
+            subtitle = stringResource(R.string.home_panic_subtitle),
             icon = Icons.Default.Warning,
             onClick = { viewModel.logManualPanic() }
         )
@@ -1681,8 +1687,8 @@ fun HeartRateMonitor(hr: Int?) {
                 imageVector = Icons.Default.Favorite,
                 contentDescription = null,
                 tint = when {
-                    hr == null -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)
-                    highHr -> Color(0xFFEF5350)
+                    hr == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                    highHr -> AlertRed
                     else -> MaterialTheme.colorScheme.primary
                 },
                 modifier = Modifier.size(48.dp).scale(scale)
@@ -1693,9 +1699,9 @@ fun HeartRateMonitor(hr: Int?) {
                 color = MaterialTheme.colorScheme.onBackground
             )
             Text(
-                text = "BPM",
+                text = stringResource(R.string.unit_bpm),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -1771,13 +1777,13 @@ fun SimulationSheet(
             Text(
                 "See what the app does for different physiological scenarios. Live watch data resumes after Reset.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
             )
 
             SimulationRow(
                 icon = Icons.Default.Warning,
-                tint = Color(0xFFEF5350),
+                tint = AlertRed,
                 title = "Panic now",
                 subtitle = "Immediately fire the panic notification and open the breathing exercise. Doesn't change your data source.",
                 onClick = onPanicNow,
@@ -1798,7 +1804,7 @@ fun SimulationSheet(
             )
             SimulationRow(
                 icon = Icons.Default.Refresh,
-                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 title = "Reset to baseline",
                 subtitle = "Calm vitals; ends the simulation. Switch back to Watch to resume live data.",
                 onClick = onReset,
@@ -1844,7 +1850,7 @@ private fun SimulationRow(
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1859,18 +1865,18 @@ fun ConfirmPanicDialog(onYes: () -> Unit, onNo: () -> Unit) {
             Icon(
                 Icons.Default.Warning,
                 contentDescription = null,
-                tint = Color(0xFFEF5350),
+                tint = AlertRed,
             )
         },
-        title = { Text("Was that a panic attack?") },
+        title = { Text(stringResource(R.string.confirm_panic_title)) },
         text = {
-            Text("Your answer trains the model. \"No\" marks this as a false alarm; \"Yes\" lets you rate the severity 1–10.")
+            Text(stringResource(R.string.confirm_panic_body))
         },
         confirmButton = {
-            TextButton(onClick = onYes) { Text("Yes, it was") }
+            TextButton(onClick = onYes) { Text(stringResource(R.string.confirm_panic_yes)) }
         },
         dismissButton = {
-            TextButton(onClick = onNo) { Text("No, false alarm") }
+            TextButton(onClick = onNo) { Text(stringResource(R.string.confirm_panic_no)) }
         },
     )
 }
@@ -1891,13 +1897,13 @@ fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
             Text(
                 "0 = not actually a panic attack (logged as a miss) · 1 = barely noticeable · 10 = the worst you've experienced.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
             )
             Text(
                 text = if (isMiss) "Not a panic" else severity.toString(),
                 style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Bold),
-                color = if (isMiss) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                color = if (isMiss) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.primary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
@@ -1918,7 +1924,7 @@ fun SeveritySheet(onDismiss: () -> Unit, onSubmit: (Int) -> Unit) {
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                ) { Text("Cancel") }
+                ) { Text(stringResource(R.string.action_cancel)) }
                 Button(
                     onClick = { onSubmit(severity) },
                     modifier = Modifier.weight(1f),
@@ -2035,7 +2041,9 @@ fun BreathingOverlay(onClose: () -> Unit) {
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background.copy(alpha = 0.95f),
+        // Opaque: at 95% the dashboard's numbers ghosted through the one
+        // screen meant to be calm and uncluttered.
+        color = MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -2072,12 +2080,12 @@ fun BreathingOverlay(onClose: () -> Unit) {
                 IconButton(onClick = { isMuted = !isMuted }) {
                     Icon(
                         imageVector = if (isMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                        contentDescription = if (isMuted) "Unmute voice" else "Mute voice",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                        contentDescription = if (isMuted) stringResource(R.string.breathing_unmute) else stringResource(R.string.breathing_mute),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 TextButton(onClick = onClose) {
-                    Text("Finish", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    Text(stringResource(R.string.breathing_finish), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

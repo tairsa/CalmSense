@@ -227,4 +227,34 @@
     <string name="update_install">התקנה</string>
     <string name="update_allow_install">אפשרו ל-CalmSense להתקין אפליקציות, ואז חזרו ולחצו על התקנה.</string>
     <string name="update_check_failed">לא ניתן לבדוק עדכונים. בדקו את החיבור לאינטרנט.</string>
+    <!-- לוח הבית, דיאלוג פאניקה, נשימה, מטפל, דיווח -->
+    <string name="notif_panic_title">CalmSense: בואו נושמים יחד</string>
+    <string name="notif_panic_text">שמנו לב שהדופק גבוה. רוצים לנסות תרגיל נשימה של דקה?</string>
+    <string name="home_breathe_title">תרגיל נשימה</string>
+    <string name="home_breathe_subtitle">דרך מהירה להירגע ולהתמקד</string>
+    <string name="home_panic_title">יש לי התקף פאניקה</string>
+    <string name="home_panic_subtitle">תיעוד התקף שהאפליקציה לא זיהתה — זה עוזר לאמן את המודל.</string>
+    <string name="unit_bpm">פעימות לדקה</string>
+    <string name="confirm_panic_title">האם זה היה התקף פאניקה?</string>
+    <string name="confirm_panic_body">התשובה שלכם מאמנת את המודל. „לא” מסמן התראת שווא; „כן” מאפשר לדרג את החומרה מ‑1 עד 10.</string>
+    <string name="confirm_panic_yes">כן, זה היה</string>
+    <string name="confirm_panic_no">לא, התראת שווא</string>
+    <string name="breathing_finish">סיום</string>
+    <string name="breathing_mute">השתקת הקול</string>
+    <string name="breathing_unmute">הפעלת הקול</string>
+    <string name="action_done">סיום</string>
+    <string name="therapist_share_code">שתפו את הקוד</string>
+    <string name="therapist_add_client">הוספת מטופל</string>
+    <string name="report_title">דיווח</string>
+    <string name="report_open_maps">פתיחה במפות Google</string>
+    <!-- איפוס סיסמה -->
+    <string name="login_forgot">שכחתם סיסמה?</string>
+    <string name="reset_title">איפוס סיסמה</string>
+    <string name="reset_email_body">נשלח אליכם קוד במייל כדי לקבוע סיסמה חדשה.</string>
+    <string name="reset_send">שליחת קוד</string>
+    <string name="reset_code_sent">שלחנו קוד אל %1$s. ייתכן שיעבור דקה עד שיגיע — כדאי לבדוק גם בספאם.</string>
+    <string name="reset_code">הקוד מהמייל</string>
+    <string name="reset_new_password">סיסמה חדשה</string>
+    <string name="reset_submit">קביעת סיסמה חדשה</string>
+    <string name="reset_change_email">שימוש במייל אחר</string>
 </resources>

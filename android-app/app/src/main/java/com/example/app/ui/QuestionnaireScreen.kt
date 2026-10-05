@@ -99,7 +99,7 @@ fun QuestionnaireScreen(
             Text(
                 stringResource(R.string.quest_all_optional),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp, bottom = 16.dp),
             )
 

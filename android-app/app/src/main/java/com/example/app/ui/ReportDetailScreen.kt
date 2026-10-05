@@ -1,6 +1,8 @@
 package com.example.app.ui
 
 import android.content.Intent
+import com.example.app.R
+import androidx.compose.ui.res.stringResource
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,7 +50,7 @@ fun ReportDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Report") },
+                title = { Text(stringResource(R.string.report_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -92,7 +94,7 @@ fun ReportDetailScreen(
             Text(
                 formatTimestamp(report.timestampMs),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
 
@@ -139,7 +141,7 @@ fun ReportDetailScreen(
                 ) {
                     Icon(Icons.Default.Map, contentDescription = null)
                     Spacer(modifier = Modifier.padding(end = 8.dp))
-                    Text("Open in Google Maps")
+                    Text(stringResource(R.string.report_open_maps))
                 }
                 Text(
                     "%.5f, %.5f%s".format(
@@ -148,7 +150,7 @@ fun ReportDetailScreen(
                         report.locationAccuracyM?.let { "  ·  ±${it.toInt()} m" } ?: ""
                     ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp, start = 4.dp),
                 )
             }
@@ -175,7 +177,7 @@ private fun FieldRow(label: String, value: String, topPad: Int = 16) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Surface(
             shape = RoundedCornerShape(12.dp),

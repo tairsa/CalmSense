@@ -67,7 +67,7 @@ fun ConsentScreen(
             Text(
                 stringResource(R.string.consent_intro),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(22.dp))
@@ -97,7 +97,7 @@ fun ConsentScreen(
             Text(
                 stringResource(R.string.consent_disclaimer),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(28.dp))
@@ -112,7 +112,7 @@ fun ConsentScreen(
                 onClick = onDecline,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             ) {
-                Text(stringResource(R.string.consent_decline), color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f))
+                Text(stringResource(R.string.consent_decline), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -137,7 +137,7 @@ private fun ConsentRow(icon: ImageVector, title: String, subtitle: String) {
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

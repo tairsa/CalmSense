@@ -1,6 +1,8 @@
 package com.example.app.ui
 
 import androidx.compose.foundation.background
+import com.example.app.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -101,15 +103,15 @@ fun TherapistDashboardScreen(
         AlertDialog(
             onDismissRequest = onDismissCode,
             confirmButton = {
-                TextButton(onClick = onDismissCode) { Text("Done") }
+                TextButton(onClick = onDismissCode) { Text(stringResource(R.string.action_done)) }
             },
-            title = { Text("Share this code") },
+            title = { Text(stringResource(R.string.therapist_share_code)) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "Give this code to your client. They enter it in their app to grant you view access.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(20.dp))
@@ -145,7 +147,7 @@ fun TherapistDashboardScreen(
                     Text(
                         "Expires in 30 minutes.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },
@@ -169,7 +171,7 @@ private fun Header(onGenerateCode: () -> Unit, generating: Boolean) {
         Text(
             "Tap a client to view their patterns.",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(16.dp))
@@ -188,7 +190,7 @@ private fun Header(onGenerateCode: () -> Unit, generating: Boolean) {
                 Icon(Icons.Default.Add, contentDescription = null)
             }
             Spacer(Modifier.width(6.dp))
-            Text("Add a client")
+            Text(stringResource(R.string.therapist_add_client))
         }
     }
 }
@@ -216,7 +218,7 @@ private fun EmptyState() {
             Text(
                 "Tap \"Add a client\" to generate a consent code. Give the code to your client, and once they enter it in their app, they'll appear here.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }
@@ -257,13 +259,13 @@ private fun PatientRow(patient: TherapistApi.PatientSummary, onClick: () -> Unit
             Text(
                 patient.userId.take(8) + "...",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Icon(
             Icons.Filled.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

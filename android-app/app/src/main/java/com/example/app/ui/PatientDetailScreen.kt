@@ -142,7 +142,7 @@ private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
     }
@@ -169,7 +169,7 @@ private fun SeverityBar(reports: List<TherapistApi.PatientReport>) {
             Text(
                 "1 = mild  ·  10 = severe",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(14.dp))
             Row(
@@ -207,7 +207,7 @@ private fun SeverityBar(reports: List<TherapistApi.PatientReport>) {
                         Text(
                             (i + 1).toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -236,7 +236,7 @@ private fun TimelineCard(reports: List<TherapistApi.PatientReport>, loading: Boo
                 Text(
                     "No episodes have been logged by this client yet.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 reports
@@ -277,7 +277,7 @@ private fun EpisodeRow(r: TherapistApi.PatientReport) {
             Text(
                 text = formatTs(r.timestamp) + if (r.detectedByModel) "  ·  model-detected" else "  ·  manual log",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(4.dp))
             val activity = r.activityBefore?.let { prettify(it) }
@@ -295,21 +295,21 @@ private fun EpisodeRow(r: TherapistApi.PatientReport) {
                 Text(
                     "\"$it\"",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (r.symptoms.isNotEmpty()) {
                 Text(
                     "Symptoms: " + r.symptoms.joinToString(", ") { prettify(it) },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             helped?.takeIf { it.isNotBlank() }?.let {
                 Text(
                     "Helped: $it",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             val hr = r.currentHr
@@ -322,7 +322,7 @@ private fun EpisodeRow(r: TherapistApi.PatientReport) {
                             hrv?.let { String.format(Locale.US, "HRV %.1f ms", it) },
                         ).joinToString("  ·  "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

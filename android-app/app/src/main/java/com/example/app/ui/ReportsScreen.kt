@@ -1,6 +1,8 @@
 package com.example.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import com.example.app.ui.theme.WarnAmber
+import com.example.app.ui.theme.AlertRed
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,10 +25,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -96,6 +100,17 @@ fun ReportsScreen(
                     selected = window == w,
                     onClick = { window = w },
                     label = { Text(stringResource(w.labelRes)) },
+                    // Solid teal + a check: the default pale tint was ~1.1:1
+                    // against the mint background, so which period was on
+                    // was hard to tell.
+                    leadingIcon = if (window == w) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
                 )
             }
         }
@@ -145,7 +160,7 @@ fun ReportsScreen(
                 Icon(
                     Icons.Default.Warning,
                     contentDescription = null,
-                    tint = Color(0xFFEF5350),
+                    tint = AlertRed,
                 )
             },
             title = { Text(stringResource(R.string.reports_confirm_title)) },
@@ -174,7 +189,7 @@ private fun EmptyState() {
             Text(
                 stringResource(R.string.reports_empty_hint),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
             )
         }
@@ -206,7 +221,7 @@ private fun ReportCard(
                 Text(
                     relativeTime(ctx, report.timestampMs),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 val summary = report.feeling
                     ?: report.symptoms.take(2)
@@ -238,8 +253,8 @@ private fun ReportCard(
 @Composable
 private fun SeverityBadge(severity: Int) {
     val color = when {
-        severity >= 8 -> Color(0xFFEF5350)
-        severity >= 5 -> Color(0xFFFFA726)
+        severity >= 8 -> AlertRed
+        severity >= 5 -> WarnAmber
         else -> MaterialTheme.colorScheme.primary
     }
     Surface(
