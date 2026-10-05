@@ -14,6 +14,12 @@
          was dropped in the merge: location-only is the fix that was verified
          on-device, and it needs no extra sensor permission at all. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- connectedDevice lets MonitorService restart from the background after a
+         reboot or update, which Android 14+ refuses for a location service.
+         CHANGE_NETWORK_STATE is the (normal, auto-granted) permission that type
+         requires. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -67,7 +73,7 @@
         <service
             android:name=".MonitorService"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location|connectedDevice" />
 
         <receiver
             android:name=".MonitoringResumeReceiver"

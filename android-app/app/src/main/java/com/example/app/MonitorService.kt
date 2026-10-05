@@ -46,6 +46,9 @@ class MonitorService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var pollJob: Job? = null
+
+    /** False while running without location, after a start from the background. */
+    private var hasLocationType = false
     private lateinit var repo: HealthConnectVitalsRepository
     private lateinit var modelCache: PanicModelCache
     private val backend = BackendClient(BACKEND_URL)
@@ -75,6 +78,9 @@ class MonitorService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // Opening the app starts us again, from the foreground: the moment
+        // Android allows location to be added back after a boot or update.
+        if (!hasLocationType) startInForeground(buildMonitorNotification("Monitoring…"))
         return START_STICKY
     }
 
@@ -209,7 +215,22 @@ class MonitorService : Service() {
                 // come from the watch. The result was a SecurityException on every
                 // start, the stopSelf() below, and monitoring that silently never
                 // ran — no uploads between 2026-06-19 and 2026-08-04.
-                startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+                //
+                // CONNECTED_DEVICE as well, because Android 14+ refuses a location
+                // service started from the background - which is how BootReceiver
+                // starts it after a reboot or an app update. Monitoring then just
+                // stopped until the app was opened (2026-10-04: no uploads for 25 h
+                // after the 1.3.0 update). The watch link is what it runs on
+                // anyway; GPS comes back when the app is next opened.
+                hasLocationType = try {
+                    startForeground(MONITOR_NOTIFICATION_ID, notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                    true
+                } catch (e: SecurityException) {
+                    Log.i(TAG, "Started from the background: monitoring without location until the app is opened")
+                    startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                    false
+                }
             } else {
                 startForeground(MONITOR_NOTIFICATION_ID, notification)
             }
