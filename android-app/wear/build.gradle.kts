@@ -46,13 +46,13 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    implementation("com.google.android.gms:play-services-wearable:18.2.0")
-    implementation("com.google.guava:guava:32.1.3-android")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    implementation("com.google.guava:guava:33.7.2-android")
     // Samsung Health Sensor SDK — local AAR (not on Maven); provides real IBI on
     // Galaxy Watch. Download from developer.samsung.com and place in wear/libs/.
     implementation(files("libs/samsung-health-sensor-api-1.4.1.aar"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
 
     testImplementation(libs.junit)
