@@ -6,7 +6,7 @@ Plan and phases: docs/standard-plan.md.
 
 Phase 1, safety. Do these first:
 
-1. **Back up the signing key that's in use now.** Upload `C:\Users\User\.android\debug.keystore`
+1. ✅ (2026-10-16) **Back up the signing key that's in use now.** Upload `C:\Users\User\.android\debug.keystore`
    to Google Drive (a private folder, e.g. `Keys/CalmSense`). It is the only key that can
    update the installed phone and watch apps.
 2. **Create the release key** (used from phase 2). In Git Bash:
