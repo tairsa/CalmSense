@@ -1,0 +1,28 @@
+# CalmSense: notes for Claude
+
+Panic-attack detection: Galaxy Watch (Wear OS, Kotlin) → Android phone (Kotlin/Compose,
+on-device model) → FastAPI backend on Cloud Run + Supabase Postgres → React admin web.
+Started as an academic project; the goal is a product. Architecture: README.md.
+Commands: COMMANDS.md. Open work: TASKS.md. Road to the app standard: docs/standard-plan.md.
+
+## Decided (don't re-ask)
+
+- **Client path**: the phone app moves to Flutter (plan phase 4) so it can run on iOS later.
+  The watch stays Kotlin: the Samsung Health Sensor SDK is a native `.aar`.
+- Backend stays FastAPI on Cloud Run + Supabase; no move to Firebase. Free tiers only.
+- Phone and watch share one version and one `applicationId` (`com.calmsense.app`): the
+  Data Layer pairs by id. Versioning rules: VERSIONING.md (bump in the commit that ships).
+- Alex is patient zero and the only real user (account alex99ka@gmail.com).
+- Until plan phase 2 ships, phone releases are built on Alex's PC: its
+  `~/.android/debug.keystore` signed the installed apps, and any other key forces an
+  uninstall (data loss).
+- The Supabase MCP connector cannot reach the production project; schema changes are
+  run by Alex in the Supabase SQL editor.
+
+## Rules
+
+- Never publish a release, tag, deploy, or merge/push to `main` without Alex's word
+  ("publish", "deploy", "merge"). **A push to `main` deploys the backend** (ci.yml).
+- Test before shipping; ship the binary that was tested.
+- Never read or print secrets (`.env`, keystores, service-account JSON). Give Alex the command.
+- Keep TASKS.md current after every step; sessions get cut off mid-task.

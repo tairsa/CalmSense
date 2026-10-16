@@ -1,0 +1,46 @@
+# Daily encrypted backup of the production database (Supabase free has no
+# downloadable backups). Each run keeps its dump as a workflow artifact for 30
+# days, so the last 30 days are always there. The repo is public and anyone
+# signed in to GitHub can download artifacts: that is why the dump is encrypted.
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL     Supabase -> Connect -> Session pooler URI, password filled in.
+#                       Not the direct host: it is IPv6-only and runners have no IPv6.
+#   BACKUP_PASSPHRASE   long random string; also kept in the password manager,
+#                       because without it the backups cannot be opened.
+#
+# A failed run emails whoever last edited the cron line below.
+# shortcut: GitHub pauses schedules after 60 days without commits; re-enable it
+# under Actions if the repo goes quiet that long.
+name: Database backup
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # The runner ships pg_dump 16; 17 can dump a 15, 16 or 17 server.
+      - name: Install pg_dump 17
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -q postgresql-client-17
+      - name: Dump and encrypt
+        env:
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: PATH="/usr/lib/postgresql/17/bin:$PATH" bash scripts/backup-db.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_number }}
+          path: calmsense-*.dump.gpg
+          retention-days: 30
+          if-no-files-found: error
