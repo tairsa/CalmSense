@@ -27,6 +27,7 @@ import com.example.app.data.SensorPayload
 import com.example.app.data.SessionManager
 import com.example.app.data.SettingsStore
 import com.example.app.data.SleepDetector
+import com.example.app.data.UpdateNotifier
 import com.example.app.data.UploadQueue
 import com.example.app.data.Vitals
 import com.example.app.data.decidePanic
@@ -38,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.ln
@@ -71,6 +73,12 @@ class MonitorService : Service() {
         modelCache = PanicModelCache(applicationContext)
         startInForeground(buildMonitorNotification("Starting…"))
         startPolling()
+        scope.launch {
+            while (isActive) {
+                UpdateNotifier.checkIfDue(applicationContext)
+                delay(UPDATE_CHECK_INTERVAL_MS)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -335,6 +343,8 @@ class MonitorService : Service() {
         const val MONITOR_NOTIFICATION_ID = 100
         const val PANIC_NOTIFICATION_ID = 1
         const val NORMAL_INTERVAL_MS = 30_000L
+        /** UpdateNotifier itself only asks GitHub once a day. */
+        const val UPDATE_CHECK_INTERVAL_MS = 60 * 60_000L
         const val ELEVATED_INTERVAL_MS = 5_000L
         const val STATUS_MIN_INTERVAL_MS = 5_000L
         /** HRV at half the user's normal counts as elevated. */

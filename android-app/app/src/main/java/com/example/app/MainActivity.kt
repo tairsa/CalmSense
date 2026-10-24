@@ -59,6 +59,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.app.data.UpdateNotifier
 import com.example.app.data.BackendApi
 import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
@@ -113,6 +114,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 
@@ -187,6 +189,8 @@ class HeartRateViewModel : ViewModel() {
     var hrvSource by mutableStateOf(HrvSource.NONE)
     var isSleeping by mutableStateOf(false)
     var showBreathingExercise by mutableStateOf(false)
+    /** Set by the update notification; the active NavHost goes to Settings and clears it. */
+    var openSettings by mutableStateOf(false)
     var dataSource by mutableStateOf(VitalsSource.WATCH)
     var healthConnectStatus by mutableStateOf("Not connected")
 
@@ -862,6 +866,7 @@ class MainActivity : AppCompatActivity() {
             sendPanicNotification()
         }
         handlePanicIntent(intent)
+        lifecycleScope.launch { UpdateNotifier.checkIfDue(applicationContext) }
 
         setContent {
             AppTheme {
@@ -965,6 +970,12 @@ class MainActivity : AppCompatActivity() {
                 if (viewModel.profileRole == "therapist") {
                     LaunchedEffect(Unit) { viewModel.refreshPatients() }
                     val therapistNav = rememberNavController()
+                    LaunchedEffect(viewModel.openSettings) {
+                        if (viewModel.openSettings) {
+                            therapistNav.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
+                            viewModel.openSettings = false
+                        }
+                    }
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         containerColor = MaterialTheme.colorScheme.background,
@@ -1058,6 +1069,16 @@ class MainActivity : AppCompatActivity() {
                     currentRoute == ROUTE_STATS ||
                     currentRoute == ROUTE_CONNECT_THERAPIST ||
                     currentRoute == ROUTE_SETTINGS
+
+                LaunchedEffect(viewModel.openSettings) {
+                    if (viewModel.openSettings) {
+                        navController.navigate(ROUTE_SETTINGS) {
+                            popUpTo(ROUTE_MONITOR) { saveState = true }
+                            launchSingleTop = true
+                        }
+                        viewModel.openSettings = false
+                    }
+                }
 
                 // Auto-navigate to the questionnaire when a report row was
                 // just inserted post-severity.
@@ -1374,6 +1395,7 @@ class MainActivity : AppCompatActivity() {
         if (intent?.action == ACTION_PANIC_ALERT) {
             viewModel.onPanicNotificationOpened()
         }
+        if (intent?.action == UpdateNotifier.ACTION_OPEN_UPDATE) viewModel.openSettings = true
     }
 
     private fun sendPanicNotification() {

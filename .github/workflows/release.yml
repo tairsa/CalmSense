@@ -1,0 +1,53 @@
+# Builds, signs and publishes the phone + watch APKs when a vX.Y.Z tag is pushed.
+# The phone finds the release itself (AppUpdater, UpdateNotifier).
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   CALMSENSE_KEYSTORE_BASE64    ~/.keystores/calmsense-release.jks, base64 (COMMANDS.md)
+#   CALMSENSE_KEYSTORE_PASSWORD  its password (key password is the same)
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version, CHANGELOG has notes
+        run: |
+          VER=$(sed -n 's/^calmsense.versionName=//p' android-app/gradle.properties | tr -d '\r')
+          [ "v$VER" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME, but gradle.properties says $VER"; exit 1; }
+          awk -v v="$VER" '/^## /{on = index($0, "## " v " ") == 1 && /phone/; next} on' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "::error::no CHANGELOG.md section for $VER naming the phone"; exit 1; }
+          echo "VER=$VER" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build signed APKs
+        working-directory: android-app
+        env:
+          KEYSTORE_BASE64: ${{ secrets.CALMSENSE_KEYSTORE_BASE64 }}
+          CALMSENSE_KEYSTORE: ${{ runner.temp }}/release.jks
+          CALMSENSE_KEYSTORE_PASSWORD: ${{ secrets.CALMSENSE_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$CALMSENSE_KEYSTORE"
+          ./gradlew --console=plain :app:assembleRelease :wear:assembleRelease
+      # An unsigned build is named *-release-unsigned.apk, so a missing key fails the copy.
+      - name: Collect APKs and checksums
+        run: |
+          mkdir out
+          cp android-app/app/build/outputs/apk/release/app-release.apk "out/calmsense-phone-$VER.apk"
+          cp android-app/wear/build/outputs/apk/release/wear-release.apk "out/calmsense-watch-$VER.apk"
+          (cd out && sha256sum *.apk > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" out/* --title "CalmSense $VER" --notes-file notes.md

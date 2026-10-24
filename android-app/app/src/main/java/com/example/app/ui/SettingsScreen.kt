@@ -556,7 +556,8 @@ private fun FingerprintCard(email: String?) {
 private fun UpdateCard() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var release by remember { mutableStateOf<AppUpdater.Release?>(null) }
+    // Opened from the update notification: the release is already known.
+    var release by remember { mutableStateOf(AppUpdater.lastFound) }
     var apk by remember { mutableStateOf<File?>(null) }
     var status by remember { mutableStateOf<String?>(null) }
     // Null when idle; -1 while checking; 0..1 while downloading.

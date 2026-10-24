@@ -31,6 +31,20 @@ Phase 1, safety. Do these first:
    backup") and tick it here.
 5. ✅ (2026-10-24) Revoke the Sentry auth token pasted in chat on 2026-10-03.
 
+Phase 2 (1.5.0):
+
+6. **Give GitHub the release key** (cmd, in the CalmSense folder):
+   ```bat
+   cd /d "C:\claude projects\Calm-Sense\CalmSense"
+   powershell -NoProfile -Command "[Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $env:USERPROFILE '.keystores\calmsense-release.jks'))) | gh secret set CALMSENSE_KEYSTORE_BASE64"
+   gh secret set CALMSENSE_KEYSTORE_PASSWORD
+   ```
+   The second one asks for the key's password (from your password manager).
+7. Say "release" for 1.5.0. Then the one-time switch: open CalmSense online (queued data
+   uploads), uninstall phone + watch apps, install 1.5.0 from the release page (phone)
+   and adb (watch). **Don't use the in-app updater for 1.5.0**: 1.4.1 would offer it, but
+   Android refuses it (different key).
+
 Carried over:
 
 - Install watch 1.4.1 (needs the watch's adb port) and check motion drops near 0 at rest.
@@ -39,11 +53,12 @@ Carried over:
 
 ## אצל Claude
 
-- After the first real backup: check the run log and artifact size.
-- Phase 2: release pipeline on tag, CHANGELOG.md, silent updates, min version, new key
-  (one reinstall). Waits on items 2–3 above.
+- Phase 2 code on branch `standard-phase-2` (unpushed). After 1.5.0 is installed: ship
+  1.5.1 and check the daily notification → Settings → install works end to end.
 
 ## Closed
+
+- 2026-10-24: first real backup (run 40083557239, 1.59 MB encrypted).
 
 - 2026-10-16: audit against the app standard, plan written (docs/standard-plan.md).
   Phone client path decided: Flutter, for iOS later.

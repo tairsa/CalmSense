@@ -22,7 +22,7 @@ Run from the repo root unless the line says otherwise.
 
 | What | Command |
 |---|---|
-| Phone release (on Alex's PC only) | `bash scripts/publish-phone-release.sh` (needs a VERSIONING.md History row) |
+| Phone + watch release | Bump `calmsense.versionName`, add its CHANGELOG.md section, merge, then `git tag vX.Y.Z && git push origin vX.Y.Z` (release.yml builds, signs, publishes) |
 | Backend + admin image | `gcloud builds submit --config cloudbuild.yaml --substitutions=_REGION=europe-west1` |
 | Database backup now | `gh workflow run backup.yml` |
 
@@ -43,7 +43,7 @@ Run from the repo root unless the line says otherwise.
 
 ## Do NOT run
 
-- `publish-phone-release.sh` on any PC but Alex's: a different key forces an uninstall.
+- Building a release with any key but `calmsense-release.jks`: a different key forces an uninstall.
 - `git push` to `main` casually: it deploys the backend.
 - `seed_demo_data.py`, `migrate_json_to_supabase.py` or `seed_admin.py` with production `.env` values.
 - Uninstalling CalmSense from the phone or watch: it wipes local reports and the upload queue.

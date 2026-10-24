@@ -13,9 +13,10 @@ Commands: COMMANDS.md. Open work: TASKS.md. Road to the app standard: docs/stand
 - Phone and watch share one version and one `applicationId` (`com.calmsense.app`): the
   Data Layer pairs by id. Versioning rules: VERSIONING.md (bump in the commit that ships).
 - Alex is patient zero and the only real user (account alex99ka@gmail.com).
-- Until plan phase 2 ships, phone releases are built on Alex's PC: its
-  `~/.android/debug.keystore` signed the installed apps, and any other key forces an
-  uninstall (data loss).
+- Phone + watch releases are built and signed only by `.github/workflows/release.yml`
+  (tag `vX.Y.Z`) with the release key (`calmsense-release.jks`, backed up on Drive). Any
+  other key forces an uninstall (data loss). 1.4.1 and older were signed with the PC's
+  debug key; 1.5.0 is the one-time switch.
 - The Supabase MCP connector cannot reach the production project; schema changes are
   run by Alex in the Supabase SQL editor.
 

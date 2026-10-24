@@ -227,6 +227,7 @@
     <string name="update_install">Install</string>
     <string name="update_allow_install">Allow CalmSense to install apps, then come back and tap Install.</string>
     <string name="update_check_failed">Couldn’t check for updates. Check your internet connection.</string>
+    <string name="notif_update_text">Tap to download and install it.</string>
     <!-- Dashboard, panic dialog, breathing, therapist, report -->
     <string name="notif_panic_title">CalmSense: breathe with me</string>
     <string name="notif_panic_text">We noticed your heart rate is high. Want to try a 1-minute breathing exercise?</string>

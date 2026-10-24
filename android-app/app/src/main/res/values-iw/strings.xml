@@ -227,6 +227,7 @@
     <string name="update_install">התקנה</string>
     <string name="update_allow_install">אפשרו ל-CalmSense להתקין אפליקציות, ואז חזרו ולחצו על התקנה.</string>
     <string name="update_check_failed">לא ניתן לבדוק עדכונים. בדקו את החיבור לאינטרנט.</string>
+    <string name="notif_update_text">הקישו כדי להוריד ולהתקין.</string>
     <!-- לוח הבית, דיאלוג פאניקה, נשימה, מטפל, דיווח -->
     <string name="notif_panic_title">CalmSense: בואו נושמים יחד</string>
     <string name="notif_panic_text">שמנו לב שהדופק גבוה. רוצים לנסות תרגיל נשימה של דקה?</string>

@@ -21,4 +21,14 @@ class AppUpdaterTest {
         assertNull(AppUpdater.versionCode("1.3"))
         assertNull(AppUpdater.versionCode("1.3.0-beta"))
     }
+
+    @Test
+    fun `checksum is read from sha256sum output for the right file only`() {
+        val sums = "ABC123  calmsense-phone-1.5.0.apk\n" +
+            "def456 *calmsense-watch-1.5.0.apk\n"
+        assertEquals("abc123", AppUpdater.expectedSha256(sums, "calmsense-phone-1.5.0.apk"))
+        assertEquals("def456", AppUpdater.expectedSha256(sums, "calmsense-watch-1.5.0.apk"))
+        assertNull(AppUpdater.expectedSha256(sums, "calmsense-phone-1.5.1.apk"))
+        assertNull(AppUpdater.expectedSha256("", "calmsense-phone-1.5.0.apk"))
+    }
 }

@@ -26,8 +26,21 @@ android {
         manifestPlaceholders["sentryEnabled"] = sentryDsn.isNotEmpty().toString()
     }
 
+    // The release key, given only to .github/workflows/release.yml. Without it
+    // (any local build) the release APK comes out unsigned and nothing can install it.
+    val releaseKeystore = System.getenv("CALMSENSE_KEYSTORE")
+    signingConfigs {
+        if (releaseKeystore != null) create("release") {
+            storeFile = file(releaseKeystore)
+            storePassword = System.getenv("CALMSENSE_KEYSTORE_PASSWORD")
+            keyAlias = "calmsense"
+            keyPassword = System.getenv("CALMSENSE_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

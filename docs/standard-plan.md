@@ -94,6 +94,12 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
   below `minVersion` → full-screen "update required", uploads stop.
 - You notice: one reinstall (new key), then updates arrive by themselves.
 - Risk: the key switch. Verify: install 1.5.0, ship 1.5.1 as a prerelease, see it install silently.
+- Decided 2026-10-24 (Alex): updates **prompt** instead of installing silently (daily check
+  → notification → Settings; Settings button stays) ↔. Min version / kill switch and the
+  early-users channel **deferred** until test subjects join (single user now). Trust =
+  release key (Android refuses another key) + SHA-256 checksum + HTTPS.
+- Written 2026-10-24 on `standard-phase-2`: release.yml, CHANGELOG.md, UpdateNotifier,
+  checksum check in AppUpdater, release signing config. Waits on: key secrets, "release".
 
 **3. Errors, diagnostics, problem report (1.6.0)**
 - Error catalog with letter codes + a test listing them; `showError` everywhere.
@@ -117,4 +123,4 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
 
 ## Progress
 
-- [ ] 1 · [ ] 2 · [ ] 3 · [ ] 4 · [ ] 5
+- [x] 1 (restore test open) · [ ] 2 · [ ] 3 · [ ] 4 · [ ] 5
