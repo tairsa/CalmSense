@@ -8,6 +8,15 @@
 # Restore steps: COMMANDS.md -> "Restore a database backup".
 set -euo pipefail
 : "${DATABASE_URL:?set DATABASE_URL}" "${BACKUP_PASSPHRASE:?set BACKUP_PASSPHRASE}"
+# GitHub masks the whole secret, not the password inside it, and pg_dump echoes a bad URL
+# into the public log: mask the password on its own, and refuse a pasted [ ] or space.
+pw=${DATABASE_URL#*://}; pw=${pw%@*}; pw=${pw#*:}
+[[ -n "${GITHUB_ACTIONS:-}" ]] && echo "::add-mask::$pw"
+bad='[][[:space:]]'
+if [[ $DATABASE_URL =~ $bad ]]; then
+  echo "DATABASE_URL has [ ] or a space: replace [YOUR-PASSWORD] (brackets too) with the password" >&2
+  exit 1
+fi
 DAY=$(date -u +%F)
 
 # Privileges stay in: they hold the revoke that keeps admin_user_stats() away from anon.
