@@ -17,7 +17,9 @@ Phase 1, safety. Do these first:
    ```
    It asks for a password: save it in your password manager, then upload the `.jks` to
    the same Drive folder. Losing either one means every user reinstalls.
-3. Secrets ✅ set 2026-10-24 (DB password unverified until the first run). Still: say "merge".
+3. Merged 2026-10-24. First run failed: the URL kept `[ ]` + a space and the password
+   reached the public log (run deleted; backup.yml disabled; fix committed, unpushed).
+   **Reset the DB password, set SUPABASE_DB_URL again (no brackets/spaces), say "push".**
    **Turn on the daily database backup.** Needs repo secrets (you have write access):
    ```sh
    gh secret set SUPABASE_DB_URL      # paste: Supabase -> Connect -> Session pooler URI, password filled in
