@@ -9,7 +9,7 @@ Phase 1, safety. Do these first:
 1. ✅ (2026-10-16) **Back up the signing key that's in use now.** Upload `C:\Users\User\.android\debug.keystore`
    to Google Drive (a private folder, e.g. `Keys/CalmSense`). It is the only key that can
    update the installed phone and watch apps.
-2. **Create the release key** (used from phase 2). In Git Bash:
+2. ✅ (2026-10-24, `.jks` on Drive) **Create the release key** (used from phase 2). In Git Bash:
    ```sh
    "/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe" -genkeypair -v \
      -keystore ~/.keystores/calmsense-release.jks -alias calmsense \
@@ -17,7 +17,8 @@ Phase 1, safety. Do these first:
    ```
    It asks for a password: save it in your password manager, then upload the `.jks` to
    the same Drive folder. Losing either one means every user reinstalls.
-3. **Turn on the daily database backup.** Needs repo secrets (you have write access):
+3. Secrets ✅ set 2026-10-24 (DB password unverified until the first run). Still: say "merge".
+   **Turn on the daily database backup.** Needs repo secrets (you have write access):
    ```sh
    gh secret set SUPABASE_DB_URL      # paste: Supabase -> Connect -> Session pooler URI, password filled in
    gh secret set BACKUP_PASSPHRASE    # paste a long random string; save it in your password manager too
@@ -26,8 +27,7 @@ Phase 1, safety. Do these first:
    `main`), and run it once: `gh workflow run backup.yml`.
 4. **Test a restore once** with the first real backup (COMMANDS.md → "Restore a database
    backup") and tick it here.
-5. Revoke the Sentry auth token pasted in chat on 2026-10-03, if not done yet
-   (sentry.io → Settings → Auth Tokens).
+5. ✅ (2026-10-24) Revoke the Sentry auth token pasted in chat on 2026-10-03.
 
 Carried over:
 
