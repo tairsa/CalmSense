@@ -44,6 +44,9 @@ Phase 2 (1.5.0):
    uploads), uninstall phone + watch apps, install 1.5.0 from the release page (phone)
    and adb (watch). **Don't use the in-app updater for 1.5.0**: 1.4.1 would offer it, but
    Android refuses it (different key).
+   Phone ✅ 1.5.0 installed 2026-10-24 (was blocked by an old 1.4.0 in the phone's
+   "MyGuest" profile, removed). **Watch still 1.4.1 → its data can't reach the phone
+   until it gets 1.5.0** (send the watch's adb IP:port).
 
 Carried over:
 
