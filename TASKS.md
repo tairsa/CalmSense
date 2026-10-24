@@ -56,11 +56,15 @@ Carried over:
 
 ## אצל Claude
 
-- Phase 2 code on branch `standard-phase-2` (unpushed). After 1.5.0 is installed: ship
-  1.5.1 and check the daily notification → Settings → install works end to end.
+- Watch → 1.5.0 when Alex sends its adb IP:port.
+- Next real release: confirm the daily notification appears (1.5.1 was installed from
+  Settings before the 24 h check, so the notification path is still unseen).
+- Phase 3 (errors, diagnostics, problem report): start with a Build checkpoint.
 
 ## Closed
 
+- 2026-10-24: 1.5.0 + 1.5.1 released by release.yml; 1.5.1 installed on the phone through
+  Settings > App updates (download, checksum, install) ✅.
 - 2026-10-24: first real backup (run 40083557239, 1.59 MB encrypted).
 
 - 2026-10-16: audit against the app standard, plan written (docs/standard-plan.md).

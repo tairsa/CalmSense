@@ -123,4 +123,4 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
 
 ## Progress
 
-- [x] 1 (restore test open) · [ ] 2 · [ ] 3 · [ ] 4 · [ ] 5
+- [x] 1 (restore test open) · [x] 2 (watch on 1.5.0 + notification seen still open) · [ ] 3 · [ ] 4 · [ ] 5
