@@ -33,14 +33,14 @@ Phase 1, safety. Do these first:
 
 Phase 2 (1.5.0):
 
-6. **Give GitHub the release key** (cmd, in the CalmSense folder):
+6. ✅ (2026-10-24) **Give GitHub the release key** (cmd, in the CalmSense folder):
    ```bat
    cd /d "C:\claude projects\Calm-Sense\CalmSense"
    powershell -NoProfile -Command "[Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $env:USERPROFILE '.keystores\calmsense-release.jks'))) | gh secret set CALMSENSE_KEYSTORE_BASE64"
    gh secret set CALMSENSE_KEYSTORE_PASSWORD
    ```
    The second one asks for the key's password (from your password manager).
-7. Say "release" for 1.5.0. Then the one-time switch: open CalmSense online (queued data
+7. ✅ 1.5.0 released 2026-10-24 (both APKs signed CN=Alex, cert SHA-256 ad61e014…). Now the one-time switch: open CalmSense online (queued data
    uploads), uninstall phone + watch apps, install 1.5.0 from the release page (phone)
    and adb (watch). **Don't use the in-app updater for 1.5.0**: 1.4.1 would offer it, but
    Android refuses it (different key).
