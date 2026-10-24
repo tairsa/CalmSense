@@ -4,6 +4,10 @@ Every shipped build, newest first. Versioning rules: VERSIONING.md.
 A release takes its notes from the section whose heading starts with its version
 and names the phone (`.github/workflows/release.yml`).
 
+## 1.5.1 · 2026-10-24 · phone + watch
+
+No changes for users: the first update delivered by the daily update notification and checked against its SHA-256 checksum, to prove that path works end to end.
+
 ## 1.5.0 · 2026-10-24 · phone + watch
 
 The phone checks for a new version once a day and shows a notification; tapping it opens Settings > App updates. Every download is checked against the release's SHA-256 checksums before Android's installer opens. Releases are now built and signed by GitHub Actions with the CalmSense release key instead of a PC's debug key, so this version needs one uninstall and reinstall of the phone and watch apps; open the app online first so queued readings and reports upload. Watch: signed with the same new key, no other changes.
