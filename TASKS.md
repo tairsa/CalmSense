@@ -50,8 +50,7 @@ Phase 2 (1.5.0):
 
 Phase 3 (phone 1.6.0, backend + admin 1.3.0, branch `standard-phase-3`):
 
-8. **Create the `problem_reports` table** (still missing in production on 2026-11-01, backend
-   1.4.0 is already deployed: problem reports get a 500 until this runs; no released phone sends them yet). Supabase → SQL
+8. ✅ (2026-11-01) **Create the `problem_reports` table** (created after backend 1.4.0 deployed). Supabase → SQL
    Editor → paste the block under `"Report a problem" from the phone's error screen` at the
    end of `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
 9. Then say "merge" (deploys backend 1.3.0 + admin) and "release" (tags v1.6.0).
