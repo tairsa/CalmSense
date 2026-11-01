@@ -125,6 +125,19 @@ def user_metrics(user_id: str, admin: dict = Depends(get_current_admin)):
     return model_service.compute_user_metrics(user_id)
 
 
+@router.get("/problem-reports")
+def problem_reports(admin: dict = Depends(get_current_admin)):
+    """"Report a problem" submissions from phones, newest first, with who sent them.
+
+    shortcut: returns every report with its logs; page it once there are hundreds."""
+    rows = storage.read_problem_reports()
+    directory = storage.user_directory()
+    for r in rows:
+        who = directory.get(r.get("user_id"), {})
+        r["name"], r["email"] = who.get("name"), who.get("email")
+    return {"reports": rows}
+
+
 # --- Model management ------------------------------------------------------
 
 @router.get("/users/{user_id}/model")

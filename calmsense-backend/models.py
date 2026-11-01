@@ -83,6 +83,25 @@ class PanicReport(BaseModel):
     hrv_source: Optional[HrvSourceValue] = None
 
 
+class ProblemReport(BaseModel):
+    """"Report a problem" from the phone's error screen.
+
+    No user_id: the reporter comes from the verified token. `code` is the
+    app's own E-<n> catalog number; `http_status` is set only when a server
+    answer was involved. The phone keeps heart rate, tokens and emails out of
+    `logs`; the size caps stop a broken client from filling the table.
+    """
+
+    code: int = Field(..., ge=1)
+    http_status: Optional[int] = Field(None, ge=100, le=599)
+    app_version: Optional[str] = Field(None, max_length=40)
+    os_version: Optional[str] = Field(None, max_length=40)
+    device: Optional[str] = Field(None, max_length=100)
+    note: Optional[str] = Field(None, max_length=2000)
+    logs: str = Field("", max_length=200_000)
+    timestamp: Optional[str] = None             # ISO 8601 of when the error happened
+
+
 # ---------------------------------------------------------------------------
 # Therapist mode: profiles, consent codes, therapist-patient links.
 # ---------------------------------------------------------------------------

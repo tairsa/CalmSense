@@ -31,6 +31,7 @@ def test_endpoints_require_a_bearer_token(raw_client):
     assert raw_client.post("/api/v1/sensor-data", json=SENSOR).status_code == 401
     assert raw_client.get("/api/v1/sensor-data").status_code == 401
     assert raw_client.get("/api/v1/profile").status_code == 401
+    assert raw_client.post("/api/v1/problem-reports", json={"code": 1}).status_code == 401
     assert raw_client.get("/api/v1/therapist/t/patients").status_code == 401
     assert raw_client.post("/api/v1/consent-codes/redeem", json={"code": "x", "patient_id": "p"}).status_code == 401
 

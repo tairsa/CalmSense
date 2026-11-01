@@ -16,7 +16,8 @@ import storage
 from conftest import as_user
 
 ADMIN_ROUTES = ["/api/v1/admin/users", "/api/v1/admin/metrics/global", "/api/v1/admin/admins",
-                "/api/v1/admin/users/u/sensor-data", "/api/v1/admin/auto-retrain/status"]
+                "/api/v1/admin/users/u/sensor-data", "/api/v1/admin/auto-retrain/status",
+                "/api/v1/admin/problem-reports"]
 
 
 @pytest.fixture
@@ -67,6 +68,20 @@ def test_deactivated_admin_token_stops_working(raw_client, admin_token):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(rows, f)
     assert raw_client.get("/api/v1/admin/users", headers=admin_token).status_code == 401
+
+
+def test_problem_report_reaches_the_admin_list(client, raw_client, admin_token):
+    h = as_user("alice")
+    old = {"code": 2, "http_status": 503, "logs": "a\nb", "timestamp": "2026-10-24T10:00:00Z"}
+    assert client.post("/api/v1/problem-reports", json=old, headers=h).status_code == 200
+    # The reporter is the token's user; a user_id in the body is ignored.
+    new = {"code": 7, "note": "update stuck", "user_id": "victim"}
+    assert client.post("/api/v1/problem-reports", json=new, headers=h).status_code == 200
+    for bad in ({"code": 0}, {"code": 1, "http_status": 42}, {"code": 1, "logs": "x" * 200_001}):
+        assert client.post("/api/v1/problem-reports", json=bad, headers=h).status_code == 422
+    rows = raw_client.get("/api/v1/admin/problem-reports", headers=admin_token).json()["reports"]
+    assert [(r["code"], r["user_id"]) for r in rows] == [(7, "alice"), (2, "alice")]  # newest first
+    assert rows[1]["http_status"] == 503 and rows[1]["logs"] == "a\nb"
 
 
 # --- Baseline model contract ------------------------------------------------

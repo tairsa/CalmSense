@@ -102,7 +102,12 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
   checksum check in AppUpdater, release signing config. Waits on: key secrets, "release".
 
 **3. Errors, diagnostics, problem report (1.6.0)**
-- Error catalog with letter codes + a test listing them; `showError` everywhere.
+- Alex's design (2026-10-25): codes `E-<n>` from 1, shown as `E-2 | 503` when an HTTP
+  status is involved (not letter codes); report goes to the admin dashboard, Telegram
+  prepared only; logs in memory (500, FIFO) saved on crash and on each error, never HR or
+  tokens. Written on `standard-phase-3`: ErrorCatalog + ErrorDialog + AppLog, reports via
+  UploadQueue, Problems page.
+- Error catalog with codes + a test listing them; `showError` everywhere.
 - Settings → System status: account, version, last update check, watch link, last upload,
   queue length, backend `/health`.
 - Settings → Report a problem → backend `/report` (checks the Supabase JWT) → the shared

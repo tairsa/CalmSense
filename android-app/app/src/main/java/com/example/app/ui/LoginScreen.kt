@@ -28,7 +28,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.app.R
+import com.example.app.data.AppError
+import com.example.app.data.AppErrors
 import com.example.app.data.BiometricLogin
+import com.example.app.data.ErrorCatalog
 import com.example.app.data.SessionManager
 import com.example.app.data.fragmentActivity
 import com.example.app.data.SupabaseAuth
@@ -62,7 +65,6 @@ fun LoginScreen(
     var rememberMe by remember { mutableStateOf(savedEmail != null) }
     var showPassword by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
     var resetOpen by remember { mutableStateOf(false) }
 
     if (resetOpen) {
@@ -96,13 +98,12 @@ fun LoginScreen(
 
     fun fingerprintSignIn() {
         val activity = context.fragmentActivity() ?: return
-        error = null
         scope.launch {
             when (val u = BiometricLogin.unlock(activity, fingerprintTitle, cancelText)) {
                 BiometricLogin.Unlock.Cancelled -> Unit
                 BiometricLogin.Unlock.Invalidated -> {
                     fingerprintEmail = null
-                    error = context.getString(R.string.fingerprint_changed)
+                    AppErrors.show(AppError(ErrorCatalog.FINGERPRINT_OFF))
                 }
                 is BiometricLogin.Unlock.Ok -> {
                     loading = true
@@ -115,9 +116,9 @@ fun LoginScreen(
                             BiometricLogin.disable(context)
                             fingerprintEmail = null
                             email = u.email
-                            error = context.getString(R.string.fingerprint_password_changed)
+                            AppErrors.show(AppError(ErrorCatalog.FINGERPRINT_OFF, 400))
                         } else {
-                            error = result.message
+                            AppErrors.show(ErrorCatalog.fromAuth(result), result.message)
                         }
                     }
                 }
@@ -129,7 +130,6 @@ fun LoginScreen(
     LaunchedEffect(Unit) { if (fingerprintEmail != null) fingerprintSignIn() }
 
     fun submit() {
-        error = null
         loading = true
         scope.launch {
             val result = when (mode) {
@@ -145,7 +145,7 @@ fun LoginScreen(
                     // against the backend - the failure then surfaces much
                     // later, somewhere unrelated. Keep them on this screen.
                     if (result.session.accessToken.isBlank()) {
-                        error = context.getString(R.string.login_confirm_email)
+                        AppErrors.show(AppError(ErrorCatalog.EMAIL_NOT_CONFIRMED))
                         mode = AuthMode.SIGN_IN
                     } else {
                         // Only on success: remembering an address that failed
@@ -159,7 +159,7 @@ fun LoginScreen(
                         onAuthenticated(result.session)
                     }
                 }
-                is SupabaseAuth.AuthResult.Error -> error = result.message
+                is SupabaseAuth.AuthResult.Error -> AppErrors.show(ErrorCatalog.fromAuth(result), result.message)
             }
         }
     }
@@ -213,12 +213,12 @@ fun LoginScreen(
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
                     selected = mode == AuthMode.SIGN_IN,
-                    onClick = { mode = AuthMode.SIGN_IN; error = null },
+                    onClick = { mode = AuthMode.SIGN_IN },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                 ) { Text(stringResource(R.string.login_sign_in)) }
                 SegmentedButton(
                     selected = mode == AuthMode.SIGN_UP,
-                    onClick = { mode = AuthMode.SIGN_UP; error = null },
+                    onClick = { mode = AuthMode.SIGN_UP },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                 ) { Text(stringResource(R.string.login_create_account)) }
             }
@@ -226,7 +226,7 @@ fun LoginScreen(
 
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; error = null },
+                onValueChange = { email = it },
                 label = { Text(stringResource(R.string.login_email)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -243,7 +243,7 @@ fun LoginScreen(
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it; error = null },
+                onValueChange = { password = it },
                 label = { Text(stringResource(R.string.login_password)) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -306,17 +306,6 @@ fun LoginScreen(
                     onClick = { resetOpen = true },
                     modifier = Modifier.align(Alignment.End),
                 ) { Text(stringResource(R.string.login_forgot)) }
-            }
-
-            if (error != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = error!!,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
 
             Spacer(Modifier.height(20.dp))

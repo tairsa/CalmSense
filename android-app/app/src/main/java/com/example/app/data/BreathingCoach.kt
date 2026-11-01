@@ -2,7 +2,6 @@ package com.example.app.data
 
 import android.content.Context
 import android.media.MediaPlayer
-import android.util.Log
 
 /**
  * Plays pre-recorded calm-voice audio clips for the breathing overlay.
@@ -63,13 +62,13 @@ class BreathingCoach {
     private fun loadRaw(app: Context, name: String): MediaPlayer? {
         val resId = app.resources.getIdentifier(name, "raw", app.packageName)
         if (resId == 0) {
-            Log.w(TAG, "res/raw/$name.mp3 not found - clip will be skipped")
+            AppLog.w(TAG, "res/raw/$name.mp3 not found - clip will be skipped")
             return null
         }
         return try {
             MediaPlayer.create(app, resId)
         } catch (t: Throwable) {
-            Log.w(TAG, "failed to create MediaPlayer for $name: $t")
+            AppLog.w(TAG, "failed to create MediaPlayer for $name: $t")
             null
         }
     }
@@ -95,7 +94,7 @@ class BreathingCoach {
             player.seekTo(0)
             player.start()
         } catch (t: Throwable) {
-            Log.w(TAG, "playback error: $t")
+            AppLog.w(TAG, "playback error: $t")
         }
     }
 

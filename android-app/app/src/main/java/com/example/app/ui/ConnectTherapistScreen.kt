@@ -34,7 +34,6 @@ import com.example.app.R
 fun ConnectTherapistScreen(
     onSubmit: (code: String) -> Unit,
     submitting: Boolean,
-    error: String?,
     success: Boolean,
     onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -127,15 +126,6 @@ fun ConnectTherapistScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-            } else if (error != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
 
             Spacer(Modifier.height(20.dp))
@@ -176,7 +166,6 @@ private fun ConnectTherapistScreenPreview() {
         ConnectTherapistScreen(
             onSubmit = {},
             submitting = false,
-            error = null,
             success = false,
         )
     }

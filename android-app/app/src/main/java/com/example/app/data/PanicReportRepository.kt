@@ -1,7 +1,6 @@
 package com.example.app.data
 
 import android.content.Context
-import android.util.Log
 import com.example.app.BACKEND_URL
 import com.example.app.USER_ID
 import kotlinx.coroutines.flow.Flow
@@ -111,11 +110,11 @@ class PanicReportRepository private constructor(
         return when (val r = backend.submitPanicReport(payload)) {
             PostResult.Success -> true
             is PostResult.HttpError -> {
-                Log.w(TAG, "report sync HTTP ${r.code}")
+                AppLog.w(TAG, "report sync HTTP ${r.code}")
                 false
             }
             is PostResult.NetworkError -> {
-                Log.w(TAG, "report sync offline (${r.reason})")
+                AppLog.w(TAG, "report sync offline (${r.reason})")
                 false
             }
         }

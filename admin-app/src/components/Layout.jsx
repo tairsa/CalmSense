@@ -23,6 +23,7 @@ export default function Layout({ children }) {
         <nav className="topnav">
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/users">Users</NavLink>
+          <NavLink to="/problems">Problems</NavLink>
           <NavLink to="/admins">Admins</NavLink>
         </nav>
         <div className="topbar-right">

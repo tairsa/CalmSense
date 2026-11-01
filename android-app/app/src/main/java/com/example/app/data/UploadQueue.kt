@@ -1,7 +1,6 @@
 package com.example.app.data
 
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -31,6 +30,7 @@ object UploadQueue {
 
     private const val KIND_SENSOR = "sensor"
     private const val KIND_FEEDBACK = "feedback"
+    private const val KIND_PROBLEM = "problem"
 
     private var file: File? = null
     private val mutex = Mutex()
@@ -49,7 +49,7 @@ object UploadQueue {
         if (f.exists()) {
             f.forEachLine { line ->
                 runCatching { entries.add(JSONObject(line)) }
-                    .onFailure { Log.w(TAG, "Dropping unreadable queue line") }
+                    .onFailure { AppLog.w(TAG, "Dropping unreadable queue line") }
             }
         }
         _pendingCount.value = entries.size
@@ -66,6 +66,10 @@ object UploadQueue {
         else payload.copy(timestamp = Instant.now().toString())
         return post(backend, KIND_FEEDBACK, feedbackToJson(stamped))
     }
+
+    /** A "Report a problem" body (see ProblemReport); never dropped while offline. */
+    suspend fun postProblemReport(backend: BackendClient, body: JSONObject): PostResult =
+        post(backend, KIND_PROBLEM, body)
 
     /** Older queued rows go first so the server sees events in order; the
      *  new payload is queued (not lost) whenever the server is unreachable. */
@@ -101,7 +105,7 @@ object UploadQueue {
                 val r = send(backend, entry.getString("kind"), entry.getJSONObject("body"))
                 if (shouldRetry(r)) return
                 if (r is PostResult.HttpError) {
-                    Log.w(TAG, "Dropping queued ${entry.getString("kind")} row: HTTP ${r.code}")
+                    AppLog.w(TAG, "Dropping queued ${entry.getString("kind")} row: HTTP ${r.code}")
                 }
                 entries.removeFirst()
                 persistLocked()
@@ -113,6 +117,7 @@ object UploadQueue {
         when (kind) {
             KIND_SENSOR -> backend.postSensorData(sensorFromJson(body))
             KIND_FEEDBACK -> backend.submitPanicFeedback(feedbackFromJson(body))
+            KIND_PROBLEM -> backend.submitProblemReport(body)
             else -> PostResult.HttpError(0) // unknown kind: drop it
         }
 
@@ -132,7 +137,7 @@ object UploadQueue {
         val f = file ?: return
         runCatching {
             f.writeText(entries.joinToString("\n") { it.toString() })
-        }.onFailure { Log.w(TAG, "Could not persist upload queue", it) }
+        }.onFailure { AppLog.w(TAG, "Could not persist upload queue", it) }
     }
 
     // --- payload <-> JSON ----------------------------------------------------

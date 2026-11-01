@@ -61,7 +61,12 @@ import androidx.compose.ui.unit.dp
 import com.example.app.MonitoringSnooze
 import com.example.app.BuildConfig
 import com.example.app.R
+import com.example.app.data.AppError
+import com.example.app.data.AppErrors
+import com.example.app.data.AppLog
 import com.example.app.data.AppUpdater
+import com.example.app.data.ErrorCatalog
+import com.example.app.data.UpdateDamagedException
 import com.example.app.data.BiometricLogin
 import com.example.app.data.LanguageManager
 import com.example.app.data.SettingsStore
@@ -493,9 +498,9 @@ private fun FingerprintCard(email: String?) {
                             // Check the password before locking it away, or a
                             // typo would only surface at the next sign-in.
                             when (val r = SupabaseAuth.signIn(email, password)) {
-                                is SupabaseAuth.AuthResult.Error -> error =
-                                    if (r.httpCode == 400) context.getString(R.string.fingerprint_wrong_password)
-                                    else r.message
+                                is SupabaseAuth.AuthResult.Error ->
+                                    if (r.httpCode == 400) error = context.getString(R.string.fingerprint_wrong_password)
+                                    else AppErrors.show(ErrorCatalog.fromAuth(r), r.message)
                                 is SupabaseAuth.AuthResult.Success ->
                                     if (BiometricLogin.enable(activity, email, password, title, cancel)) {
                                         enabled = true
@@ -595,8 +600,11 @@ private fun UpdateCard() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                status = if (found == null) context.getString(R.string.update_check_failed)
-                         else e.message ?: e.javaClass.simpleName
+                AppLog.w("Update", "Update ${if (found == null) "check" else "download"} failed", e)
+                AppErrors.show(
+                    if (e is UpdateDamagedException) AppError(ErrorCatalog.UPDATE_DAMAGED)
+                    else ErrorCatalog.fromException(e, ErrorCatalog.UPDATE_FAILED)
+                )
             } finally {
                 progress = null
             }

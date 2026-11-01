@@ -42,7 +42,6 @@ fun TherapistDashboardScreen(
     patients: List<TherapistApi.PatientSummary>,
     generatedCode: TherapistApi.ConsentCodeResponse?,
     generating: Boolean,
-    error: String?,
     onGenerateCode: () -> Unit,
     onDismissCode: () -> Unit,
     onPatientClick: (patientId: String) -> Unit,
@@ -62,14 +61,6 @@ fun TherapistDashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Header(onGenerateCode = onGenerateCode, generating = generating)
-
-            if (error != null) {
-                Text(
-                    error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
 
             if (patients.isEmpty()) {
                 EmptyState()
@@ -281,7 +272,6 @@ private fun TherapistDashboardScreenPreview() {
             ),
             generatedCode = null,
             generating = false,
-            error = null,
             onGenerateCode = {},
             onDismissCode = {},
             onPatientClick = {},

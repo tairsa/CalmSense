@@ -11,6 +11,7 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
 REPORTS_FILE = os.path.join(DATA_DIR, "panic_reports.json")
+PROBLEM_REPORTS_FILE = os.path.join(DATA_DIR, "problem_reports.json")
 PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
 CONSENT_CODES_FILE = os.path.join(DATA_DIR, "consent_codes.json")
 LINKS_FILE = os.path.join(DATA_DIR, "therapist_patients.json")
@@ -20,6 +21,7 @@ USER_MODEL_STATE_FILE = os.path.join(DATA_DIR, "user_model_state.json")
 TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
 REPORTS_TABLE_NAME = "panic_reports"
+PROBLEM_REPORTS_TABLE_NAME = "problem_reports"
 PROFILES_TABLE_NAME = "profiles"
 CONSENT_CODES_TABLE_NAME = "consent_codes"
 LINKS_TABLE_NAME = "therapist_patients"
@@ -307,6 +309,32 @@ def read_all_reports() -> list:
             _read_fallback_or_raise("report read", e)
 
     return _json_read_from(REPORTS_FILE)
+
+
+def append_problem_report(record: dict) -> None:
+    """Save a "Report a problem" from the phone. Same Supabase-with-JSON-fallback."""
+    if _supabase is not None:
+        try:
+            _supabase.table(PROBLEM_REPORTS_TABLE_NAME).insert(record).execute()
+            return
+        except Exception as e:
+            _write_fallback_or_raise("problem report insert", e)
+
+    _json_append_to(PROBLEM_REPORTS_FILE, record)
+
+
+def read_problem_reports() -> list:
+    """All problem reports, newest first."""
+    rows = None
+    if _supabase is not None:
+        try:
+            rows = _select_all(PROBLEM_REPORTS_TABLE_NAME)
+        except Exception as e:
+            _read_fallback_or_raise("problem report read", e)
+    if rows is None:
+        rows = _json_read_from(PROBLEM_REPORTS_FILE)
+    rows.sort(key=lambda r: r.get("timestamp") or r.get("created_at") or "", reverse=True)
+    return rows
 
 
 # ---------------------------------------------------------------------------

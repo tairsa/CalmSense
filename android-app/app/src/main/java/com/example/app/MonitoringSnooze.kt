@@ -5,7 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.example.app.data.AppLog
 import androidx.core.content.ContextCompat
 import com.example.app.data.SettingsStore
 
@@ -56,7 +56,7 @@ class MonitoringResumeReceiver : BroadcastReceiver() {
         } catch (e: Exception) {
             // Background FGS start can be rejected; monitoring is re-enabled
             // either way, so the service comes back on next app launch.
-            Log.w("MonitoringResume", "Could not restart monitor service from background", e)
+            AppLog.w("MonitoringResume", "Could not restart monitor service from background", e)
         }
     }
 }

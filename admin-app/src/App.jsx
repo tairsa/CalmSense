@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Users from "./pages/Users.jsx";
 import UserDetail from "./pages/UserDetail.jsx";
 import Admins from "./pages/Admins.jsx";
+import Problems from "./pages/Problems.jsx";
 
 function Protected({ children }) {
   const { admin, loading } = useAuth();
@@ -22,6 +23,7 @@ export default function App() {
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/users/:userId" element={<Protected><UserDetail /></Protected>} />
       <Route path="/admins" element={<Protected><Admins /></Protected>} />
+      <Route path="/problems" element={<Protected><Problems /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

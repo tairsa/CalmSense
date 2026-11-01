@@ -48,6 +48,13 @@ Phase 2 (1.5.0):
    "MyGuest" profile, removed). **Watch still 1.4.1 → its data can't reach the phone
    until it gets 1.5.0** (send the watch's adb IP:port).
 
+Phase 3 (phone 1.6.0, backend + admin 1.3.0, branch `standard-phase-3`):
+
+8. **Create the `problem_reports` table** before the backend deploys. Supabase → SQL
+   Editor → paste the block under `"Report a problem" from the phone's error screen` at the
+   end of `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
+9. Then say "merge" (deploys backend 1.3.0 + admin) and "release" (tags v1.6.0).
+
 Carried over:
 
 - Install watch 1.4.1 (needs the watch's adb port) and check motion drops near 0 at rest.
@@ -59,7 +66,14 @@ Carried over:
 - Watch → 1.5.0 when Alex sends its adb IP:port.
 - Next real release: confirm the daily notification appears (1.5.1 was installed from
   Settings before the 24 h check, so the notification path is still unseen).
-- Phase 3 (errors, diagnostics, problem report): start with a Build checkpoint.
+- Phase 3, step 1 written 2026-10-25 on `standard-phase-3` (not merged, not released):
+  error codes E-1…E-14 (`ErrorCatalog.kt`), one error screen (`ErrorDialog.kt`), `AppLog`
+  (500 lines, saved on crash/error, no HR/tokens/emails), reports via `UploadQueue` →
+  `POST /api/v1/problem-reports` → admin Problems page; Telegram hook
+  `notify_problem_report()` is a no-op until Alex adds the bot.
+  Before release: try it on the phone (airplane mode → an error → Send report → back
+  online → it shows on Problems).
+- Phase 3 next: System status screen, then the retrain-failure alert (Build checkpoint each).
 
 ## Closed
 

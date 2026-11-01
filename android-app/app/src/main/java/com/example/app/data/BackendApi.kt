@@ -43,7 +43,7 @@ class BackendApi(private val baseUrl: String) {
         try {
             val code = conn.responseCode
             if (code !in 200..299) {
-                throw RuntimeException("GET weights failed: HTTP $code")
+                throw HttpStatusException(code)
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             parsePanicModel(body)

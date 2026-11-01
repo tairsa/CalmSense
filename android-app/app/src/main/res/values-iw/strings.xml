@@ -82,7 +82,6 @@
     <string name="login_hide_password">הסתרת הסיסמה</string>
     <string name="login_remember_email">זכרו את האימייל שלי</string>
     <string name="login_privacy_note">הנתונים שלכם נשארים פרטיים. רק אתם והמטפל שלכם יכולים לראות אותם.</string>
-    <string name="login_confirm_email">בדקו את האימייל שלכם כדי לאשר את החשבון, ואז היכנסו.</string>
 
     <!-- ===== הסכמה ===== -->
     <string name="consent_title">אישור ניטור דופק</string>
@@ -208,7 +207,6 @@
     <string name="profile_unreachable_title">אין חיבור ל-CalmSense</string>
     <string name="profile_unreachable_body">החשבון שלך עדיין מחובר, אבל השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
     <string name="action_retry">נסו שוב</string>
-    <string name="role_save_failed">לא הצלחנו לשמור — השרת לא הגיב. בדקו את החיבור ונסו שוב.</string>
     <!-- כניסה עם טביעת אצבע -->
     <string name="fingerprint_sign_in">כניסה עם טביעת אצבע</string>
     <string name="fingerprint_setting_desc">שימוש בטביעת האצבע במקום בסיסמה בכניסה.</string>
@@ -216,8 +214,6 @@
     <string name="fingerprint_password_body">מזינים אותה פעם אחת. היא נשמרת בטלפון הזה, נעולה בטביעת האצבע.</string>
     <string name="fingerprint_turn_on">הפעלה</string>
     <string name="fingerprint_wrong_password">סיסמה שגויה.</string>
-    <string name="fingerprint_changed">טביעות האצבע בטלפון השתנו, ולכן הכניסה עם טביעת אצבע כובתה. היכנסו עם הסיסמה והפעילו אותה מחדש בהגדרות.</string>
-    <string name="fingerprint_password_changed">הסיסמה שלכם השתנתה. היכנסו איתה והפעילו מחדש את הכניסה עם טביעת אצבע בהגדרות.</string>
     <!-- עדכוני אפליקציה (הגדרות) -->
     <string name="update_title">עדכוני אפליקציה</string>
     <string name="update_check">בדיקת עדכונים</string>
@@ -226,7 +222,6 @@
     <string name="update_download">הורדה והתקנה</string>
     <string name="update_install">התקנה</string>
     <string name="update_allow_install">אפשרו ל-CalmSense להתקין אפליקציות, ואז חזרו ולחצו על התקנה.</string>
-    <string name="update_check_failed">לא ניתן לבדוק עדכונים. בדקו את החיבור לאינטרנט.</string>
     <string name="notif_update_text">הקישו כדי להוריד ולהתקין.</string>
     <!-- לוח הבית, דיאלוג פאניקה, נשימה, מטפל, דיווח -->
     <string name="notif_panic_title">CalmSense: בואו נושמים יחד</string>
@@ -258,4 +253,56 @@
     <string name="reset_new_password">סיסמה חדשה</string>
     <string name="reset_submit">קביעת סיסמה חדשה</string>
     <string name="reset_change_email">שימוש במייל אחר</string>
+    <!-- מסך שגיאה. הקודים מ-ErrorCatalog; מספר לעולם לא נעשה בו שימוש חוזר. -->
+    <string name="error_send_report">שליחת דיווח</string>
+    <string name="error_report_note">מה עשיתם כשזה קרה? (לא חובה)</string>
+    <string name="error_report_send">שליחה</string>
+    <string name="error_report_sent">הדיווח נשלח. תודה.</string>
+    <string name="error_report_queued">נשמר בטלפון. יישלח כשתחזרו להיות מחוברים.</string>
+    <string name="error_report_refused">השרת דחה את הדיווח.</string>
+    <string name="error_fix_sign_in">כניסה מחדש</string>
+    <string name="error_fix_updates">פתיחת עדכוני האפליקציה</string>
+    <string name="error_fix_reload_model">טעינת המודל מחדש</string>
+    <string name="error_fix_network">הגדרות אינטרנט</string>
+    <string name="e1_title">אין חיבור לאינטרנט</string>
+    <string name="e1_cause">הטלפון לא הצליח להתחבר לאינטרנט.</string>
+    <string name="e1_solution">הפעילו Wi-Fi או חבילת גלישה ונסו שוב.</string>
+    <string name="e2_title">תקלה בשרת</string>
+    <string name="e2_cause">השרת של CalmSense לא ענה, או ענה עם שגיאה.</string>
+    <string name="e2_solution">הנתונים שלכם שמורים בטלפון. נסו שוב בעוד כמה דקות.</string>
+    <string name="e3_title">יצאתם מהחשבון</string>
+    <string name="e3_cause">הכניסה שלכם פגה או שאינה תקפה יותר.</string>
+    <string name="e3_solution">היכנסו שוב כדי להמשיך.</string>
+    <string name="e4_title">אימייל או סיסמה שגויים</string>
+    <string name="e4_cause">האימייל והסיסמה לא תואמים לאף חשבון.</string>
+    <string name="e4_solution">בדקו אותם, או הקישו על „שכחתם סיסמה?”.</string>
+    <string name="e5_title">האימייל לא אושר</string>
+    <string name="e5_cause">כתובת האימייל של החשבון עדיין לא אושרה.</string>
+    <string name="e5_solution">פתחו את מייל האישור ששלחנו, ואז היכנסו.</string>
+    <string name="e6_title">הכניסה עם טביעת אצבע כובתה</string>
+    <string name="e6_cause">טביעות האצבע בטלפון השתנו, או שהסיסמה שלכם השתנתה.</string>
+    <string name="e6_solution">היכנסו עם הסיסמה, ואז הפעילו שוב את הכניסה עם טביעת אצבע בהגדרות.</string>
+    <string name="e7_title">לא הצלחנו להביא את העדכון</string>
+    <string name="e7_cause">הבדיקה או ההורדה של העדכון נכשלה.</string>
+    <string name="e7_solution">בדקו את החיבור ונסו שוב מעדכוני האפליקציה.</string>
+    <string name="e8_title">קובץ העדכון היה פגום</string>
+    <string name="e8_cause">ההורדה לא תאמה לגרסה, ולכן נמחקה.</string>
+    <string name="e8_solution">הורידו אותו שוב מעדכוני האפליקציה.</string>
+    <string name="e9_title">מודל הזיהוי לא נטען</string>
+    <string name="e9_cause">הטלפון לא הצליח לקבל את מודל הזיהוי שלכם מהשרת.</string>
+    <string name="e9_solution">נסו לטעון אותו מחדש.</string>
+    <string name="e10_title">הקוד לא התקבל</string>
+    <string name="e10_cause">קוד המטפל שגוי, פג תוקף או שכבר נעשה בו שימוש.</string>
+    <string name="e10_solution">בדקו את הקוד, או בקשו מהמטפל קוד חדש.</string>
+    <string name="e11_title">התשובה שלכם לא נשמרה</string>
+    <string name="e11_cause">השרת דחה את המשוב על ההתקף.</string>
+    <string name="e12_title">משהו השתבש</string>
+    <string name="e12_cause">קרתה שגיאה לא צפויה.</string>
+    <string name="e12_solution">נסו שוב. אם זה חוזר, שלחו דיווח.</string>
+    <string name="e13_title">יותר מדי ניסיונות</string>
+    <string name="e13_cause">היו יותר מדי ניסיונות בזמן קצר.</string>
+    <string name="e13_solution">חכו כמה דקות ונסו שוב.</string>
+    <string name="e14_title">קוד האיפוס לא התקבל</string>
+    <string name="e14_cause">הקוד מהמייל שגוי או שפג תוקפו.</string>
+    <string name="e14_solution">בדקו את הקוד, או הקישו על „שימוש במייל אחר” כדי לשלוח קוד חדש.</string>
 </resources>

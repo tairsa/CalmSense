@@ -38,7 +38,6 @@ fun PatientDetailScreen(
     patientLabel: String,
     reports: List<TherapistApi.PatientReport>,
     loading: Boolean,
-    error: String?,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -69,21 +68,6 @@ fun PatientDetailScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             SummaryCard(reports = reports, loading = loading)
-
-            if (error != null) {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        error,
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                }
-            }
 
             SeverityBar(reports = reports)
 
@@ -381,7 +365,6 @@ private fun PatientDetailScreenPreview() {
             patientLabel = "Anna Cohen",
             reports = sample,
             loading = false,
-            error = null,
             onBack = {},
         )
     }

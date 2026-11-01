@@ -12,7 +12,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
@@ -60,6 +59,11 @@ import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.app.data.UpdateNotifier
+import com.example.app.data.AppError
+import com.example.app.data.AppErrors
+import com.example.app.data.AppLog
+import com.example.app.data.ErrorCatalog
+import com.example.app.data.ErrorFix
 import com.example.app.data.BackendApi
 import com.example.app.data.BackendClient
 import com.example.app.data.BreathingCoach
@@ -91,6 +95,7 @@ import com.example.app.data.motionFeatureFor
 import com.example.app.ui.ConsentScreen
 import com.example.app.ui.QuestionnaireAnswers
 import com.example.app.ui.ConnectTherapistScreen
+import com.example.app.ui.ErrorDialog
 import com.example.app.ui.LoginScreen
 import com.example.app.ui.PatientDetailScreen
 import com.example.app.ui.QuestionnaireScreen
@@ -253,15 +258,12 @@ class HeartRateViewModel : ViewModel() {
      *  account, and for a patient who has not redeemed a code yet. */
     var myTherapists by mutableStateOf<List<TherapistApi.LinkedTherapist>>(emptyList())
     var roleSaving by mutableStateOf(false)
-    /** True when the last role save failed, so the picker can say so. */
-    var roleError by mutableStateOf(false)
 
     // Therapist dashboard state.
     var patients by mutableStateOf<List<TherapistApi.PatientSummary>>(emptyList())
         private set
     var generatingCode by mutableStateOf(false)
     var generatedCode by mutableStateOf<TherapistApi.ConsentCodeResponse?>(null)
-    var therapistError by mutableStateOf<String?>(null)
 
     // Currently-viewed patient's reports (therapist side).
     var viewingPatientReports by mutableStateOf<List<TherapistApi.PatientReport>>(emptyList())
@@ -270,7 +272,6 @@ class HeartRateViewModel : ViewModel() {
 
     // Connect-therapist state (patient side).
     var connectSubmitting by mutableStateOf(false)
-    var connectError by mutableStateOf<String?>(null)
     var connectSuccess by mutableStateOf(false)
 
     fun attachHealthConnect(context: Context) {
@@ -299,7 +300,8 @@ class HeartRateViewModel : ViewModel() {
         }
     }
 
-    fun loadModelFromBackend() {
+    /** [showErrors] when the user asked for it (Reload model); the start-up load stays quiet. */
+    fun loadModelFromBackend(showErrors: Boolean = false) {
         val priorStatus = modelStatus
         modelStatus = if (panicModel == null) "loading model..." else "refreshing model..."
         viewModelScope.launch {
@@ -319,12 +321,15 @@ class HeartRateViewModel : ViewModel() {
                     modelStatus = "model loaded: ${model.source} (acc=${model.testAccuracy?.let { "%.2f".format(it) } ?: "?"})"
                 }
             } catch (e: Exception) {
+                val err = ErrorCatalog.fromException(e, ErrorCatalog.MODEL_LOAD)
+                AppLog.w("Model", "${err.label} model load failed", e)
                 // Offline / server down — keep the cached model if we have one.
                 modelStatus = if (panicModel != null && !panicModel!!.isUntrained()) {
                     "offline — using cached model"
                 } else {
-                    "model load failed: ${e.message ?: e.javaClass.simpleName}"
+                    "${err.label}: model didn't load"
                 }
+                if (showErrors) AppErrors.show(err)
             }
         }
     }
@@ -419,13 +424,12 @@ class HeartRateViewModel : ViewModel() {
             val ok = therapistApi.setProfile(userId = userId, role = role, displayName = name)
             roleSaving = false
             if (ok) {
-                roleError = false
                 profileRole = role
                 profileName = name
             } else {
                 // Previously this did nothing at all, so a failed save looked
                 // exactly like an unresponsive button.
-                roleError = true
+                AppErrors.show(AppError(ErrorCatalog.SERVER))
             }
         }
     }
@@ -451,7 +455,6 @@ class HeartRateViewModel : ViewModel() {
     // Therapist ------------------------------------------------------
 
     fun refreshPatients() {
-        therapistError = null
         viewModelScope.launch {
             patients = therapistApi.listPatients(userId)
         }
@@ -459,14 +462,13 @@ class HeartRateViewModel : ViewModel() {
 
     fun generateConsentCode() {
         generatingCode = true
-        therapistError = null
         viewModelScope.launch {
             val resp = therapistApi.createConsentCode(userId)
             generatingCode = false
             if (resp != null) {
                 generatedCode = resp
             } else {
-                therapistError = "Could not generate a code. Check the backend is running."
+                AppErrors.show(AppError(ErrorCatalog.SERVER))
             }
         }
     }
@@ -479,7 +481,6 @@ class HeartRateViewModel : ViewModel() {
 
     fun loadPatientReports(patientId: String) {
         loadingPatientReports = true
-        therapistError = null
         viewModelScope.launch {
             viewingPatientReports = therapistApi.getPatientReports(userId, patientId)
             loadingPatientReports = false
@@ -490,7 +491,6 @@ class HeartRateViewModel : ViewModel() {
 
     fun redeemConsentCode(code: String) {
         connectSubmitting = true
-        connectError = null
         connectSuccess = false
         viewModelScope.launch {
             when (val r = therapistApi.redeemConsentCode(code, userId)) {
@@ -498,7 +498,7 @@ class HeartRateViewModel : ViewModel() {
                     connectSuccess = true
                 }
                 is TherapistApi.RedeemResult.Failure -> {
-                    connectError = r.message
+                    AppErrors.show(ErrorCatalog.fromHttp(r.httpCode, ErrorCatalog.THERAPIST_CODE))
                 }
             }
             connectSubmitting = false
@@ -507,7 +507,6 @@ class HeartRateViewModel : ViewModel() {
 
     fun resetConnectState() {
         connectSubmitting = false
-        connectError = null
         connectSuccess = false
     }
 
@@ -835,7 +834,12 @@ class HeartRateViewModel : ViewModel() {
             feedbackStatus = when {
                 r == PostResult.Success -> "Feedback saved — thanks!"
                 UploadQueue.shouldRetry(r) -> "Saved on this phone — sends when the server is back"
-                else -> "Feedback failed (HTTP ${(r as PostResult.HttpError).code})"
+                else -> {
+                    AppErrors.show(
+                        ErrorCatalog.fromHttp((r as PostResult.HttpError).code, ErrorCatalog.FEEDBACK_REFUSED)
+                    )
+                    null
+                }
             }
         }
     }
@@ -843,9 +847,24 @@ class HeartRateViewModel : ViewModel() {
 
 class MainActivity : AppCompatActivity() {
     private val viewModel: HeartRateViewModel by viewModels()
+    private val reportBackend = BackendClient(BACKEND_URL)
+
+    /** The error screen's fix button. */
+    private fun onErrorFix(fix: ErrorFix) {
+        when (fix) {
+            ErrorFix.SIGN_IN -> {
+                viewModel.resetProfile()
+                SessionManager.clear(this)
+            }
+            ErrorFix.UPDATES -> viewModel.openSettings = true
+            ErrorFix.RELOAD_MODEL -> viewModel.loadModelFromBackend(showErrors = true)
+            ErrorFix.NETWORK_SETTINGS -> startActivity(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY))
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLog.init(this)
         enableEdgeToEdge()
         // Hydrate any persisted session BEFORE anything reads USER_ID, so the
         // monitor service and the model fetch start with the right user id.
@@ -870,6 +889,15 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             AppTheme {
+                // Ahead of every gate below, so an error shows on any screen.
+                AppErrors.current?.let { err ->
+                    ErrorDialog(
+                        error = err,
+                        onFix = ::onErrorFix,
+                        onDismiss = { AppErrors.current = null },
+                        send = { UploadQueue.postProblemReport(reportBackend, it) },
+                    )
+                }
                 // ------- Consent gate ----------------------------------------------
                 // Deliberately ahead of the auth gate. Consent covers collecting
                 // the data at all, so it is answered before we ask anyone to hand
@@ -907,7 +935,7 @@ class MainActivity : AppCompatActivity() {
                                     this@MainActivity, s,
                                 )
                                 if (claimed > 0) {
-                                    Log.i("CalmSense", "Claimed $claimed legacy report(s)")
+                                    AppLog.i("CalmSense", "Claimed $claimed legacy report(s)")
                                 }
                             }
                         }
@@ -960,8 +988,6 @@ class MainActivity : AppCompatActivity() {
                     RolePickerScreen(
                         onSelected = { role, name -> viewModel.setRole(role, name) },
                         loading = viewModel.roleSaving,
-                        errorText = if (viewModel.roleError)
-                            stringResource(R.string.role_save_failed) else null,
                     )
                     return@AppTheme
                 }
@@ -1009,7 +1035,6 @@ class MainActivity : AppCompatActivity() {
                                         patients = viewModel.patients,
                                         generatedCode = viewModel.generatedCode,
                                         generating = viewModel.generatingCode,
-                                        error = viewModel.therapistError,
                                         onGenerateCode = { viewModel.generateConsentCode() },
                                         onDismissCode = { viewModel.dismissGeneratedCode() },
                                         onPatientClick = { pid ->
@@ -1030,7 +1055,6 @@ class MainActivity : AppCompatActivity() {
                                         patientLabel = label,
                                         reports = viewModel.viewingPatientReports,
                                         loading = viewModel.loadingPatientReports,
-                                        error = viewModel.therapistError,
                                         onBack = { therapistNav.popBackStack() },
                                     )
                                 }
@@ -1156,7 +1180,6 @@ class MainActivity : AppCompatActivity() {
                                 ConnectTherapistScreen(
                                     onSubmit = { code -> viewModel.redeemConsentCode(code) },
                                     submitting = viewModel.connectSubmitting,
-                                    error = viewModel.connectError,
                                     success = viewModel.connectSuccess,
                                     onBack = { navController.popBackStack() },
                                 )
@@ -1544,7 +1567,7 @@ fun CalmSenseDashboard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = { viewModel.loadModelFromBackend() }) { Text("Reload model") }
+                TextButton(onClick = { viewModel.loadModelFromBackend(showErrors = true) }) { Text("Reload model") }
             }
         }
 

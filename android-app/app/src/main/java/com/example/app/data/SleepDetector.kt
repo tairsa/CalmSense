@@ -1,7 +1,6 @@
 package com.example.app.data
 
 import android.os.SystemClock
-import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -120,7 +119,7 @@ object SleepDetector {
 
     private fun transition(to: State, now: Long) {
         if (_state.value == to) return
-        Log.i(TAG, "Sleep state ${_state.value} -> $to (hrBaseline=${awakeHrEma?.toInt()}, stillForMs=${now - lastActiveAt})")
+        AppLog.i(TAG, "Sleep state ${_state.value} -> $to (stillForMs=${now - lastActiveAt})")
         _state.value = to
     }
 }

@@ -66,7 +66,7 @@ object AppUpdater {
         try {
             // 404 = nothing published yet, which just means "up to date".
             if (conn.responseCode == 404) return@withContext null
-            if (conn.responseCode !in 200..299) error("GitHub answered HTTP ${conn.responseCode}")
+            if (conn.responseCode !in 200..299) throw HttpStatusException(conn.responseCode)
             val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             val version = json.getString("tag_name").removePrefix("v")
             val code = versionCode(version) ?: return@withContext null
@@ -99,7 +99,7 @@ object AppUpdater {
                 readTimeout = 30_000
             }
             try {
-                if (conn.responseCode !in 200..299) error("Download failed (HTTP ${conn.responseCode})")
+                if (conn.responseCode !in 200..299) throw HttpStatusException(conn.responseCode)
                 val total = conn.contentLengthLong
                 conn.inputStream.use { input ->
                     file.outputStream().use { out ->
@@ -125,12 +125,12 @@ object AppUpdater {
             val actual = sha.digest().joinToString("") { "%02x".format(it) }
             if (expected != actual) {
                 file.delete()
-                error("The download was damaged. Try again.")
+                throw UpdateDamagedException("checksum mismatch")
             }
             val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
             if (info?.packageName != context.packageName || info.longVersionCode != release.versionCode.toLong()) {
                 file.delete()
-                error("The downloaded file is not CalmSense ${release.version}")
+                throw UpdateDamagedException("not CalmSense ${release.version}")
             }
             file
         }
@@ -141,7 +141,7 @@ object AppUpdater {
             readTimeout = 10_000
         }
         try {
-            if (conn.responseCode !in 200..299) error("Download failed (HTTP ${conn.responseCode})")
+            if (conn.responseCode !in 200..299) throw HttpStatusException(conn.responseCode)
             return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
             conn.disconnect()
@@ -169,3 +169,6 @@ object AppUpdater {
         )
     }
 }
+
+/** The download finished but isn't the release it claims to be (E-8). */
+class UpdateDamagedException(reason: String) : Exception(reason)

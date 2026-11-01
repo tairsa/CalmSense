@@ -20,12 +20,14 @@ from models import (
     ConsentCodeResponse,
     PanicFeedback,
     PanicReport,
+    ProblemReport,
     Profile,
     RedeemConsentRequest,
     SensorData,
 )
 from storage import (
     append_feedback,
+    append_problem_report,
     append_record,
     append_report,
     create_consent_code,
@@ -74,7 +76,7 @@ _PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1"
 # docs are disabled in production, so /health is the only way to see which
 # build is actually serving - which is what makes "confirm, then bump" checkable
 # rather than a matter of trusting that the deploy landed.
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 app = FastAPI(
     title="CalmSense API",
@@ -202,6 +204,30 @@ def receive_panic_report(data: PanicReport, user_id: str = Depends(current_user_
         return {"success": True, "message": "Report saved."}
     except Exception:
         return _save_failed("report")
+
+
+def notify_problem_report(record: dict) -> None:
+    """Hook for the Telegram bot (added later). Called after the report is
+    saved, so a failing bot can never lose one."""
+
+
+@app.post("/api/v1/problem-reports", dependencies=_device_auth)
+def receive_problem_report(data: ProblemReport, user_id: str = Depends(current_user_id)):
+    """"Report a problem" from the phone's error screen; listed on the admin
+    Problems page."""
+    record = data.model_dump()
+    record["user_id"] = user_id
+    if record["timestamp"] is None:
+        record["timestamp"] = datetime.now(timezone.utc).isoformat()
+    try:
+        append_problem_report(record)
+    except Exception:
+        return _save_failed("problem report")
+    try:
+        notify_problem_report(record)
+    except Exception:
+        log.exception("Problem report notification failed")
+    return {"success": True, "message": "Problem report saved."}
 
 
 @app.get("/api/v1/sensor-data", dependencies=_device_auth)

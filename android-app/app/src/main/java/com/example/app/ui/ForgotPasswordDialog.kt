@@ -26,6 +26,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.app.R
+import com.example.app.data.AppErrors
+import com.example.app.data.ErrorCatalog
 import com.example.app.data.SupabaseAuth
 import kotlinx.coroutines.launch
 
@@ -47,7 +49,6 @@ fun ForgotPasswordDialog(
     var code by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
 
     // Supabase codes are 6 digits by default, longer if the project says so.
     val canSubmit = !busy && if (!codeSent) email.contains('@')
@@ -55,17 +56,17 @@ fun ForgotPasswordDialog(
 
     fun submit() {
         busy = true
-        error = null
         scope.launch {
             if (!codeSent) {
                 val e = SupabaseAuth.sendPasswordReset(email)
-                if (e == null) codeSent = true else error = e.message
+                if (e == null) codeSent = true else AppErrors.show(ErrorCatalog.fromHttp(e.httpCode), e.message)
             } else {
                 when (val r = SupabaseAuth.verifyResetCode(email, code)) {
-                    is SupabaseAuth.AuthResult.Error -> error = r.message
+                    is SupabaseAuth.AuthResult.Error ->
+                        AppErrors.show(ErrorCatalog.fromHttp(r.httpCode, ErrorCatalog.RESET_CODE), r.message)
                     is SupabaseAuth.AuthResult.Success -> {
                         val e = SupabaseAuth.updatePassword(r.session.accessToken, password)
-                        if (e == null) onDone(r.session) else error = e.message
+                        if (e == null) onDone(r.session) else AppErrors.show(ErrorCatalog.fromHttp(e.httpCode), e.message)
                     }
                 }
             }
@@ -88,7 +89,7 @@ fun ForgotPasswordDialog(
                 if (!codeSent) {
                     OutlinedTextField(
                         value = email,
-                        onValueChange = { email = it; error = null },
+                        onValueChange = { email = it },
                         label = { Text(stringResource(R.string.login_email)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
@@ -97,7 +98,7 @@ fun ForgotPasswordDialog(
                 } else {
                     OutlinedTextField(
                         value = code,
-                        onValueChange = { v -> code = v.filter { it.isDigit() }.take(10); error = null },
+                        onValueChange = { v -> code = v.filter { it.isDigit() }.take(10) },
                         label = { Text(stringResource(R.string.reset_code)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
@@ -106,7 +107,7 @@ fun ForgotPasswordDialog(
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it; error = null },
+                        onValueChange = { password = it },
                         label = { Text(stringResource(R.string.reset_new_password)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
@@ -114,12 +115,9 @@ fun ForgotPasswordDialog(
                         supportingText = { Text(stringResource(R.string.login_password_hint)) },
                         modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.NewPassword },
                     )
-                    TextButton(onClick = { codeSent = false; code = ""; error = null }, enabled = !busy) {
+                    TextButton(onClick = { codeSent = false; code = "" }, enabled = !busy) {
                         Text(stringResource(R.string.reset_change_email))
                     }
-                }
-                error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
             }
         },

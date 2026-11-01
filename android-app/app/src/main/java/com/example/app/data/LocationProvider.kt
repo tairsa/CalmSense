@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
@@ -49,7 +48,7 @@ object LocationProvider {
             client.getCurrentLocation(req, cts.token)
                 .addOnSuccessListener { loc -> cont.resume(loc) }
                 .addOnFailureListener { e ->
-                    Log.w(TAG, "current location failed", e)
+                    AppLog.w(TAG, "current location failed", e)
                     cont.resume(null)
                 }
                 .addOnCanceledListener { cont.resume(null) }

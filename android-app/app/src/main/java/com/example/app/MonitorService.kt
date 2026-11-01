@@ -12,7 +12,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
-import android.util.Log
+import com.example.app.data.AppLog
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -65,6 +65,7 @@ class MonitorService : Service() {
         createChannels()
         // Started at boot or after an update, before any Activity: without this
         // the first uploads go out with no token and are rejected.
+        AppLog.init(applicationContext)
         SessionManager.init(applicationContext)
         SettingsStore.init(applicationContext)
         UploadQueue.init(applicationContext)
@@ -202,9 +203,10 @@ class MonitorService : Service() {
             // Queued on network failure and re-sent (oldest first) once the
             // server answers again — see UploadQueue.
             when (val r = UploadQueue.postSensor(backend, payload)) {
-                PostResult.Success -> Log.d(TAG, "POST ok: hr=$hr panic=$panic")
-                is PostResult.HttpError -> Log.w(TAG, "POST failed: HTTP ${r.code}")
-                is PostResult.NetworkError -> Log.w(TAG, "POST queued: ${r.reason}")
+                PostResult.Success -> AppLog.d(TAG, "POST ok: panic=$panic")
+                is PostResult.HttpError -> AppLog.w(TAG, "POST failed: HTTP ${r.code}")
+                // Debug: offline it fires on every reading and would fill the report log.
+                is PostResult.NetworkError -> AppLog.d(TAG, "POST queued: ${r.reason}")
             }
         }
     }
@@ -235,7 +237,7 @@ class MonitorService : Service() {
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
                     true
                 } catch (e: SecurityException) {
-                    Log.i(TAG, "Started from the background: monitoring without location until the app is opened")
+                    AppLog.i(TAG, "Started from the background: monitoring without location until the app is opened")
                     startForeground(MONITOR_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
                     false
                 }
@@ -246,7 +248,7 @@ class MonitorService : Service() {
             // Still possible if ACCESS_FINE_LOCATION is revoked. Kept as a
             // backstop so a permission problem degrades to "no background
             // monitoring" instead of crashing the app on launch.
-            Log.w(TAG, "Foreground start rejected — stopping monitor service", e)
+            AppLog.w(TAG, "Foreground start rejected — stopping monitor service", e)
             stopSelf()
         }
     }

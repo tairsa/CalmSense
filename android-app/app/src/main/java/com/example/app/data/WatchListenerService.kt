@@ -1,6 +1,5 @@
 package com.example.app.data
 
-import android.util.Log
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.WearableListenerService
 import io.sentry.Sentry
@@ -49,13 +48,13 @@ class WatchListenerService : WearableListenerService() {
                 SleepDetector.onSample(s.bpm, s.motion, s.onBody)
                 HrvBaseline.init(applicationContext)
                 if (s.onBody) HrvBaseline.onWatchSample(s.bpm, s.motion, s.hrvMs, s.hrvSource, SleepDetector.isAsleep)
-                Log.d(TAG, "Received sample $s from ${event.sourceNodeId}")
+                AppLog.d(TAG, "Received sample (onBody=${s.onBody}, hrv=${s.hrvSource}) from ${event.sourceNodeId}")
             }
             MSG_PATH_CRASH -> reportWatchCrash(text)
             MSG_PATH_HR -> {
                 val bpm = text.toIntOrNull() ?: return
                 WatchVitalsRepository.update(bpm)
-                Log.d(TAG, "Received HR=$bpm from watch ${event.sourceNodeId}")
+                AppLog.d(TAG, "Received HR-only sample from watch ${event.sourceNodeId}")
             }
         }
     }
@@ -66,7 +65,7 @@ class WatchListenerService : WearableListenerService() {
         val lines = text.lines()
         val trace = lines.drop(1)
         val exception = trace.firstOrNull().orEmpty()
-        Log.e(TAG, "Watch crashed: $exception")
+        AppLog.e(TAG, "Watch crashed: $exception")
         Sentry.captureMessage("Watch crash: $exception") { scope ->
             scope.level = SentryLevel.FATAL
             scope.setTag("device", "watch")

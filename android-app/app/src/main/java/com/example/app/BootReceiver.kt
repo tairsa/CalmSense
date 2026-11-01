@@ -3,7 +3,7 @@ package com.example.app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import com.example.app.data.AppLog
 import androidx.core.content.ContextCompat
 import com.example.app.data.SettingsStore
 
@@ -37,23 +37,23 @@ class BootReceiver : BroadcastReceiver() {
 
         SettingsStore.init(context)
         if (!SettingsStore.consentGranted.value) {
-            Log.i(TAG, "$action: consent not granted, staying off")
+            AppLog.i(TAG, "$action: consent not granted, staying off")
             return
         }
         if (!SettingsStore.monitoringEnabled.value) {
-            Log.i(TAG, "$action: monitoring disabled by the user, staying off")
+            AppLog.i(TAG, "$action: monitoring disabled by the user, staying off")
             return
         }
 
         try {
             ContextCompat.startForegroundService(context, Intent(context, MonitorService::class.java))
-            Log.i(TAG, "$action: monitoring restarted")
+            AppLog.i(TAG, "$action: monitoring restarted")
         } catch (e: Exception) {
             // Background foreground-service starts can still be refused. Both
             // BOOT_COMPLETED and MY_PACKAGE_REPLACED are on the platform's
             // exemption list, so this should not normally fire — but if it does,
             // the setting is untouched and the service starts on next app launch.
-            Log.w(TAG, "$action: could not start MonitorService from background", e)
+            AppLog.w(TAG, "$action: could not start MonitorService from background", e)
         }
     }
 

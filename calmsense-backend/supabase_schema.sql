@@ -271,3 +271,31 @@ $$;
 -- could list every user id.
 revoke all on function public.admin_user_stats() from public, anon, authenticated;
 grant execute on function public.admin_user_stats() to service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- "Report a problem" from the phone's error screen (1.6.0). Safe to re-run.
+--
+-- code is the app's own E-<n> number; http_status only when a server answer
+-- was involved. logs come from the phone with heart rate, tokens and emails
+-- left out. Run BEFORE deploying backend 1.3.0; until then the insert fails
+-- with a 500 and the phone keeps the report queued.
+-- ---------------------------------------------------------------------------
+create table if not exists public.problem_reports (
+    id           bigint      generated always as identity primary key,
+    user_id      text        not null,
+    code         integer     not null check (code >= 1),
+    http_status  integer,
+    app_version  text,
+    os_version   text,
+    device       text,
+    note         text,
+    logs         text        not null default '',
+    timestamp    timestamptz,
+    created_at   timestamptz not null default now()
+);
+
+create index if not exists problem_reports_timestamp_idx
+    on public.problem_reports ("timestamp" desc);
+
+alter table public.problem_reports enable row level security;

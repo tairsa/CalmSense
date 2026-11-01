@@ -204,4 +204,26 @@ class BackendClient(private val baseUrl: String) {
             }
         }.getOrElse { e -> PostResult.NetworkError(e.javaClass.simpleName) }
     }
+
+    /** "Report a problem". [body] is built by ProblemReport and sent as is. */
+    suspend fun submitProblemReport(body: JSONObject): PostResult = withContext(Dispatchers.IO) {
+        runCatching {
+            // At SEND time, like the others: the report may have waited offline.
+            val token = SessionManager.validAccessToken()
+            val conn = URL("$baseUrl/api/v1/problem-reports").openConnection() as HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 15_000
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            if (token != null) conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.doOutput = true
+            try {
+                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = conn.responseCode
+                if (code in 200..299) PostResult.Success else PostResult.HttpError(code)
+            } finally {
+                conn.disconnect()
+            }
+        }.getOrElse { e -> PostResult.NetworkError(e.javaClass.simpleName) }
+    }
 }

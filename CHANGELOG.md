@@ -4,6 +4,14 @@ Every shipped build, newest first. Versioning rules: VERSIONING.md.
 A release takes its notes from the section whose heading starts with its version
 and names the phone (`.github/workflows/release.yml`).
 
+## 1.6.0 · 2026-10-25 · phone + watch
+
+Errors have codes. Every failure the app shows now opens one error screen: a code (`E-2`, or `E-2 | 503` when the server answered with an HTTP status), what happened, why, what you can do, and a button to the place that fixes it (sign in again, App updates, Reload model, Internet settings). "Send report" sends the code, app and Android version, phone model, an optional note and the app's recent log to the CalmSense team; offline, it waits on the phone and goes with the next upload. The log keeps the last 500 lines and is saved on a crash or an error, never with heart rate, tokens or emails. Watch: no changes, renumbered to match.
+
+## 1.3.0 · 2026-10-25 · backend, admin
+
+`POST /api/v1/problem-reports` stores reports from the phone's error screen (needs the `problem_reports` table, migration in supabase_schema.sql); the admin app lists them on a new Problems page with each report's log. A hook for a Telegram notification is in place, not yet connected.
+
 ## 1.5.1 · 2026-10-24 · phone + watch
 
 No changes for users: the first update delivered by the daily update notification and checked against its SHA-256 checksum, to prove that path works end to end.

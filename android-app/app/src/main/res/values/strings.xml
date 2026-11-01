@@ -77,7 +77,6 @@
     <string name="login_hide_password">Hide password</string>
     <string name="login_remember_email">Remember my email</string>
     <string name="login_privacy_note">Your data stays private. Only you and your therapist can see it.</string>
-    <string name="login_confirm_email">Check your email to confirm your account, then sign in.</string>
 
     <!-- ===== Consent ===== -->
     <string name="consent_title">Allow heart-rate monitoring</string>
@@ -208,7 +207,6 @@
     <string name="profile_unreachable_title">Can’t reach CalmSense</string>
     <string name="profile_unreachable_body">Your account is still signed in, but the server didn’t answer. Check the connection and try again.</string>
     <string name="action_retry">Try again</string>
-    <string name="role_save_failed">Couldn’t save that — the server didn’t answer. Check the connection and try again.</string>
     <!-- Fingerprint sign-in -->
     <string name="fingerprint_sign_in">Sign in with fingerprint</string>
     <string name="fingerprint_setting_desc">Use your fingerprint instead of your password when you sign in.</string>
@@ -216,8 +214,6 @@
     <string name="fingerprint_password_body">Enter it once. It stays on this phone, locked by your fingerprint.</string>
     <string name="fingerprint_turn_on">Turn on</string>
     <string name="fingerprint_wrong_password">Wrong password.</string>
-    <string name="fingerprint_changed">Your phone’s fingerprints changed, so fingerprint sign-in was turned off. Sign in with your password, then turn it on again in Settings.</string>
-    <string name="fingerprint_password_changed">Your password has changed. Sign in with it, then turn fingerprint sign-in on again in Settings.</string>
     <!-- App updates (Settings) -->
     <string name="update_title">App updates</string>
     <string name="update_check">Check for updates</string>
@@ -226,7 +222,6 @@
     <string name="update_download">Download and install</string>
     <string name="update_install">Install</string>
     <string name="update_allow_install">Allow CalmSense to install apps, then come back and tap Install.</string>
-    <string name="update_check_failed">Couldn’t check for updates. Check your internet connection.</string>
     <string name="notif_update_text">Tap to download and install it.</string>
     <!-- Dashboard, panic dialog, breathing, therapist, report -->
     <string name="notif_panic_title">CalmSense: breathe with me</string>
@@ -258,4 +253,56 @@
     <string name="reset_new_password">New password</string>
     <string name="reset_submit">Set new password</string>
     <string name="reset_change_email">Use a different email</string>
+    <!-- Error screen. Codes come from ErrorCatalog; a number is never reused. -->
+    <string name="error_send_report">Send report</string>
+    <string name="error_report_note">What were you doing? (optional)</string>
+    <string name="error_report_send">Send</string>
+    <string name="error_report_sent">Report sent. Thank you.</string>
+    <string name="error_report_queued">Saved on this phone. It sends when you’re back online.</string>
+    <string name="error_report_refused">The server refused the report.</string>
+    <string name="error_fix_sign_in">Sign in again</string>
+    <string name="error_fix_updates">Open App updates</string>
+    <string name="error_fix_reload_model">Reload model</string>
+    <string name="error_fix_network">Internet settings</string>
+    <string name="e1_title">No internet connection</string>
+    <string name="e1_cause">The phone couldn’t reach the internet.</string>
+    <string name="e1_solution">Turn on Wi-Fi or mobile data, then try again.</string>
+    <string name="e2_title">The server had a problem</string>
+    <string name="e2_cause">The CalmSense server didn’t answer, or answered with an error.</string>
+    <string name="e2_solution">Your data is safe on this phone. Try again in a few minutes.</string>
+    <string name="e3_title">You were signed out</string>
+    <string name="e3_cause">Your sign-in expired or is no longer valid.</string>
+    <string name="e3_solution">Sign in again to continue.</string>
+    <string name="e4_title">Wrong email or password</string>
+    <string name="e4_cause">The email and password don’t match an account.</string>
+    <string name="e4_solution">Check them, or tap “Forgot password?”.</string>
+    <string name="e5_title">Email not confirmed</string>
+    <string name="e5_cause">This account’s email address hasn’t been confirmed yet.</string>
+    <string name="e5_solution">Open the confirmation email we sent you, then sign in.</string>
+    <string name="e6_title">Fingerprint sign-in turned off</string>
+    <string name="e6_cause">The fingerprints on this phone changed, or your password changed.</string>
+    <string name="e6_solution">Sign in with your password, then turn fingerprint sign-in on again in Settings.</string>
+    <string name="e7_title">Couldn’t get the update</string>
+    <string name="e7_cause">Checking for or downloading the update failed.</string>
+    <string name="e7_solution">Check your connection and try again from App updates.</string>
+    <string name="e8_title">The update file was damaged</string>
+    <string name="e8_cause">The download didn’t match the release, so it was deleted.</string>
+    <string name="e8_solution">Download it again from App updates.</string>
+    <string name="e9_title">The detection model didn’t load</string>
+    <string name="e9_cause">The phone couldn’t get your detection model from the server.</string>
+    <string name="e9_solution">Try reloading it.</string>
+    <string name="e10_title">Code not accepted</string>
+    <string name="e10_cause">The therapist code is wrong, expired or already used.</string>
+    <string name="e10_solution">Check the code, or ask your therapist for a new one.</string>
+    <string name="e11_title">Your answer wasn’t saved</string>
+    <string name="e11_cause">The server refused this panic feedback.</string>
+    <string name="e12_title">Something went wrong</string>
+    <string name="e12_cause">An unexpected error happened.</string>
+    <string name="e12_solution">Try again. If it keeps happening, send a report.</string>
+    <string name="e13_title">Too many attempts</string>
+    <string name="e13_cause">There were too many tries in a short time.</string>
+    <string name="e13_solution">Wait a few minutes, then try again.</string>
+    <string name="e14_title">Reset code not accepted</string>
+    <string name="e14_cause">The code from the email is wrong or has expired.</string>
+    <string name="e14_solution">Check the code, or tap “Use a different email” to send a new one.</string>
 </resources>
