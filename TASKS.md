@@ -50,14 +50,15 @@ Phase 2 (1.5.0):
 
 Phase 3 (phone 1.6.0, backend + admin 1.3.0, branch `standard-phase-3`):
 
-8. **Create the `problem_reports` table** before the backend deploys. Supabase → SQL
+8. **Create the `problem_reports` table** (still missing in production on 2026-11-01, backend
+   1.4.0 is already deployed: problem reports get a 500 until this runs; no released phone sends them yet). Supabase → SQL
    Editor → paste the block under `"Report a problem" from the phone's error screen` at the
    end of `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
 9. Then say "merge" (deploys backend 1.3.0 + admin) and "release" (tags v1.6.0).
 
 Dissociation + flashback (phone 1.7.0, backend 1.4.0, branch `trauma-events`, on top of phase 3):
 
-10. **Create the two tables** before this backend deploys. Supabase → SQL Editor → paste the
+10. ✅ (2026-11-01) **Create the two tables** before this backend deploys. Supabase → SQL Editor → paste the
     block under `Manual dissociation and flashback reports` at the end of
     `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
 11. Try it on the phone: home → "I'm dissociating" → grounding → questionnaire → Reports →
@@ -81,7 +82,11 @@ Carried over:
   `notify_problem_report()` is a no-op until Alex adds the bot.
   Before release: try it on the phone (airplane mode → an error → Send report → back
   online → it shows on Problems).
-- Dissociation + flashback written 2026-11-01 on `trauma-events` (not merged, not released):
+- 2026-11-01: `main` = 104a8f1 (phase 3 + dissociation/flashback). Backend 1.4.0 deployed by hand
+  (gcloud, image tag 104a8f1, revision calmsense-00015-mar; rollback: calmsense-00013-tih).
+  CI's deploy job is skipped: repo variable `GCP_PROJECT_ID` and the WIF secrets were never set.
+  Phone 1.7.0 not released yet (needs "release" after an on-phone test).
+- Dissociation + flashback written 2026-11-01 on `trauma-events`, merged to main:
   `EventReport.kt` (EventType enum, one local file + one endpoint per type, drafts not
   posted until the questionnaire ends), `GroundingOverlay.kt`, `EventQuestionnaireScreen.kt`,
   `EventChips.kt`, `EventReportDetailScreen.kt`, category filter in `ReportsScreen.kt`;
