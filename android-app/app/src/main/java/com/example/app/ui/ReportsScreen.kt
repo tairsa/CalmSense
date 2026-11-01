@@ -48,7 +48,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.app.data.EventReportEntity
+import com.example.app.data.EventType
 import com.example.app.data.PanicReportEntity
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.History
 import java.time.Duration
 import java.time.Instant
 import android.content.Context
@@ -67,21 +73,36 @@ enum class TimeWindow(@StringRes val labelRes: Int, val durationMs: Long?) {
     ALL(R.string.reports_filter_all, null),
 }
 
+/** One row of the history list: an anxiety report or a dissociation/flashback one. */
+private data class HistoryEntry(
+    val type: EventType,
+    val id: Long,
+    val timestampMs: Long,
+    val panic: PanicReportEntity? = null,
+    val event: EventReportEntity? = null,
+)
+
 @Composable
 fun ReportsScreen(
     reports: List<PanicReportEntity>,
-    onReportClick: (Long) -> Unit,
-    onReportDelete: (Long) -> Unit,
+    events: List<EventReportEntity>,
+    onReportClick: (EventType, Long) -> Unit,
+    onReportDelete: (EventType, Long) -> Unit,
 ) {
     var window by remember { mutableStateOf(TimeWindow.LAST_7D) }
+    // null = all categories
+    var category by remember { mutableStateOf<EventType?>(null) }
     val cutoff = window.durationMs?.let { System.currentTimeMillis() - it } ?: 0L
-    val filtered = remember(reports, window) {
-        reports.filter { it.timestampMs >= cutoff }
+    val filtered = remember(reports, events, window, category) {
+        (reports.map { HistoryEntry(EventType.ANXIETY, it.id, it.timestampMs, panic = it) } +
+            events.map { HistoryEntry(it.type, it.id, it.timestampMs, event = it) })
+            .filter { it.timestampMs >= cutoff && (category == null || it.type == category) }
+            .sortedByDescending { it.timestampMs }
     }
 
     // Two-stage delete: long-press → stringResource(R.string.reports_delete_title) → "Are you sure?"
-    var stage1ReportId by remember { mutableStateOf<Long?>(null) }
-    var stage2ReportId by remember { mutableStateOf<Long?>(null) }
+    var stage1Report by remember { mutableStateOf<Pair<EventType, Long>?>(null) }
+    var stage2Report by remember { mutableStateOf<Pair<EventType, Long>?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
@@ -115,6 +136,28 @@ fun ReportsScreen(
             }
         }
 
+        // Category filter: the hidden EventType of each entry.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(bottom = 8.dp).horizontalScroll(rememberScrollState()),
+        ) {
+            (listOf<EventType?>(null) + EventType.values()).forEach { c ->
+                FilterChip(
+                    selected = category == c,
+                    onClick = { category = c },
+                    label = { Text(stringResource(c?.let { eventTypeLabelRes(it) } ?: R.string.reports_filter_all)) },
+                    leadingIcon = if (category == c) {
+                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
+                    } else null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
+            }
+        }
+
         if (filtered.isEmpty()) {
             EmptyState()
         } else {
@@ -122,20 +165,23 @@ fun ReportsScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(filtered, key = { it.id }) { report ->
-                    ReportCard(
-                        report = report,
-                        onClick = { onReportClick(report.id) },
-                        onLongClick = { stage1ReportId = report.id },
-                    )
+                // ids are per store, so the key needs the type too
+                items(filtered, key = { "${it.type}-${it.id}" }) { entry ->
+                    val onClick = { onReportClick(entry.type, entry.id) }
+                    val onLongClick = { stage1Report = entry.type to entry.id }
+                    if (entry.panic != null) {
+                        ReportCard(report = entry.panic, onClick = onClick, onLongClick = onLongClick)
+                    } else if (entry.event != null) {
+                        EventCard(event = entry.event, onClick = onClick, onLongClick = onLongClick)
+                    }
                 }
             }
         }
     }
 
-    stage1ReportId?.let { id ->
+    stage1Report?.let { id ->
         AlertDialog(
-            onDismissRequest = { stage1ReportId = null },
+            onDismissRequest = { stage1Report = null },
             icon = { Icon(Icons.Default.Delete, contentDescription = null) },
             title = { Text(stringResource(R.string.reports_delete_title)) },
             text = {
@@ -143,19 +189,19 @@ fun ReportsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    stage1ReportId = null
-                    stage2ReportId = id
+                    stage1Report = null
+                    stage2Report = id
                 }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { stage1ReportId = null }) { Text(stringResource(R.string.action_cancel)) }
+                TextButton(onClick = { stage1Report = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
 
-    stage2ReportId?.let { id ->
+    stage2Report?.let { id ->
         AlertDialog(
-            onDismissRequest = { stage2ReportId = null },
+            onDismissRequest = { stage2Report = null },
             icon = {
                 Icon(
                     Icons.Default.Warning,
@@ -167,12 +213,12 @@ fun ReportsScreen(
             text = { Text(stringResource(R.string.reports_confirm_body)) },
             confirmButton = {
                 TextButton(onClick = {
-                    onReportDelete(id)
-                    stage2ReportId = null
+                    onReportDelete(id.first, id.second)
+                    stage2Report = null
                 }) { Text(stringResource(R.string.reports_delete_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { stage2ReportId = null }) { Text(stringResource(R.string.reports_delete_cancel)) }
+                TextButton(onClick = { stage2Report = null }) { Text(stringResource(R.string.reports_delete_cancel)) }
             },
         )
     }
@@ -245,6 +291,44 @@ private fun ReportCard(
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier.size(18.dp),
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EventCard(event: EventReportEntity, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val ctx = LocalContext.current
+    Card(
+        modifier = Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            // No severity for these reports: an icon per type takes the badge's place.
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f), modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        if (event.type == EventType.FLASHBACK) Icons.Default.History else Icons.Default.BlurOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(eventTypeLabelRes(event.type)) + " · " + relativeTime(ctx, event.timestampMs),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val summary = event.emotions.take(3)
+                    .map { key -> eventChipLabelResOrNull(key)?.let { ctx.getString(it) } ?: key }
+                    .joinToString(" · ").ifBlank { null }
+                    ?: event.feeling
+                    ?: stringResource(R.string.reports_manually_logged)
+                Text(summary, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2)
             }
         }
     }

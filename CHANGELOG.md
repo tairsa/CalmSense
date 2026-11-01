@@ -4,6 +4,14 @@ Every shipped build, newest first. Versioning rules: VERSIONING.md.
 A release takes its notes from the section whose heading starts with its version
 and names the phone (`.github/workflows/release.yml`).
 
+## 1.7.0 · unreleased · phone + watch
+
+Dissociation and flashback reports. Two new buttons on the home screen ("I'm dissociating", "I'm having a flashback") open a grounding exercise instead of breathing: "find around you" tasks (4 green things, 3 sounds…) or guided tense-and-release by body part, with "Done" always available. Then a questionnaire of its own for each, without a 1-10 rating: emotions first, then what you experienced (dissociation: detachment, unreality, memory gaps, whether you remember it clearly; flashback: senses, how much it felt like now, trigger, body reaction), what helped and how long it lasted. Heart rate, HRV and motion at the moment of the report are kept for later (not when simulated). These reports never reach the anxiety model's training. Reports: a new category filter (All / Anxiety / Dissociation / Flashback). Watch: no changes, renumbered to match.
+
+## 1.4.0 · unreleased · backend
+
+`POST /api/v1/dissociation-reports` and `POST /api/v1/flashback-reports`, each in its own table (needs the `dissociation_reports` and `flashback_reports` tables, migration at the end of supabase_schema.sql). They never write to `panic_feedback`, so they can't become training labels.
+
 ## 1.6.0 · 2026-10-25 · phone + watch
 
 Errors have codes. Every failure the app shows now opens one error screen: a code (`E-2`, or `E-2 | 503` when the server answered with an HTTP status), what happened, why, what you can do, and a button to the place that fixes it (sign in again, App updates, Reload model, Internet settings). "Send report" sends the code, app and Android version, phone model, an optional note and the app's recent log to the CalmSense team; offline, it waits on the phone and goes with the next upload. The log keeps the last 500 lines and is saved on a crash or an error, never with heart rate, tokens or emails. Watch: no changes, renumbered to match.

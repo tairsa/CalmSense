@@ -12,6 +12,8 @@ DATA_FILE = os.path.join(DATA_DIR, "sensor_data.json")
 FEEDBACK_FILE = os.path.join(DATA_DIR, "panic_feedback.json")
 REPORTS_FILE = os.path.join(DATA_DIR, "panic_reports.json")
 PROBLEM_REPORTS_FILE = os.path.join(DATA_DIR, "problem_reports.json")
+DISSOCIATION_REPORTS_FILE = os.path.join(DATA_DIR, "dissociation_reports.json")
+FLASHBACK_REPORTS_FILE = os.path.join(DATA_DIR, "flashback_reports.json")
 PROFILES_FILE = os.path.join(DATA_DIR, "profiles.json")
 CONSENT_CODES_FILE = os.path.join(DATA_DIR, "consent_codes.json")
 LINKS_FILE = os.path.join(DATA_DIR, "therapist_patients.json")
@@ -22,6 +24,8 @@ TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
 REPORTS_TABLE_NAME = "panic_reports"
 PROBLEM_REPORTS_TABLE_NAME = "problem_reports"
+DISSOCIATION_REPORTS_TABLE_NAME = "dissociation_reports"
+FLASHBACK_REPORTS_TABLE_NAME = "flashback_reports"
 PROFILES_TABLE_NAME = "profiles"
 CONSENT_CODES_TABLE_NAME = "consent_codes"
 LINKS_TABLE_NAME = "therapist_patients"
@@ -321,6 +325,46 @@ def append_problem_report(record: dict) -> None:
             _write_fallback_or_raise("problem report insert", e)
 
     _json_append_to(PROBLEM_REPORTS_FILE, record)
+
+
+def _append_to(table: str, path: str, record: dict, what: str) -> None:
+    if _supabase is not None:
+        try:
+            _supabase.table(table).insert(record).execute()
+            return
+        except Exception as e:
+            _write_fallback_or_raise(what, e)
+
+    _json_append_to(path, record)
+
+
+def _read_from(table: str, path: str, what: str) -> list:
+    if _supabase is not None:
+        try:
+            return _select_all(table)
+        except Exception as e:
+            _read_fallback_or_raise(what, e)
+
+    return _json_read_from(path)
+
+
+# Manual dissociation / flashback journal entries. Their own tables, never
+# panic_feedback, so they can't reach anxiety-model training.
+def append_dissociation_report(record: dict) -> None:
+    # Module globals read at call time so tests can point them at a temp dir.
+    _append_to(DISSOCIATION_REPORTS_TABLE_NAME, DISSOCIATION_REPORTS_FILE, record, "dissociation report insert")
+
+
+def read_dissociation_reports() -> list:
+    return _read_from(DISSOCIATION_REPORTS_TABLE_NAME, DISSOCIATION_REPORTS_FILE, "dissociation report read")
+
+
+def append_flashback_report(record: dict) -> None:
+    _append_to(FLASHBACK_REPORTS_TABLE_NAME, FLASHBACK_REPORTS_FILE, record, "flashback report insert")
+
+
+def read_flashback_reports() -> list:
+    return _read_from(FLASHBACK_REPORTS_TABLE_NAME, FLASHBACK_REPORTS_FILE, "flashback report read")
 
 
 def read_problem_reports() -> list:

@@ -18,6 +18,8 @@ from models import (
     ConsentCodeRequest,
     DisplayNameRequest,
     ConsentCodeResponse,
+    DissociationReport,
+    FlashbackReport,
     PanicFeedback,
     PanicReport,
     ProblemReport,
@@ -26,7 +28,9 @@ from models import (
     SensorData,
 )
 from storage import (
+    append_dissociation_report,
     append_feedback,
+    append_flashback_report,
     append_problem_report,
     append_record,
     append_report,
@@ -76,7 +80,7 @@ _PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1"
 # docs are disabled in production, so /health is the only way to see which
 # build is actually serving - which is what makes "confirm, then bump" checkable
 # rather than a matter of trusting that the deploy landed.
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 app = FastAPI(
     title="CalmSense API",
@@ -204,6 +208,32 @@ def receive_panic_report(data: PanicReport, user_id: str = Depends(current_user_
         return {"success": True, "message": "Report saved."}
     except Exception:
         return _save_failed("report")
+
+
+def _save_manual_event(data, user_id: str, append, what: str):
+    """Shared by the dissociation and flashback routes. Deliberately never
+    touches panic_feedback: these reports must not train the anxiety model."""
+    record = data.model_dump()
+    record["user_id"] = user_id
+    if record["timestamp"] is None:
+        record["timestamp"] = datetime.now(timezone.utc).isoformat()
+    try:
+        append(record)
+        return {"success": True, "message": f"{what.capitalize()} saved."}
+    except Exception:
+        return _save_failed(what)
+
+
+@app.post("/api/v1/dissociation-reports", dependencies=_device_auth)
+def receive_dissociation_report(data: DissociationReport, user_id: str = Depends(current_user_id)):
+    """Manual dissociation journal entry (own table, not a training label)."""
+    return _save_manual_event(data, user_id, append_dissociation_report, "dissociation report")
+
+
+@app.post("/api/v1/flashback-reports", dependencies=_device_auth)
+def receive_flashback_report(data: FlashbackReport, user_id: str = Depends(current_user_id)):
+    """Manual flashback journal entry (own table, not a training label)."""
+    return _save_manual_event(data, user_id, append_flashback_report, "flashback report")
 
 
 def notify_problem_report(record: dict) -> None:

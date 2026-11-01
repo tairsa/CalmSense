@@ -32,6 +32,8 @@ def test_endpoints_require_a_bearer_token(raw_client):
     assert raw_client.get("/api/v1/sensor-data").status_code == 401
     assert raw_client.get("/api/v1/profile").status_code == 401
     assert raw_client.post("/api/v1/problem-reports", json={"code": 1}).status_code == 401
+    assert raw_client.post("/api/v1/dissociation-reports", json={}).status_code == 401
+    assert raw_client.post("/api/v1/flashback-reports", json={}).status_code == 401
     assert raw_client.get("/api/v1/therapist/t/patients").status_code == 401
     assert raw_client.post("/api/v1/consent-codes/redeem", json={"code": "x", "patient_id": "p"}).status_code == 401
 
@@ -159,3 +161,26 @@ def test_code_claim_is_compare_and_set():
     assert storage.mark_consent_code_used("ABC-DEF", "p2", "now") is False
     assert storage.find_consent_code("ABC-DEF")["used_by"] == "p1"
     assert storage.mark_consent_code_used("NOPE", "p1", "now") is False
+
+
+def test_dissociation_and_flashback_go_to_their_own_tables_not_training(client):
+    h = as_user("alice")
+    d = {"user_id": "victim", "emotions": ["Fear"], "experiences": ["Detached from body"],
+         "memory_clarity": "partial", "current_hr": 95.0, "hrv_source": "real_ibi"}
+    f = {"emotions": ["Shame"], "senses": ["Images"], "nowness": "now", "triggers": ["Sound"]}
+    assert client.post("/api/v1/dissociation-reports", json=d, headers=h).status_code == 200
+    assert client.post("/api/v1/flashback-reports", json=f, headers=h).status_code == 200
+
+    dis, fb = storage.read_dissociation_reports(), storage.read_flashback_reports()
+    assert [r["user_id"] for r in dis] == ["alice"] and [r["user_id"] for r in fb] == ["alice"]
+    assert dis[0]["timestamp"] and dis[0]["current_hr"] == 95.0 and fb[0]["nowness"] == "now"
+    # The whole point: nothing reaches the anxiety model's labels or journal.
+    assert storage.read_all_feedback() == [] and storage.read_all_reports() == []
+
+
+def test_dissociation_and_flashback_validation(client):
+    h = as_user("alice")
+    assert client.post("/api/v1/dissociation-reports", json={"memory_clarity": "maybe"}, headers=h).status_code == 422
+    assert client.post("/api/v1/flashback-reports", json={"nowness": "soon"}, headers=h).status_code == 422
+    assert client.post("/api/v1/flashback-reports", json={"duration_minutes": -1}, headers=h).status_code == 422
+    assert storage.read_dissociation_reports() == [] and storage.read_flashback_reports() == []

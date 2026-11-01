@@ -55,6 +55,14 @@ Phase 3 (phone 1.6.0, backend + admin 1.3.0, branch `standard-phase-3`):
    end of `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
 9. Then say "merge" (deploys backend 1.3.0 + admin) and "release" (tags v1.6.0).
 
+Dissociation + flashback (phone 1.7.0, backend 1.4.0, branch `trauma-events`, on top of phase 3):
+
+10. **Create the two tables** before this backend deploys. Supabase → SQL Editor → paste the
+    block under `Manual dissociation and flashback reports` at the end of
+    `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
+11. Try it on the phone: home → "I'm dissociating" → grounding → questionnaire → Reports →
+    Dissociation filter shows it; same for flashback.
+
 Carried over:
 
 - Install watch 1.4.1 (needs the watch's adb port) and check motion drops near 0 at rest.
@@ -73,6 +81,11 @@ Carried over:
   `notify_problem_report()` is a no-op until Alex adds the bot.
   Before release: try it on the phone (airplane mode → an error → Send report → back
   online → it shows on Problems).
+- Dissociation + flashback written 2026-11-01 on `trauma-events` (not merged, not released):
+  `EventReport.kt` (EventType enum, one local file + one endpoint per type, drafts not
+  posted until the questionnaire ends), `GroundingOverlay.kt`, `EventQuestionnaireScreen.kt`,
+  `EventChips.kt`, `EventReportDetailScreen.kt`, category filter in `ReportsScreen.kt`;
+  backend routes + tables. Vitals stored, not used yet. Not in admin app / therapist view.
 - Phase 3 next: System status screen, then the retrain-failure alert (Build checkpoint each).
 
 ## Closed

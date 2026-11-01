@@ -299,3 +299,62 @@ create index if not exists problem_reports_timestamp_idx
     on public.problem_reports ("timestamp" desc);
 
 alter table public.problem_reports enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Manual dissociation and flashback reports (phone 1.7.0 / backend 1.4.0).
+-- Journal entries only, in their own tables: never panic_feedback, so they
+-- can't become anxiety-model training labels. Vitals kept for later.
+-- ---------------------------------------------------------------------------
+create table if not exists public.dissociation_reports (
+    id                        bigint generated always as identity primary key,
+    user_id                   text        not null,
+    timestamp                 timestamptz,
+    emotions                  jsonb,
+    experiences               jsonb,
+    memory_clarity            text        check (memory_clarity in ('clear', 'partial', 'none')),
+    feeling                   text,
+    activity_before           text,
+    what_helped               text,
+    duration_minutes          integer     check (duration_minutes between 0 and 1440),
+    latitude                  double precision,
+    longitude                 double precision,
+    location_accuracy_m       double precision,
+    current_hr                double precision,
+    current_hrv               double precision,
+    hrv_source                text,
+    current_motion_intensity  double precision,
+    during_sleep              boolean,
+    created_at                timestamptz not null default now()
+);
+
+create table if not exists public.flashback_reports (
+    id                        bigint generated always as identity primary key,
+    user_id                   text        not null,
+    timestamp                 timestamptz,
+    emotions                  jsonb,
+    senses                    jsonb,
+    nowness                   text        check (nowness in ('memory', 'partial', 'now')),
+    triggers                  jsonb,
+    body_reactions            jsonb,
+    feeling                   text,
+    activity_before           text,
+    what_helped               text,
+    duration_minutes          integer     check (duration_minutes between 0 and 1440),
+    latitude                  double precision,
+    longitude                 double precision,
+    location_accuracy_m       double precision,
+    current_hr                double precision,
+    current_hrv               double precision,
+    hrv_source                text,
+    current_motion_intensity  double precision,
+    during_sleep              boolean,
+    created_at                timestamptz not null default now()
+);
+
+create index if not exists dissociation_reports_user_ts_idx
+    on public.dissociation_reports (user_id, "timestamp");
+create index if not exists flashback_reports_user_ts_idx
+    on public.flashback_reports (user_id, "timestamp");
+
+alter table public.dissociation_reports enable row level security;
+alter table public.flashback_reports    enable row level security;

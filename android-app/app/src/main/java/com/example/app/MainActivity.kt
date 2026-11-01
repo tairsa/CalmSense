@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -99,6 +101,15 @@ import com.example.app.ui.ErrorDialog
 import com.example.app.ui.LoginScreen
 import com.example.app.ui.PatientDetailScreen
 import com.example.app.ui.QuestionnaireScreen
+import com.example.app.ui.EventAnswers
+import com.example.app.ui.EventQuestionnaireScreen
+import com.example.app.ui.EventReportDetailScreen
+import com.example.app.ui.GroundingOverlay
+import com.example.app.data.EventReportEntity
+import com.example.app.data.EventReportRepository
+import com.example.app.data.EventType
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import com.example.app.ui.ProfileUnreachableScreen
 import com.example.app.ui.RolePickerScreen
 import com.example.app.ui.StatsScreen
@@ -115,6 +126,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlin.math.ln
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -179,6 +191,8 @@ private const val ROUTE_REPORTS = "reports"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_REPORT_DETAIL = "report"
 private const val ROUTE_QUESTIONNAIRE = "questionnaire"
+private const val ROUTE_EVENT_QUESTIONNAIRE = "event_questionnaire"
+private const val ROUTE_EVENT_DETAIL = "event_detail"
 private const val ROUTE_STATS = "stats"
 private const val ROUTE_CONNECT_THERAPIST = "connect-therapist"
 private const val ROUTE_THERAPIST_DASHBOARD = "therapist-dashboard"
@@ -222,6 +236,16 @@ class HeartRateViewModel : ViewModel() {
     // Journal (panic reports).
     private var reportRepo: PanicReportRepository? = null
     var reports by mutableStateOf<List<PanicReportEntity>>(emptyList())
+
+    // Dissociation + flashback reports: own repositories, never the panic
+    // feedback path, so they can't train the anxiety model.
+    private var eventRepos: Map<EventType, EventReportRepository> = emptyMap()
+    var events by mutableStateOf<List<EventReportEntity>>(emptyList())
+    /** Non-null while the grounding overlay is up for a report of this type. */
+    var groundingFor by mutableStateOf<EventType?>(null)
+    private var pendingEventDraft: Deferred<Long>? = null
+    /** When non-null, navigate to the event questionnaire for (type, id). */
+    var pendingEventQuestionnaire by mutableStateOf<Pair<EventType, Long>?>(null)
         private set
     /** When non-null, the dashboard should navigate to /questionnaire/<id>. */
     var pendingQuestionnaireId by mutableStateOf<Long?>(null)
@@ -297,6 +321,16 @@ class HeartRateViewModel : ViewModel() {
                 repo.observeAll().collectLatest { rows -> reports = rows }
             }
             viewModelScope.launch { repo.syncPending() }
+
+            val ctx = context.applicationContext
+            eventRepos = listOf(EventType.DISSOCIATION, EventType.FLASHBACK)
+                .associateWith { EventReportRepository.get(ctx, it) }
+            val (dis, fb) = eventRepos.values.toList()
+            viewModelScope.launch {
+                combine(dis.observeAll(), fb.observeAll()) { a, b -> a + b }
+                    .collectLatest { events = it }
+            }
+            viewModelScope.launch { eventRepos.values.forEach { it.syncPending() } }
         }
     }
 
@@ -534,7 +568,10 @@ class HeartRateViewModel : ViewModel() {
                 // Connection came back: push everything held while offline.
                 if (r == PingResult.Connected) {
                     if (UploadQueue.pendingCount.value > 0) UploadQueue.flush(pingBackend)
-                    if (wasOffline) reportRepo?.syncPending()
+                    if (wasOffline) {
+                        reportRepo?.syncPending()
+                        eventRepos.values.forEach { it.syncPending() }
+                    }
                     wasOffline = false
                 } else {
                     wasOffline = true
@@ -774,6 +811,67 @@ class HeartRateViewModel : ViewModel() {
         // Row is already written; nothing to do besides clearing nav signal.
         PanicEventContext.take()
         pendingQuestionnaireId = null
+    }
+
+    /**
+     * Manual dissociation / flashback report. Unlike [logManualPanic] there is
+     * no breathing, no severity and no [submitFeedback]: a draft row with the
+     * vitals snapshot is saved locally at once, then grounding, then the
+     * questionnaire. Doesn't touch PanicEventContext or the pending* feedback
+     * fields, so an anxiety flow in progress is unaffected.
+     */
+    fun logManualEvent(type: EventType) {
+        val repo = eventRepos[type] ?: return
+        // Vitals only when they're real (watch / Health Connect), never simulated.
+        val real = dataSource != VitalsSource.SIMULATED
+        val draft = EventReportEntity(
+            type = type,
+            timestampMs = System.currentTimeMillis(),
+            currentHr = if (real) currentHr else null,
+            currentHrv = if (real) currentHrv else null,
+            hrvSource = if (real && currentHrv != null) hrvSource else null,
+            currentMotionIntensity = if (real) motionFeatureFor(motionIntensity, isMoving).toFloat() else null,
+            duringSleep = if (dataSource == VitalsSource.WATCH) isSleeping else null,
+        )
+        val ctx = appContext
+        pendingEventDraft = viewModelScope.async {
+            val id = repo.insertDraft(draft)
+            if (ctx != null) launch {
+                val loc = LocationProvider.getCurrentLocation(ctx) ?: return@launch
+                val row = repo.findById(id) ?: return@launch
+                // Only while still a draft: finishAndSync rewrites the row.
+                if (row.draft) repo.update(row.copy(latitude = loc.latitude, longitude = loc.longitude, locationAccuracyM = loc.accuracy))
+            }
+            id
+        }
+        groundingFor = type
+    }
+
+    fun finishGrounding() {
+        val type = groundingFor ?: return
+        groundingFor = null
+        val draft = pendingEventDraft ?: return
+        viewModelScope.launch { pendingEventQuestionnaire = type to draft.await() }
+    }
+
+    fun saveEventQuestionnaire(type: EventType, id: Long, a: EventAnswers?) {
+        val repo = eventRepos[type] ?: return
+        pendingEventQuestionnaire = null
+        viewModelScope.launch {
+            val row = repo.findById(id) ?: return@launch
+            val filled = if (a == null) row else row.copy(
+                emotions = a.emotions, feeling = a.feeling, activityBefore = a.activityBefore,
+                whatHelped = a.whatHelped, durationMinutes = a.durationMinutes,
+                experiences = a.experiences, memoryClarity = a.memoryClarity,
+                senses = a.senses, nowness = a.nowness, triggers = a.triggers, bodyReactions = a.bodyReactions,
+            )
+            repo.finishAndSync(filled)
+        }
+    }
+
+    fun deleteEvent(type: EventType, id: Long) {
+        val repo = eventRepos[type] ?: return
+        viewModelScope.launch { repo.delete(id) }
     }
 
     fun deleteReport(id: Long) {
@@ -1112,6 +1210,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                LaunchedEffect(viewModel.pendingEventQuestionnaire) {
+                    viewModel.pendingEventQuestionnaire?.let { (type, id) ->
+                        navController.navigate("$ROUTE_EVENT_QUESTIONNAIRE/${type.name}/$id")
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = MaterialTheme.colorScheme.background,
@@ -1158,10 +1262,15 @@ class MainActivity : AppCompatActivity() {
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
                                     reports = viewModel.reports,
-                                    onReportClick = { id ->
-                                        navController.navigate("$ROUTE_REPORT_DETAIL/$id")
+                                    events = viewModel.events,
+                                    onReportClick = { type, id ->
+                                        if (type == EventType.ANXIETY) navController.navigate("$ROUTE_REPORT_DETAIL/$id")
+                                        else navController.navigate("$ROUTE_EVENT_DETAIL/${type.name}/$id")
                                     },
-                                    onReportDelete = { id -> viewModel.deleteReport(id) },
+                                    onReportDelete = { type, id ->
+                                        if (type == EventType.ANXIETY) viewModel.deleteReport(id)
+                                        else viewModel.deleteEvent(type, id)
+                                    },
                                 )
                             }
                             composable(ROUTE_STATS) {
@@ -1192,6 +1301,29 @@ class MainActivity : AppCompatActivity() {
                                     onBack = { navController.popBackStack() },
                                 )
                             }
+                            composable("$ROUTE_EVENT_QUESTIONNAIRE/{type}/{id}") { backStack ->
+                                val type = EventType.valueOf(backStack.arguments?.getString("type") ?: EventType.DISSOCIATION.name)
+                                val id = backStack.arguments?.getString("id")?.toLongOrNull() ?: -1L
+                                EventQuestionnaireScreen(
+                                    type = type,
+                                    onSkip = {
+                                        viewModel.saveEventQuestionnaire(type, id, null)
+                                        navController.popBackStack(ROUTE_MONITOR, inclusive = false)
+                                    },
+                                    onSave = { answers ->
+                                        viewModel.saveEventQuestionnaire(type, id, answers)
+                                        navController.popBackStack(ROUTE_MONITOR, inclusive = false)
+                                    },
+                                )
+                            }
+                            composable("$ROUTE_EVENT_DETAIL/{type}/{id}") { backStack ->
+                                val type = backStack.arguments?.getString("type")
+                                val id = backStack.arguments?.getString("id")?.toLongOrNull()
+                                EventReportDetailScreen(
+                                    report = viewModel.events.firstOrNull { it.id == id && it.type.name == type },
+                                    onBack = { navController.popBackStack() },
+                                )
+                            }
                             composable("$ROUTE_QUESTIONNAIRE/{id}") { backStack ->
                                 val id = backStack.arguments?.getString("id")?.toLongOrNull() ?: -1L
                                 QuestionnaireScreen(
@@ -1205,6 +1337,10 @@ class MainActivity : AppCompatActivity() {
                                     },
                                 )
                             }
+                        }
+
+                        if (viewModel.groundingFor != null) {
+                            GroundingOverlay(onDone = { viewModel.finishGrounding() })
                         }
 
                         if (viewModel.showBreathingExercise) {
@@ -1670,6 +1806,24 @@ fun CalmSenseDashboard(
             subtitle = stringResource(R.string.home_panic_subtitle),
             icon = Icons.Default.Warning,
             onClick = { viewModel.logManualPanic() }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ActionTile(
+            title = stringResource(R.string.home_dissociation_title),
+            subtitle = stringResource(R.string.home_dissociation_subtitle),
+            icon = Icons.Default.BlurOn,
+            onClick = { viewModel.logManualEvent(EventType.DISSOCIATION) }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        ActionTile(
+            title = stringResource(R.string.home_flashback_title),
+            subtitle = stringResource(R.string.home_flashback_subtitle),
+            icon = Icons.Default.History,
+            onClick = { viewModel.logManualEvent(EventType.FLASHBACK) }
         )
 
         if (advanced) {

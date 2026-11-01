@@ -206,11 +206,14 @@ class BackendClient(private val baseUrl: String) {
     }
 
     /** "Report a problem". [body] is built by ProblemReport and sent as is. */
-    suspend fun submitProblemReport(body: JSONObject): PostResult = withContext(Dispatchers.IO) {
+    suspend fun submitProblemReport(body: JSONObject): PostResult = postJson("/api/v1/problem-reports", body)
+
+    /** POST a ready-made JSON body to [path] with the user's token. */
+    suspend fun postJson(path: String, body: JSONObject): PostResult = withContext(Dispatchers.IO) {
         runCatching {
             // At SEND time, like the others: the report may have waited offline.
             val token = SessionManager.validAccessToken()
-            val conn = URL("$baseUrl/api/v1/problem-reports").openConnection() as HttpURLConnection
+            val conn = URL("$baseUrl$path").openConnection() as HttpURLConnection
             conn.connectTimeout = 15_000
             conn.readTimeout = 15_000
             conn.requestMethod = "POST"

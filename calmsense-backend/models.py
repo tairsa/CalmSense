@@ -83,6 +83,45 @@ class PanicReport(BaseModel):
     hrv_source: Optional[HrvSourceValue] = None
 
 
+class _ManualEventReport(BaseModel):
+    """Fields shared by the manual dissociation and flashback reports.
+
+    These are journal entries only: they go to their own tables and never to
+    panic_feedback, so they can't become training labels for the anxiety
+    model. No user_id: the reporter comes from the verified token. Chip lists
+    hold stable English keys, not display text. Vitals are kept for later
+    analysis and not used yet.
+    """
+
+    timestamp: Optional[str] = None             # ISO 8601 of the report
+    emotions: List[str] = Field(default_factory=list, max_length=30)
+    feeling: Optional[str] = Field(None, max_length=4000)
+    activity_before: Optional[str] = Field(None, max_length=2000)
+    what_helped: Optional[str] = Field(None, max_length=2000)
+    duration_minutes: Optional[int] = Field(None, ge=0, le=1440)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    location_accuracy_m: Optional[float] = None
+    current_hr: Optional[float] = None
+    current_hrv: Optional[float] = None
+    current_motion_intensity: Optional[float] = None
+    hrv_source: Optional[HrvSourceValue] = None
+    during_sleep: Optional[bool] = None
+
+
+class DissociationReport(_ManualEventReport):
+    experiences: List[str] = Field(default_factory=list, max_length=30)
+    memory_clarity: Optional[Literal["clear", "partial", "none"]] = None
+
+
+class FlashbackReport(_ManualEventReport):
+    senses: List[str] = Field(default_factory=list, max_length=30)
+    # How much it felt like it was happening now: the defining flashback feature.
+    nowness: Optional[Literal["memory", "partial", "now"]] = None
+    triggers: List[str] = Field(default_factory=list, max_length=30)
+    body_reactions: List[str] = Field(default_factory=list, max_length=30)
+
+
 class ProblemReport(BaseModel):
     """"Report a problem" from the phone's error screen.
 
