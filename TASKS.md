@@ -60,7 +60,7 @@ Dissociation + flashback (phone 1.7.0, backend 1.4.0, branch `trauma-events`, on
 10. ✅ (2026-11-01) **Create the two tables** before this backend deploys. Supabase → SQL Editor → paste the
     block under `Manual dissociation and flashback reports` at the end of
     `calmsense-backend/supabase_schema.sql` → Run. Safe to run twice.
-11. Try it on the phone: home → "I'm dissociating" → grounding → questionnaire → Reports →
+11. 1.7.0 is released: update from Settings → App updates, then try it on the phone: home → "I'm dissociating" → grounding → questionnaire → Reports →
     Dissociation filter shows it; same for flashback.
 
 Carried over:
@@ -84,7 +84,7 @@ Carried over:
 - 2026-11-01: `main` = 104a8f1 (phase 3 + dissociation/flashback). Backend 1.4.0 deployed by hand
   (gcloud, image tag 104a8f1, revision calmsense-00015-mar; rollback: calmsense-00013-tih).
   CI's deploy job is skipped: repo variable `GCP_PROJECT_ID` and the WIF secrets were never set.
-  Phone 1.7.0 not released yet (needs "release" after an on-phone test).
+  Phone + watch 1.7.0 released 2026-11-01 (GitHub release v1.7.0, includes phase 3's 1.6.0).
 - Dissociation + flashback written 2026-11-01 on `trauma-events`, merged to main:
   `EventReport.kt` (EventType enum, one local file + one endpoint per type, drafts not
   posted until the questionnaire ends), `GroundingOverlay.kt`, `EventQuestionnaireScreen.kt`,
