@@ -68,6 +68,20 @@ System status (phone 1.8.0, branch `system-status`):
 12. ✅ 1.8.0 released 2026-11-02 (GitHub release v1.8.0). Update from Settings → App updates and open
     Settings → System status: with the watch on, every row should be green within a minute.
 
+Retrain failure alert (backend 1.5.0 + admin, phone 1.8.1, branch `retrain-alerts`):
+
+13. **Create the two tables.** Supabase → SQL Editor → paste the block under
+    `Server incidents (backend 1.5.0)` at the end of `calmsense-backend/supabase_schema.sql`
+    → Run. Safe to run twice.
+14. Then say "merge", "deploy" and "release" (backend 1.5.0 + admin, phone v1.8.1).
+15. **Make the daily-check token**, after backend 1.5.0 is deployed (Claude says when). In cmd:
+    ```bat
+    cd /d "C:\claude projects\Calm-Sense\CalmSense"
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts\set-cron-token.ps1
+    ```
+    It makes a random token and gives it to GitHub (`CALMSENSE_CRON_TOKEN`) and Cloud Run
+    without printing it. Then run the job once: `gh workflow run daily-check.yml`.
+
 Carried over:
 
 - Install watch 1.4.1 (needs the watch's adb port) and check motion drops near 0 at rest.
@@ -99,7 +113,13 @@ Carried over:
   merged/released): `ui/SystemStatusScreen.kt`, rules in `data/SystemStatus.kt` (+ test),
   `UploadQueue.lastSuccessMs`. Merged to main (a981b1d) and released as v1.8.0 2026-11-02;
   CI + Release green. Not yet tried on the phone.
-- Phase 3 next: the retrain-failure alert (Build checkpoint).
+- 2026-11-02: retrain-failure alert written on branch `retrain-alerts`: `incidents.py`
+  (E-15/E-16, one row per code+user, 72 h auto-fix, digest), `auto_retrain.py` records them,
+  `POST /api/v1/ops/daily-check` (X-Cron-Token), `GET /api/v1/admin/incidents`,
+  `.github/workflows/daily-check.yml` (public run page: codes + counts only), admin Problems
+  section + Dashboard banner; phone 1.8.1 "Check now" flushes the queue. Backend 51 tests +
+  scripts green, admin builds, phone builds. Not deployed.
+- Phase 3 done after this ships. Next: phase 4 (needs dark theme + default language answers).
 
 ## Closed
 

@@ -17,7 +17,7 @@ from conftest import as_user
 
 ADMIN_ROUTES = ["/api/v1/admin/users", "/api/v1/admin/metrics/global", "/api/v1/admin/admins",
                 "/api/v1/admin/users/u/sensor-data", "/api/v1/admin/auto-retrain/status",
-                "/api/v1/admin/problem-reports"]
+                "/api/v1/admin/problem-reports", "/api/v1/admin/incidents"]
 
 
 @pytest.fixture

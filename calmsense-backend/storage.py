@@ -20,6 +20,8 @@ LINKS_FILE = os.path.join(DATA_DIR, "therapist_patients.json")
 ADMIN_USERS_FILE = os.path.join(DATA_DIR, "admin_users.json")
 MODEL_WEIGHTS_FILE = os.path.join(DATA_DIR, "model_weights.json")
 USER_MODEL_STATE_FILE = os.path.join(DATA_DIR, "user_model_state.json")
+SERVER_INCIDENTS_FILE = os.path.join(DATA_DIR, "server_incidents.json")
+SERVER_STATE_FILE = os.path.join(DATA_DIR, "server_state.json")
 TABLE_NAME = "sensor_data"
 FEEDBACK_TABLE_NAME = "panic_feedback"
 REPORTS_TABLE_NAME = "panic_reports"
@@ -32,6 +34,8 @@ LINKS_TABLE_NAME = "therapist_patients"
 ADMIN_USERS_TABLE_NAME = "admin_users"
 MODEL_WEIGHTS_TABLE_NAME = "model_weights"
 USER_MODEL_STATE_TABLE_NAME = "user_model_state"
+SERVER_INCIDENTS_TABLE_NAME = "server_incidents"
+SERVER_STATE_TABLE_NAME = "server_state"
 
 # ---------------------------------------------------------------------------
 # Storage backend selection
@@ -895,3 +899,53 @@ def upsert_user_model_state(user_id: str, active_weights_id: int | None,
     rows.append(record)
     _json_write_all(USER_MODEL_STATE_FILE, rows)
     return record
+
+
+# ---------------------------------------------------------------------------
+# Server incidents (E-15 retrain failed, E-16 pass didn't run) and a tiny
+# key/value store for server bookkeeping (last pass time). See incidents.py.
+# ---------------------------------------------------------------------------
+
+def _get_by_key(table: str, path: str, key_col: str, key: str, what: str) -> dict | None:
+    if _supabase is not None:
+        try:
+            rows = _supabase.table(table).select("*").eq(key_col, key).limit(1).execute().data or []
+            return rows[0] if rows else None
+        except Exception as e:
+            _read_fallback_or_raise(what, e)
+    return next((r for r in _json_read_from(path) if r.get(key_col) == key), None)
+
+
+def _upsert_by_key(table: str, path: str, key_col: str, record: dict, what: str) -> None:
+    if _supabase is not None:
+        try:
+            _supabase.table(table).upsert(record, on_conflict=key_col).execute()
+            return
+        except Exception as e:
+            _write_fallback_or_raise(what, e)
+    _json_replace_by_key(path, key_col, record)
+
+
+def get_incident(key: str) -> dict | None:
+    return _get_by_key(SERVER_INCIDENTS_TABLE_NAME, SERVER_INCIDENTS_FILE, "key", key, "incident get")
+
+
+def upsert_incident(record: dict) -> None:
+    _upsert_by_key(SERVER_INCIDENTS_TABLE_NAME, SERVER_INCIDENTS_FILE, "key", record, "incident upsert")
+
+
+def read_incidents() -> list:
+    """All incidents, most recently seen first."""
+    rows = _read_from(SERVER_INCIDENTS_TABLE_NAME, SERVER_INCIDENTS_FILE, "incident read")
+    rows.sort(key=lambda r: r.get("last_seen") or "", reverse=True)
+    return rows
+
+
+def get_server_state(key: str) -> str | None:
+    row = _get_by_key(SERVER_STATE_TABLE_NAME, SERVER_STATE_FILE, "key", key, "server state get")
+    return row.get("value") if row else None
+
+
+def set_server_state(key: str, value: str) -> None:
+    _upsert_by_key(SERVER_STATE_TABLE_NAME, SERVER_STATE_FILE, "key",
+                   {"key": key, "value": value, "updated_at": _now_iso()}, "server state set")

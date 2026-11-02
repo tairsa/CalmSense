@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 import auto_retrain
+import incidents
 import model_service
 import storage
 from auth import (
@@ -123,6 +124,15 @@ def user_sensor_data(user_id: str, limit: int = 500, admin: dict = Depends(get_c
 @router.get("/users/{user_id}/metrics")
 def user_metrics(user_id: str, admin: dict = Depends(get_current_admin)):
     return model_service.compute_user_metrics(user_id)
+
+
+@router.get("/incidents")
+def server_incidents(admin: dict = Depends(get_current_admin)):
+    """Server incidents (E-15 retrain failed, E-16 pass missed), open first."""
+    rows = storage.read_incidents()
+    rows.sort(key=lambda r: r.get("resolved_at") is not None)  # stable: keeps last_seen order
+    return {"open": sum(1 for r in rows if not r.get("resolved_at")), "incidents": rows,
+            "quiet_hours": incidents.QUIET_HOURS}
 
 
 @router.get("/problem-reports")

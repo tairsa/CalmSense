@@ -15,8 +15,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import traceback
 from datetime import datetime, timezone
 
+import incidents
 import model_service
 import storage
 
@@ -74,11 +76,16 @@ def run_pass() -> dict:
         try:
             results.append(_check_user(user_id))
         except ImportError:
-            results.append({"user_id": user_id, "action": "error",
-                            "reason": "scikit-learn not installed on the server"})
+            reason = "scikit-learn not installed on the server"
+            results.append({"user_id": user_id, "action": "error", "reason": reason})
+            incidents.record(incidents.RETRAIN_FAILED, user_id, f"Retrain failed: {reason}",
+                             traceback.format_exc())
         except Exception as e:  # one bad user must not kill the loop
             log.exception("Auto-retrain failed for user %s", user_id)
             results.append({"user_id": user_id, "action": "error", "reason": str(e)})
+            incidents.record(incidents.RETRAIN_FAILED, user_id,
+                             f"Retrain failed: {type(e).__name__}: {str(e)[:200]}",
+                             traceback.format_exc())
 
     retrained = [r for r in results if r["action"] == "retrained"]
     for r in retrained:
@@ -91,6 +98,7 @@ def run_pass() -> dict:
     _last_run = {"started_at": started, "finished_at": _now_iso(),
                  "users_checked": len(user_ids), "retrained": len(retrained),
                  "results": results}
+    incidents.mark_pass_finished()
     return _last_run
 
 
@@ -110,6 +118,8 @@ async def _loop() -> None:
             await asyncio.to_thread(run_pass)
         except Exception:
             log.exception("Auto-retrain pass crashed; will retry next interval")
+            incidents.record(incidents.PASS_MISSED, None, "Auto-retrain pass crashed",
+                             traceback.format_exc())
         await asyncio.sleep(INTERVAL_MINUTES * 60)
 
 

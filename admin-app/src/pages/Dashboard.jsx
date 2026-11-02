@@ -14,6 +14,7 @@ import {
 export default function Dashboard() {
   const { data, error, loading, reload } = useAsync(() => api.globalMetrics(), []);
   const usersQ = useAsync(() => api.users(), []);
+  const incidentsQ = useAsync(() => api.incidents(), []);
 
   if (loading) return <Spinner />;
   const users = usersQ.data?.users || [];
@@ -26,9 +27,15 @@ export default function Dashboard() {
         onRefresh={() => {
           reload();
           usersQ.reload();
+          incidentsQ.reload();
         }}
       />
       <ErrorBox error={error} />
+      {incidentsQ.data?.open > 0 && (
+        <Link to="/problems" className="alert alert-error" style={{ display: "block" }}>
+          {incidentsQ.data.open} open server incident{incidentsQ.data.open === 1 ? "" : "s"} (auto-retrain). See Problems →
+        </Link>
+      )}
       {data && (
         <>
           <div className="stat-grid">

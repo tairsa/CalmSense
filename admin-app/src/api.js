@@ -66,6 +66,7 @@ export const api = {
     request("/api/v1/admin/auth/register", { method: "POST", body: payload }),
   admins: () => request("/api/v1/admin/admins"),
   problemReports: () => request("/api/v1/admin/problem-reports"),
+  incidents: () => request("/api/v1/admin/incidents"),
 
   globalMetrics: () => request("/api/v1/admin/metrics/global"),
   users: () => request("/api/v1/admin/users"),

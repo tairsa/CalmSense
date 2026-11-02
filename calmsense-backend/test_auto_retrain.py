@@ -31,6 +31,8 @@ storage.REPORTS_FILE = os.path.join(_tmp, "panic_reports.json")
 storage.ADMIN_USERS_FILE = os.path.join(_tmp, "admin_users.json")
 storage.MODEL_WEIGHTS_FILE = os.path.join(_tmp, "model_weights.json")
 storage.USER_MODEL_STATE_FILE = os.path.join(_tmp, "user_model_state.json")
+storage.SERVER_INCIDENTS_FILE = os.path.join(_tmp, "server_incidents.json")
+storage.SERVER_STATE_FILE = os.path.join(_tmp, "server_state.json")
 
 import auto_retrain  # noqa: E402
 import model_service  # noqa: E402

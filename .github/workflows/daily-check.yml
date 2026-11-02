@@ -1,0 +1,61 @@
+# Daily server check and digest (backend 1.5.0, design: Alex 2026-11-02).
+# Calls POST /api/v1/ops/daily-check, which flags a missed auto-retrain pass
+# (E-16), runs a pass now (a sleeping Cloud Run instance never runs the hourly
+# loop), resolves incidents quiet for 72 h, and returns the digest.
+#
+# The run FAILS while any incident is open, so GitHub emails whoever last
+# edited the cron line below: that email is the alert.
+#
+# The repo is public and so is this run page: it shows codes and counts only.
+# Summaries, user ids and logs are on the admin app's Problems page.
+#
+# Secret (Settings -> Secrets and variables -> Actions):
+#   CALMSENSE_CRON_TOKEN  same value as the Cloud Run env var CALMSENSE_CRON_TOKEN.
+# shortcut: GitHub pauses schedules after 60 days without commits; re-enable it
+# under Actions if the repo goes quiet that long.
+name: Daily server check
+
+on:
+  schedule:
+    - cron: "7 5 * * *" # 05:07 UTC = 07:07/08:07 in Israel
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BACKEND: https://calmsense-wzkmopdeua-ew.a.run.app
+    steps:
+      - name: Run the check
+        env:
+          TOKEN: ${{ secrets.CALMSENSE_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Cold start + a retrain pass can take a while; retry network failures.
+          code=$(curl -sS -o body.json -w '%{http_code}' --max-time 600 \
+            --retry 3 --retry-delay 30 --retry-all-errors \
+            -X POST -H "X-Cron-Token: $TOKEN" "$BACKEND/api/v1/ops/daily-check")
+          if [ "$code" != "200" ]; then
+            echo "::error::daily-check answered HTTP $code"
+            echo "## Daily check failed: HTTP $code" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          open=$(jq '.open' body.json)
+          {
+            echo "## CalmSense server · $(date -u +%F)"
+            echo
+            echo "**$open open**, $(jq '.fixed_last_day' body.json) fixed in the last 24 h."
+            echo
+            jq -r '.incidents[] | "- E-\(.code): seen \(.count)×, last \(.last_seen)"' body.json
+            echo
+            echo "Details: admin app → Problems → Server incidents."
+          } >> "$GITHUB_STEP_SUMMARY"
+          rm body.json
+          if [ "$open" -gt 0 ]; then
+            echo "::error::$open open server incident(s)"
+            exit 1
+          fi

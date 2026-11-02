@@ -65,9 +65,10 @@ import java.util.Date
 private class StatusRow(val title: Int, val text: String, val level: StatusLevel, val detail: String?)
 
 /**
- * Settings → System status. Read-only on purpose (Alex, 2026-11-02): no fix links,
+ * Settings → System status. No fix links (Alex, 2026-11-02),
  * no report button. Plain dots by default; Advanced mode adds the raw values.
- * Refreshes on open, every 3 s while open (backend every 30 s), and on "Check now".
+ * Refreshes on open, every 3 s while open (backend every 30 s), and on "Check now",
+ * which also sends the waiting uploads first.
  */
 @Composable
 fun SystemStatusScreen(onBack: () -> Unit) {
@@ -84,6 +85,12 @@ fun SystemStatusScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(3_000) } }
     LaunchedEffect(checkRequests) {
+        // "Check now" also sends what is waiting (Alex, 2026-11-02), so the rows
+        // show the state after a real attempt. Opening the screen only reads.
+        if (checkRequests > 0) {
+            ping = null
+            UploadQueue.flush(client)
+        }
         while (true) {
             ping = null
             now = System.currentTimeMillis()

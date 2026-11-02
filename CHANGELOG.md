@@ -4,6 +4,14 @@ Every shipped build, newest first. Versioning rules: VERSIONING.md.
 A release takes its notes from the section whose heading starts with its version
 and names the phone (`.github/workflows/release.yml`).
 
+## 1.8.1 · unreleased · phone + watch
+
+System status: "Check now" also sends anything waiting to upload, then checks again. Watch: no changes, renumbered to match.
+
+## 1.5.0 · unreleased · backend + admin
+
+Retrain failures are no longer silent. A retrain that fails (E-15, per user) or an auto-retrain pass that didn't run (E-16) opens a server incident with a short summary, the code and the error's log. A repeat raises its count instead of adding rows, and it closes itself after 72 h without a repeat. A daily GitHub job (`daily-check.yml`) calls the new `POST /api/v1/ops/daily-check`, which also runs a retrain pass (Cloud Run sleeps, so the hourly loop may not run) and fails while anything is open, which emails Alex. Admin: Problems page has a "Server incidents" section, the Dashboard a red banner while one is open. Needs the `server_incidents` and `server_state` tables (end of supabase_schema.sql) and the `CALMSENSE_CRON_TOKEN` secret on Cloud Run and GitHub.
+
 ## 1.8.0 · 2026-11-02 · phone + watch
 
 Settings → System status: one screen that shows whether everything works. Account, app version, last update check, watch (connected, off the wrist, or when it was last heard from), last successful upload, how many items wait to upload, whether the server answers, and when your personal model was last trained. Each row has a green, amber or red dot with plain words; Advanced mode adds exact times, error codes (`E-2 | 503`) and the queue by type. It refreshes when opened, live while open, and with "Check now". Read-only: no buttons that change anything. Watch: no changes, renumbered to match.

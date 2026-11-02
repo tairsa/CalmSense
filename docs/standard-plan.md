@@ -115,6 +115,9 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
 - Settings → Report a problem → backend `/report` (checks the Supabase JWT) → the shared
   Telegram bot. Sentry stays for crashes.
 - Push for the auto-retrain failure alert (Telegram is enough; FCM can wait).
+  Alex (2026-11-02): failures = a retrain error (E-15) or a missed pass (E-16); lower
+  accuracy is fine. Admin dashboard + a server monitor, daily digest, fixed after 72 h
+  quiet. Built as server incidents + daily GitHub job (backend 1.5.0), branch `retrain-alerts`.
 
 **4. Client path + UI standard (1.7.0 or 2.0.0)**
 - Retrofit (Kotlin): splash, skeletons, pull-to-refresh, long-press menus, theme setting

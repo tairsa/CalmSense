@@ -44,6 +44,8 @@ object ErrorCatalog {
     val UNEXPECTED = ErrorInfo(12, R.string.e12_title, R.string.e12_cause, R.string.e12_solution)
     val TOO_MANY_TRIES = ErrorInfo(13, R.string.e13_title, R.string.e13_cause, R.string.e13_solution)
     val RESET_CODE = ErrorInfo(14, R.string.e14_title, R.string.e14_cause, R.string.e14_solution)
+    // 15 and 16 are taken by the server (calmsense-backend/incidents.py): E-15 retrain
+    // failed, E-16 auto-retrain pass missed. The next phone code is 17.
 
     val all = listOf(
         NO_INTERNET, SERVER, SIGNED_OUT, WRONG_CREDENTIALS, EMAIL_NOT_CONFIRMED, FINGERPRINT_OFF,

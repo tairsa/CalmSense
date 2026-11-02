@@ -358,3 +358,32 @@ create index if not exists flashback_reports_user_ts_idx
 
 alter table public.dissociation_reports enable row level security;
 alter table public.flashback_reports    enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Server incidents (backend 1.5.0): auto-retrain failures for the daily digest
+-- and the admin Problems page. One row per (code, user); a repeat raises
+-- `count` and `last_seen`. Resolved after 72 h without a repeat.
+-- server_state: small key/value bookkeeping (last auto-retrain pass).
+-- Safe to run twice.
+-- ---------------------------------------------------------------------------
+create table if not exists public.server_incidents (
+    key          text        primary key,          -- 'E-15:<user_id>' or 'E-16:-'
+    code         integer     not null check (code >= 1),
+    user_id      text,
+    summary      text        not null,
+    logs         text        not null default '',
+    count        integer     not null default 1,
+    first_seen   timestamptz not null,
+    last_seen    timestamptz not null,
+    resolved_at  timestamptz
+);
+
+alter table public.server_incidents enable row level security;
+
+create table if not exists public.server_state (
+    key         text        primary key,
+    value       text        not null,
+    updated_at  timestamptz not null default now()
+);
+
+alter table public.server_state enable row level security;

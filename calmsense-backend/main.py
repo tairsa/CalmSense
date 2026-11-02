@@ -2,6 +2,7 @@ import hmac
 import logging
 import os
 import secrets
+import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -11,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import auto_retrain
+import incidents
 import model_service
 from admin_routes import router as admin_router
 from auth import REDEEM_LIMITER, current_user_id
@@ -80,7 +82,7 @@ _PROD = os.environ.get("CALMSENSE_REQUIRE_SUPABASE", "").strip().lower() in ("1"
 # docs are disabled in production, so /health is the only way to see which
 # build is actually serving - which is what makes "confirm, then bump" checkable
 # rather than a matter of trusting that the deploy landed.
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 
 app = FastAPI(
     title="CalmSense API",
@@ -133,6 +135,31 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API
 
 
 _device_auth = [Depends(require_api_key)]
+
+
+# The daily GitHub Actions job (.github/workflows/daily-check.yml) is the only
+# caller. Unset token = endpoint off, so a deploy without the secret is safe.
+_CRON_TOKEN = os.environ.get("CALMSENSE_CRON_TOKEN", "").strip()
+
+
+@app.post("/api/v1/ops/daily-check")
+def daily_check(x_cron_token: Optional[str] = Header(default=None, alias="X-Cron-Token")):
+    """Once a day: flag a missed pass (E-16), run a pass now (a sleeping Cloud
+    Run instance never runs the hourly loop), resolve incidents quiet for 72 h,
+    and return the digest."""
+    if not _CRON_TOKEN:
+        raise HTTPException(status_code=503, detail="Daily check not configured")
+    if not x_cron_token or not hmac.compare_digest(x_cron_token, _CRON_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid or missing cron token")
+    incidents.check_pass_age()
+    try:
+        auto_retrain.run_pass()
+    except Exception:
+        logging.getLogger("calmsense.daily_check").exception("Daily pass crashed")
+        incidents.record(incidents.PASS_MISSED, None, "Auto-retrain pass crashed (daily check)",
+                         traceback.format_exc())
+    incidents.resolve_quiet()
+    return incidents.digest()
 
 
 @app.get("/health")
