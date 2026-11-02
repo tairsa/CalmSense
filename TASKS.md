@@ -65,7 +65,7 @@ Dissociation + flashback (phone 1.7.0, backend 1.4.0, branch `trauma-events`, on
 
 System status (phone 1.8.0, branch `system-status`):
 
-12. Say "merge" and "release" (tags v1.8.0). Then update from Settings → App updates and open
+12. ✅ 1.8.0 released 2026-11-02 (GitHub release v1.8.0). Update from Settings → App updates and open
     Settings → System status: with the watch on, every row should be green within a minute.
 
 Carried over:
@@ -97,8 +97,8 @@ Carried over:
   backend routes + tables. Vitals stored, not used yet. Not in admin app / therapist view.
 - 2026-11-02: System status screen written on branch `system-status` (phone 1.8.0, not
   merged/released): `ui/SystemStatusScreen.kt`, rules in `data/SystemStatus.kt` (+ test),
-  `UploadQueue.lastSuccessMs`. Build + unit tests green; not yet tried on a device.
-  Waits on: Alex says "merge" + "release", then opens Settings → System status on the phone.
+  `UploadQueue.lastSuccessMs`. Merged to main (a981b1d) and released as v1.8.0 2026-11-02;
+  CI + Release green. Not yet tried on the phone.
 - Phase 3 next: the retrain-failure alert (Build checkpoint).
 
 ## Closed
