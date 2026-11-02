@@ -109,7 +109,9 @@ Each phase is one release. Phases 1–2 are the same whichever client path you c
   UploadQueue, Problems page.
 - Error catalog with codes + a test listing them; `showError` everywhere.
 - Settings → System status: account, version, last update check, watch link, last upload,
-  queue length, backend `/health`.
+  queue length, backend `/health`, model trained-at. Alex (2026-11-02): read-only, no fix
+  links or report button; dots by default, raw values in Advanced mode; refresh on open +
+  live + "Check now". Written on branch `system-status` (1.8.0), not released.
 - Settings → Report a problem → backend `/report` (checks the Supabase JWT) → the shared
   Telegram bot. Sentry stays for crashes.
 - Push for the auto-retrain failure alert (Telegram is enough; FCM can wait).

@@ -401,4 +401,35 @@
     <string name="gr_part_legs">legs</string>
     <string name="gr_part_feet">feet</string>
     <string name="gr_done">Done, to the questionnaire</string>
+    <!-- Settings → System status -->
+    <string name="status_title">System status</string>
+    <string name="status_open_desc">Is everything working: watch, uploads, server</string>
+    <string name="status_account">Account</string>
+    <string name="status_signed_out">Not signed in</string>
+    <string name="status_version">App version</string>
+    <string name="status_update_check">Last update check</string>
+    <string name="status_watch">Watch</string>
+    <string name="status_watch_none">No data from the watch yet</string>
+    <string name="status_watch_ok">Connected, sending heart rate</string>
+    <string name="status_watch_off_wrist">Connected, but not on the wrist</string>
+    <string name="status_watch_last">Last heard from %1$s</string>
+    <string name="status_last_upload">Last upload</string>
+    <string name="status_queue">Waiting to upload</string>
+    <string name="status_queue_empty">Nothing waiting</string>
+    <plurals name="status_queue_waiting">
+        <item quantity="one">%1$d item waiting</item>
+        <item quantity="other">%1$d items waiting</item>
+    </plurals>
+    <string name="status_backend">Server</string>
+    <string name="status_backend_ok">Reachable</string>
+    <string name="status_backend_bad">Server not reachable</string>
+    <string name="status_checking">Checking…</string>
+    <string name="status_model">Personal model</string>
+    <string name="status_model_trained">Trained %1$s</string>
+    <string name="status_model_none">Not trained yet (needs more reports)</string>
+    <string name="status_never">Never</string>
+    <string name="status_check_now">Check now</string>
+    <string name="status_level_ok">OK</string>
+    <string name="status_level_warn">Warning</string>
+    <string name="status_level_bad">Problem</string>
 </resources>

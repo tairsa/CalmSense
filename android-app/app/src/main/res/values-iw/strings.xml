@@ -401,4 +401,36 @@
     <string name="gr_part_legs">הרגליים</string>
     <string name="gr_part_feet">כפות הרגליים</string>
     <string name="gr_done">סיימתי, לשאלון</string>
+    <!-- הגדרות → מצב המערכת -->
+    <string name="status_title">מצב המערכת</string>
+    <string name="status_open_desc">האם הכול עובד: שעון, העלאות, שרת</string>
+    <string name="status_account">חשבון</string>
+    <string name="status_signed_out">לא מחובר</string>
+    <string name="status_version">גרסת האפליקציה</string>
+    <string name="status_update_check">בדיקת עדכון אחרונה</string>
+    <string name="status_watch">שעון</string>
+    <string name="status_watch_none">עדיין לא התקבלו נתונים מהשעון</string>
+    <string name="status_watch_ok">מחובר, שולח דופק</string>
+    <string name="status_watch_off_wrist">מחובר, אבל לא על היד</string>
+    <string name="status_watch_last">נשמע לאחרונה %1$s</string>
+    <string name="status_last_upload">העלאה אחרונה</string>
+    <string name="status_queue">ממתין להעלאה</string>
+    <string name="status_queue_empty">אין פריטים ממתינים</string>
+    <plurals name="status_queue_waiting">
+        <item quantity="one">פריט אחד ממתין</item>
+        <item quantity="two">%1$d פריטים ממתינים</item>
+        <item quantity="other">%1$d פריטים ממתינים</item>
+    </plurals>
+    <string name="status_backend">שרת</string>
+    <string name="status_backend_ok">זמין</string>
+    <string name="status_backend_bad">אין חיבור לשרת</string>
+    <string name="status_checking">בודק…</string>
+    <string name="status_model">מודל אישי</string>
+    <string name="status_model_trained">אומן ב־%1$s</string>
+    <string name="status_model_none">עדיין לא אומן (צריך עוד דיווחים)</string>
+    <string name="status_never">אף פעם</string>
+    <string name="status_check_now">בדוק עכשיו</string>
+    <string name="status_level_ok">תקין</string>
+    <string name="status_level_warn">אזהרה</string>
+    <string name="status_level_bad">בעיה</string>
 </resources>

@@ -4,6 +4,10 @@ Every shipped build, newest first. Versioning rules: VERSIONING.md.
 A release takes its notes from the section whose heading starts with its version
 and names the phone (`.github/workflows/release.yml`).
 
+## 1.8.0 · unreleased · phone + watch
+
+Settings → System status: one screen that shows whether everything works. Account, app version, last update check, watch (connected, off the wrist, or when it was last heard from), last successful upload, how many items wait to upload, whether the server answers, and when your personal model was last trained. Each row has a green, amber or red dot with plain words; Advanced mode adds exact times, error codes (`E-2 | 503`) and the queue by type. It refreshes when opened, live while open, and with "Check now". Read-only: no buttons that change anything. Watch: no changes, renumbered to match.
+
 ## 1.7.0 · 2026-11-01 · phone + watch
 
 Dissociation and flashback reports. Two new buttons on the home screen ("I'm dissociating", "I'm having a flashback") open a grounding exercise instead of breathing: "find around you" tasks (4 green things, 3 sounds…) or guided tense-and-release by body part, with "Done" always available. Then a questionnaire of its own for each, without a 1-10 rating: emotions first, then what you experienced (dissociation: detachment, unreality, memory gaps, whether you remember it clearly; flashback: senses, how much it felt like now, trigger, body reaction), what helped and how long it lasted. Heart rate, HRV and motion at the moment of the report are kept for later (not when simulated). These reports never reach the anxiety model's training. Reports: a new category filter (All / Anxiety / Dissociation / Flashback). Watch: no changes, renumbered to match.

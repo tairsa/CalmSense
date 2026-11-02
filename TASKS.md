@@ -63,6 +63,11 @@ Dissociation + flashback (phone 1.7.0, backend 1.4.0, branch `trauma-events`, on
 11. 1.7.0 is released: update from Settings → App updates, then try it on the phone: home → "I'm dissociating" → grounding → questionnaire → Reports →
     Dissociation filter shows it; same for flashback.
 
+System status (phone 1.8.0, branch `system-status`):
+
+12. Say "merge" and "release" (tags v1.8.0). Then update from Settings → App updates and open
+    Settings → System status: with the watch on, every row should be green within a minute.
+
 Carried over:
 
 - Install watch 1.4.1 (needs the watch's adb port) and check motion drops near 0 at rest.
@@ -90,7 +95,11 @@ Carried over:
   posted until the questionnaire ends), `GroundingOverlay.kt`, `EventQuestionnaireScreen.kt`,
   `EventChips.kt`, `EventReportDetailScreen.kt`, category filter in `ReportsScreen.kt`;
   backend routes + tables. Vitals stored, not used yet. Not in admin app / therapist view.
-- Phase 3 next: System status screen, then the retrain-failure alert (Build checkpoint each).
+- 2026-11-02: System status screen written on branch `system-status` (phone 1.8.0, not
+  merged/released): `ui/SystemStatusScreen.kt`, rules in `data/SystemStatus.kt` (+ test),
+  `UploadQueue.lastSuccessMs`. Build + unit tests green; not yet tried on a device.
+  Waits on: Alex says "merge" + "release", then opens Settings → System status on the phone.
+- Phase 3 next: the retrain-failure alert (Build checkpoint).
 
 ## Closed
 

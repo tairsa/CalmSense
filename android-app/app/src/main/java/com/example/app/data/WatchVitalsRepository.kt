@@ -44,10 +44,12 @@ object WatchVitalsRepository {
     private var lastHrvSource: HrvSource = HrvSource.NONE
 
     @Volatile
-    private var lastReceivedAt: Instant? = null
+    var lastReceivedAt: Instant? = null
+        private set
 
     @Volatile
-    private var onBody: Boolean = true
+    var onBody: Boolean = true
+        private set
 
     fun update(
         bpm: Int?,

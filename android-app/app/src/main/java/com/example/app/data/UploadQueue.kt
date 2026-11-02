@@ -39,12 +39,25 @@ object UploadQueue {
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount
 
+    // Wall-clock ms of the last row the server accepted; 0 = never. For System status.
+    private val _lastSuccessMs = MutableStateFlow(0L)
+    val lastSuccessMs: StateFlow<Long> = _lastSuccessMs
+    private var prefs: android.content.SharedPreferences? = null
+
+    /** Queued rows per kind (sensor / feedback / problem), for System status. */
+    fun pendingByKind(): Map<String, Int> =
+        // shortcut: unlocked read of a mutex-guarded deque; a racing write just retries on the next 3 s tick.
+        runCatching { entries.toList() }.getOrDefault(emptyList())
+            .groupingBy { it.optString("kind") }.eachCount()
+
     /** Idempotent. Call from every process entry point (activity + services). */
     @Synchronized
     fun init(context: Context) {
         if (file != null) return
         val f = File(context.applicationContext.filesDir, FILE_NAME)
         file = f
+        prefs = context.applicationContext.getSharedPreferences("upload_queue", Context.MODE_PRIVATE)
+            .also { _lastSuccessMs.value = it.getLong("last_success_ms", 0L) }
         entries.clear()
         if (f.exists()) {
             f.forEachLine { line ->
@@ -114,6 +127,15 @@ object UploadQueue {
     }
 
     private suspend fun send(backend: BackendClient, kind: String, body: JSONObject): PostResult =
+        sendRaw(backend, kind, body).also {
+            if (it is PostResult.Success) {
+                val now = System.currentTimeMillis()
+                _lastSuccessMs.value = now
+                prefs?.edit()?.putLong("last_success_ms", now)?.apply()
+            }
+        }
+
+    private suspend fun sendRaw(backend: BackendClient, kind: String, body: JSONObject): PostResult =
         when (kind) {
             KIND_SENSOR -> backend.postSensorData(sensorFromJson(body))
             KIND_FEEDBACK -> backend.submitPanicFeedback(feedbackFromJson(body))

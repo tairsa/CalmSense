@@ -99,6 +99,7 @@ fun SettingsScreen(
     onRemoveTherapist: (String) -> Unit = {},
     onConnectTherapist: () -> Unit = {},
     onRenameSelf: (String) -> Unit = {},
+    onOpenStatus: () -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -200,6 +201,29 @@ fun SettingsScreen(
         )
 
         UpdateCard()
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Card(
+            onClick = onOpenStatus,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    stringResource(R.string.status_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    stringResource(R.string.status_open_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
     }

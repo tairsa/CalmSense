@@ -117,6 +117,7 @@ import com.example.app.ui.TherapistDashboardScreen
 import com.example.app.ui.ReportDetailScreen
 import com.example.app.ui.ReportsScreen
 import com.example.app.ui.SettingsScreen
+import com.example.app.ui.SystemStatusScreen
 import com.example.app.ui.theme.AppTheme
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.navigation.NavHostController
@@ -194,6 +195,7 @@ private const val ROUTE_QUESTIONNAIRE = "questionnaire"
 private const val ROUTE_EVENT_QUESTIONNAIRE = "event_questionnaire"
 private const val ROUTE_EVENT_DETAIL = "event_detail"
 private const val ROUTE_STATS = "stats"
+private const val ROUTE_SYSTEM_STATUS = "system-status"
 private const val ROUTE_CONNECT_THERAPIST = "connect-therapist"
 private const val ROUTE_THERAPIST_DASHBOARD = "therapist-dashboard"
 private const val ROUTE_THERAPIST_PATIENT = "therapist-patient"
@@ -1126,7 +1128,11 @@ class MainActivity : AppCompatActivity() {
                                         therapists = emptyList(),
                                         onLogout = handleLogout,
                                         onRenameSelf = { viewModel.updateDisplayName(it) },
+                                        onOpenStatus = { therapistNav.navigate(ROUTE_SYSTEM_STATUS) },
                                     )
+                                }
+                                composable(ROUTE_SYSTEM_STATUS) {
+                                    SystemStatusScreen(onBack = { therapistNav.popBackStack() })
                                 }
                                 composable(ROUTE_THERAPIST_DASHBOARD) {
                                     TherapistDashboardScreen(
@@ -1257,7 +1263,11 @@ class MainActivity : AppCompatActivity() {
                                         navController.navigate(ROUTE_CONNECT_THERAPIST)
                                     },
                                     onRenameSelf = { viewModel.updateDisplayName(it) },
+                                    onOpenStatus = { navController.navigate(ROUTE_SYSTEM_STATUS) },
                                 )
+                            }
+                            composable(ROUTE_SYSTEM_STATUS) {
+                                SystemStatusScreen(onBack = { navController.popBackStack() })
                             }
                             composable(ROUTE_REPORTS) {
                                 ReportsScreen(
