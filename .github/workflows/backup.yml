@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The runner ships pg_dump 16; 17 can dump a 15, 16 or 17 server.
       - name: Install pg_dump 17
         run: |
@@ -38,7 +38,7 @@ jobs:
           DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: PATH="/usr/lib/postgresql/17/bin:$PATH" bash scripts/backup-db.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: db-backup-${{ github.run_number }}
           path: calmsense-*.dump.gpg
